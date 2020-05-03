@@ -202,8 +202,7 @@ public class Peer
             try
             {
                 Log(3, "[CONNECTING] ... ");
-                connected = tcpClient.ConnectAsync(host, port).Wait(options.ConnectionTimeout);    // TIMEOUT CONNECT
-                //tcpClient.Connect(host, port);
+                connected = tcpClient.ConnectAsync(host, port).Wait(options.ConnectionTimeout);
             }
             catch (AggregateException e1)
             {
@@ -220,10 +219,9 @@ public class Peer
                 status = Status.FAILED2; 
                 return false;
             }
-            //} catch (Exception e) { TimerEnd("[CONNECT] Failed2"); status = Status.FAILED2; return false; }
 
             // TIMEOUT or TCP RESET?
-            if ( !connected ) { status = Status.FAILED1; return false; } //{ TimerEnd("[CONNECT] Failed1"); status = Status.FAILED1; return false; }
+            if ( !connected ) { status = Status.FAILED1; return false; }
 
             Log(3, "[CONNECT] Success");
             tcpStream                   = tcpClient.GetStream();
