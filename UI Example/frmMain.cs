@@ -22,7 +22,7 @@ namespace UI_Example
         {
             TorSwarm.OptionsStruct opt = TorSwarm.GetDefaultsOptions();
 
-            downPath.Text           = @"C:\Testing"; //opt.DownloadPath;
+            downPath.Text           = opt.DownloadPath;
             maxCon.Text             = opt.MaxConnections.ToString();
             minThreads.Text         = opt.MinThreads.ToString();
             peersFromTrackers.Text  = opt.PeersFromTracker.ToString();
