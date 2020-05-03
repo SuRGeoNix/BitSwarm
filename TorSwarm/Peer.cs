@@ -208,14 +208,14 @@ public class Peer
             {
                 // AggregateException -> No such host is known
                 // AggregateException -> No connection could be made because the target machine actively refused it 0.0.0.0:1234
-                Log(2, "AggregateException -> " + e1.InnerException.Message); // + "\n" + e1.InnerException.StackTrace);
+                Log(2, "AggregateException -> " + e1.InnerException.Message);
                 status = Status.FAILED2;
                 return false;
             }
             catch (Exception e1)
             {
                 // Exception-> Specified argument was out of the range of valid values.\r\nParameter name: port
-                Log(1, "Exception -> " + e1.Message); // + "\n" + e1.StackTrace);
+                Log(1, "Exception -> " + e1.Message);
                 status = Status.FAILED2; 
                 return false;
             }
@@ -410,17 +410,17 @@ public class Peer
                     options.PieceRejectedClbk.BeginInvoke(piece, offset, len, this, null, null);
 
                     return;
-                case Messages.HAVE_NONE: // Have None
+                case Messages.HAVE_NONE:
                     Log(3, "[MSG ] Have None");
                     stageYou.haveNone = true;
 
                     break;
-                case Messages.HAVE_ALL: // Have All
+                case Messages.HAVE_ALL:
                     Log(3, "[MSG ] Have All");
                     stageYou.haveAll = true;
 
                     break;
-                case Messages.SUGGEST_PIECE: // Suggest Piece
+                case Messages.SUGGEST_PIECE:
                     Log(3, "[MSG ] Suggest Piece");
                     // TODO
 
@@ -464,7 +464,7 @@ public class Peer
                         status = Status.DOWNLOADING;
                         Receive(msgLen - 2);
 
-                        // BEncode msg_type
+                        // BEncoded msg_type
                         // MAX size of d8:msg_typei1e5:piecei99ee | d8:msg_typei1e5:piecei99e10:total_sizei1622016ee
                         uint tmp1               = recvBuff.Length > 49 ? 50 : (uint) recvBuff.Length;
                         string mdHeaders        = Encoding.ASCII.GetString(Utils.ArraySub(ref recvBuff, 0, tmp1));
@@ -492,7 +492,7 @@ public class Peer
                                 Log(4, "[MSG ] Extended Metadata Unknown " + mdHeadersDic.Get<BNumber>("msg_type").Value);
                                 break;
 
-                        } // Switch (METADATA MSG_TYPE)
+                        } // Switch Metadata (msg_type)
 
                         status = Status.READY;
                         return; 
@@ -510,7 +510,7 @@ public class Peer
                     Log(4, "[MSG ] Message Unknown " + recvBuff[0]);
 
                     break;
-            } // Switch (MSG ID)
+            } // Switch (MSG Id)
 
             Receive(msgLen - 1);
         }
@@ -581,13 +581,13 @@ public class Peer
             try
             {
                 status      = Status.DOWNLOADING;
-                sendBuff    = Utils.ArrayMerge(PrepareMessage(Messages.REQUEST, false, Utils.ArrayMerge(Utils.ToBigEndian((Int32) piece), Utils.ToBigEndian((Int32) offset), Utils.ToBigEndian((Int32) len))));
+                sendBuff    = PrepareMessage(Messages.REQUEST, false, Utils.ArrayMerge(Utils.ToBigEndian((Int32) piece), Utils.ToBigEndian((Int32) offset), Utils.ToBigEndian((Int32) len))); //Utils.ArrayMerge();
 
                 tcpStream.Write(sendBuff, 0, sendBuff.Length);
                 lastAction = DateTime.UtcNow.Ticks;
             } catch (Exception e)
             {
-                Log(1, $"[REQ][PIECE][BLOCK] {piece}\t{offset}\t{len} {e.Message}");
+                Log(1, $"[REQ ][PIECE][BLOCK] {piece}\t{offset}\t{len} {e.Message}\r\n{e.StackTrace}");
                 status = Status.FAILED2;
                 Disconnect();
             }
@@ -600,7 +600,7 @@ public class Peer
                 lastAction = DateTime.UtcNow.Ticks;
             } catch (Exception e)
             {
-                Log(1, "[KEPPALIVE] Keep Alive Sending Error " + e.Message);
+                Log(1, "[KEEPALIVE] Keep Alive Sending Error " + e.Message);
             }
             
         }
@@ -613,7 +613,8 @@ public class Peer
             if ( isExtended )
             {
                 sendBuff = Utils.ArrayMerge(Utils.ToBigEndian((Int32) (payload.Length + 2)), new byte[] { 20, msgid}, payload);
-            } else
+            }
+            else
             {
                 sendBuff = Utils.ArrayMerge(Utils.ToBigEndian((Int32) (payload.Length + 1)), new byte[] {msgid}, payload);
             }
@@ -624,10 +625,8 @@ public class Peer
         }
         public byte[] PrepareMessage(byte msgid, bool isExtended, byte[] payload)
         {
-            // Memory Leak! -> Utils.ArrayMerge
-
-            //if (payload == null) payload = new byte[0];
             int len = payload == null ? 0 : payload.Length;
+
             if ( isExtended )
             {
                 byte[] tmp = new byte[4 + 2 + len];
@@ -636,8 +635,8 @@ public class Peer
                 if ( payload != null) Buffer.BlockCopy(payload, 0, tmp, 6, payload.Length);
 
                 return tmp;
-                //return Utils.ArrayMerge(Utils.ToBigEndian((Int32) (payload.Length + 2)), new byte[] { 20, msgid}, payload);
-            } else
+            }
+            else
             {
                 byte[] tmp = new byte[4 + 1 + len];
                 Buffer.BlockCopy((Utils.ToBigEndian((Int32) (len + 1))), 0, tmp, 0, 4);
@@ -645,7 +644,6 @@ public class Peer
                 if ( payload != null) Buffer.BlockCopy(payload, 0, tmp, 5, payload.Length);
 
                 return tmp;
-                //return Utils.ArrayMerge(Utils.ToBigEndian((Int32) (payload.Length + 1)), new byte[] {msgid}, payload);
             }
         }
         private void Log(int level, string msg) { if (options.Verbosity > 0 && level <= options.Verbosity) options.LogFile.Write($"[Peer    ] [{host.PadRight(15, ' ')}] {msg}"); }
