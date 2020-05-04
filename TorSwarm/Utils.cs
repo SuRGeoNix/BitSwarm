@@ -14,6 +14,21 @@ namespace SuRGeoNix
 public class Utils
     {
         // Dir / File Next Available
+        public static string FindNextAvailablePartFile(string fileName)
+        {
+            if ( !File.Exists(fileName) && !File.Exists(fileName + ".part") ) return fileName;
+
+            string tmp = Path.Combine(Path.GetDirectoryName(fileName),Regex.Replace(Path.GetFileNameWithoutExtension(fileName), @"(.*) (\([0-9]+)\)$", "$1"));
+            string newName;
+
+            for (int i=1; i<1000; i++)
+            {
+                newName = tmp  + " (" + i + ")" + Path.GetExtension(fileName);
+                if ( !File.Exists(newName) && !File.Exists(newName + ".part") ) return newName;
+            }
+
+            return null;
+        }
         public static string FindNextAvailableDir(string dir)
         {
             if ( !Directory.Exists(dir) ) return dir;
@@ -170,6 +185,18 @@ public class Utils
                      .Where(x => x % 2 == 0)
                      .Select(x => Convert.ToByte(hex.Substring(x, 2), 16))
                      .ToArray();
+        }
+        public static string StringHexToUrlEncode(string hex)
+        {
+            string hex2 = "";
+
+            for (int i=0; i<hex.Length; i++)
+            {
+                if ( i % 2 == 0) hex2 += "%";
+                hex2 += hex[i];
+            }
+
+            return hex2;
         }
 
         // Misc

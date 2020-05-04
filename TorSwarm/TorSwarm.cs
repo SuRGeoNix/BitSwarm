@@ -45,9 +45,6 @@ namespace SuRGeoNix.TorSwarm
         }
         public struct StatsStructure
         {
-            //public long     StartedOn           { get; set; }
-            public long     FinishedOn          { get; set; }
-
             public int      DownRate            { get; set; }
             public int      AvgRate             { get; set; }
             public int      MaxRate             { get; set; }
@@ -149,12 +146,12 @@ namespace SuRGeoNix.TorSwarm
         private void Setup()
         {
             trackerOpt                      = new Tracker.Options();
-            trackerOpt.peerID               = peerID;
-            trackerOpt.hash                 = torrent.file.infoHash;
-            trackerOpt.type                 = Tracker.TYPE.UDP;
-            trackerOpt.readTimeout          = Options.HandshakeTimeout;
-            trackerOpt.log                  = log;
-            trackerOpt.verbosity            = Options.Verbosity;
+            trackerOpt.PeerId               = peerID;
+            trackerOpt.InfoHash             = torrent.file.infoHash;
+            trackerOpt.ConnectTimeout       = Options.ConnectionTimeout;
+            trackerOpt.ReceiveTimeout       = Options.HandshakeTimeout;
+            trackerOpt.LogFile              = log;
+            trackerOpt.Verbosity            = Options.Verbosity;
 
             peerOpt                         = new Peer.Options();
             peerOpt.PeerID                  = peerID;
@@ -162,6 +159,7 @@ namespace SuRGeoNix.TorSwarm
             peerOpt.ConnectionTimeout       = Options.ConnectionTimeout;
             peerOpt.HandshakeTimeout        = Options.HandshakeTimeout;
             peerOpt.PieceTimeout            = Options.PieceTimeout;
+            peerOpt.Pieces                  = torrent.data.pieces;
             peerOpt.LogFile                 = log;
             peerOpt.Verbosity               = Options.Verbosity;
             peerOpt.MetadataReceivedClbk    = MetadataReceived;
@@ -248,11 +246,10 @@ namespace SuRGeoNix.TorSwarm
         {
             foreach (Uri uri in torrent.file.trackers)
             {
-                // Try UDP anyways
-                if ( true ) //uri.Scheme.ToLower() == "udp")
+                if ( uri.Scheme.ToLower() == "http" || uri.Scheme.ToLower() == "https" || uri.Scheme.ToLower() == "udp" )
                 {
-                    Log($"[Torrent] [Tracker] [ADD] {uri.ToString().ToLower()}://{uri.DnsSafeHost}:{uri.Port}");
-                    trackers.Add(new Tracker(uri.DnsSafeHost, uri.Port, trackerOpt));
+                    Log($"[Torrent] [Tracker] [ADD] {uri}");
+                    trackers.Add(new Tracker(uri, trackerOpt));
                 }
                 else
                     Log($"[Torrent] [Tracker] [ADD] {uri} Protocol not implemented");
@@ -260,7 +257,7 @@ namespace SuRGeoNix.TorSwarm
         }
         private void FillPeersFromTracker(int pos)
         {
-            if ( !trackers[pos].Announce(torrent.file.infoHash, Options.PeersFromTracker) ) { trackers[pos].Log($"[{trackers[pos].host}:{trackers[pos].port} Failed"); return; }
+            if ( !trackers[pos].Announce(Options.PeersFromTracker) ) { trackers[pos].Log($"[{trackers[pos].host}:{trackers[pos].port} Failed"); return; }
             if ( trackers[pos].peers == null) {trackers[pos].Log($"[{trackers[pos].host}:{trackers[pos].port}] No peers"); return; }
 
             lock ( lockerPeers )
@@ -716,7 +713,7 @@ namespace SuRGeoNix.TorSwarm
                     torrent.metadata.totalSize  = totalSize;
                     torrent.metadata.progress   = new BitField((totalSize/Peer.MAX_DATA_SIZE) + 1);
                     torrent.metadata.requests   = new BitField((totalSize/Peer.MAX_DATA_SIZE) + 1);
-                    torrent.metadata.file       = new PartFile(Utils.FindNextAvailableFile(Path.Combine(Options.DownloadPath, string.Join("_", torrent.file.name.Split(Path.GetInvalidFileNameChars())) + ".torrent")), Peer.MAX_DATA_SIZE);
+                    torrent.metadata.file       = new PartFile(Utils.FindNextAvailablePartFile(Path.Combine(Options.DownloadPath, string.Join("_", torrent.file.name.Split(Path.GetInvalidFileNameChars())) + ".torrent")), Peer.MAX_DATA_SIZE);
                     torrent.metadata.requests.SetBit(piece);
                 }
 
@@ -737,14 +734,11 @@ namespace SuRGeoNix.TorSwarm
                 }
 
                 torrent.metadata.progress.SetBit(piece);
-                
-                //Log("[RECV][METADATA] Bitfield Progress");
-                //torrent.metadata.progress.PrintBitField();
-                //Log("[RECV][METADATA] Bitfield Requests");
-                //torrent.metadata.requests.PrintBitField();
             
                 if ( torrent.metadata.file.chunksCounter == torrent.metadata.progress.size - 1 )
                 {
+                    // TODO: Validate Torrent's SHA-1 Hash with Metadata Info
+
                     torrent.metadata.isDone = true;
                     log.RestartTime();
                     curSeconds = 0;
@@ -752,7 +746,7 @@ namespace SuRGeoNix.TorSwarm
                     Log($"Creating Metadata File {torrent.metadata.file.FileName}");
                     torrent.metadata.file.CreateFile();
                     torrent.FillFromMetadata();
-
+                    peerOpt.Pieces = torrent.data.pieces;
                     Options.TorrentCallback?.BeginInvoke(torrent, null, null);
                 }
             }
@@ -823,8 +817,6 @@ namespace SuRGeoNix.TorSwarm
                 }
             }
 
-            //RequestPiece(peer); // Fast Request?
-
             // Save Piece in PartFiles [No lock | Thread-safe]
             SavePiece(torrent.data.pieceProgress[piece].data, piece, torrent.data.pieceProgress[piece].data.Length);
 
@@ -841,7 +833,6 @@ namespace SuRGeoNix.TorSwarm
                         torrent.data.files[i].CreateFile();
 
                     torrent.data.isDone = true;
-                    Stats.FinishedOn    = DateTime.UtcNow.Ticks;
                     status              = Status.STOPPED;
                 }
             }

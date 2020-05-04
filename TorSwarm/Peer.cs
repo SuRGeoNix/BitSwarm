@@ -130,6 +130,7 @@ public class Peer
         {
             public string       Hash;
             public byte[]       PeerID;
+            public int          Pieces;
 
             public int          Verbosity;
             public Logger       LogFile;
@@ -190,6 +191,7 @@ public class Peer
 
             stageYou            = new Stage();
             stageYou.extensions = new Extensions();
+            stageYou.bitfield   = new BitField(options.Pieces);
         }
 
         // Connection | Handshake | LTEP Handshake
@@ -364,7 +366,8 @@ public class Peer
                     Log(3, "[MSG ] Have");
                     Receive(msgLen - 1);
 
-                    stageYou.bitfield.SetBit(Utils.ToBigEndian(recvBuff));
+                    int havePiece = Utils.ToBigEndian(recvBuff);
+                    if ( havePiece < options.Pieces) stageYou.bitfield.SetBit(havePiece);
 
                     return;
                 case Messages.BITFIELD:

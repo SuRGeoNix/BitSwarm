@@ -201,7 +201,7 @@ namespace SuRGeoNix.TorSwarm
             {
                 file.length     = (BNumber) bInfo["length"];  
                 data.totalSize  = file.length;
-                data.files.Add(new PartFile(Utils.FindNextAvailableFile(Path.Combine(DownloadPath, file.name)), file.pieceLength, file.length));
+                data.files.Add(new PartFile(Utils.FindNextAvailablePartFile(Path.Combine(DownloadPath, file.name)), file.pieceLength, file.length));
 
                 file.paths      = new List<string>()    { data.files[0].FileName };
                 file.lengths    = new List<long>()      { file.length            };
@@ -226,12 +226,14 @@ namespace SuRGeoNix.TorSwarm
             string tracker = ((BString) torrent["announce"]).ToString();
             BList trackersBList = (BList) torrent["announce-list"];
             if ( trackersBList == null && tracker == null ) return null;
+            //trackersBList = (BList) trackersBList[0];
             if ( trackersBList == null ) return new List<Uri>() { new Uri(tracker) };
 
             List<Uri> trackers = new List<Uri>();
 
             for (int i=0; i<trackersBList.Count; i++)
-                trackers.Add(new Uri(((BString)((BList)trackersBList[i])[0]).ToString()));
+                trackers.Add( new Uri( ((BString)((BList)trackersBList[i])[0]).ToString() ) );
+                //trackers.Add( new Uri( ((BString)trackersBList[i]).ToString() ) );
 
             if ( tracker != null && !trackers.Contains(new Uri(tracker)) ) trackers.Add(new Uri(tracker));
 
