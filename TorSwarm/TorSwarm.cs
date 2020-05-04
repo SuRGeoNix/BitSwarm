@@ -248,7 +248,8 @@ namespace SuRGeoNix.TorSwarm
         {
             foreach (Uri uri in torrent.file.trackers)
             {
-                if (uri.Scheme.ToLower() == "udp")
+                // Try UDP anyways
+                if ( true ) //uri.Scheme.ToLower() == "udp")
                 {
                     Log($"[Torrent] [Tracker] [ADD] {uri.ToString().ToLower()}://{uri.DnsSafeHost}:{uri.Port}");
                     trackers.Add(new Tracker(uri.DnsSafeHost, uri.Port, trackerOpt));
@@ -811,12 +812,12 @@ namespace SuRGeoNix.TorSwarm
                 {
                     Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P]\tPiece: {piece} Size: {data.Length} Block: {block} Offset: {offset} Size2: {torrent.data.pieceProgress[piece].data.Length} SHA-1 validation failed");
 
-                    torrent.data.requests.      UnSetBit(piece);
-                    torrent.data.pieceProgress. Remove(piece);
-
                     Stats.BytesDropped      += torrent.data.pieceProgress[piece].data.Length;
                     Stats.BytesDownloaded   -= torrent.data.pieceProgress[piece].data.Length;
                     sha1Fails++;
+
+                    torrent.data.requests.      UnSetBit(piece);
+                    torrent.data.pieceProgress. Remove(piece);
 
                     return;
                 }

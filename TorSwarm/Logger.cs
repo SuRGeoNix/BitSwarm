@@ -54,9 +54,12 @@ namespace SuRGeoNix
 
         public void Dispose()
         {
-            if (fileStream != null) ((IDisposable)fileStream).Dispose();
-            sw.Stop();
-            disposed = true;
+            lock ( locker )
+            {
+                disposed = true;
+                if (fileStream != null) ((IDisposable)fileStream).Dispose();
+                sw.Stop();
+            }
         }
     }
 }
