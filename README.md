@@ -8,12 +8,12 @@ I've always found P2P architectures a very exciting and interesting field but I'
 
 TorSwarm implements __Bittorrent Protocol v2__ (<a href="http://bittorrent.org/beps/bep_0052.html">bep_0052</a>) to achieve the following: -
 
-1) Properly read input of a __Torrent File__ or __Magnet Link__ and extract all the required information for the P2P communication
+1) Properly read input of a __Torrent File__ or __Magnet Link__ and extract all the required information for the P2P communication. If you enable __DHT__ (<a href="http://bittorrent.org/beps/bep_0005.html">bep_0005</a>) requires only a Magnet Link with a Hash.
 <br/>(such as *Info-Hash, Name, Size, Trackers, Paths/Sizes, Piece Length, Piece Hashes*)
 <br/>*See Torrent.cs*
 		
-2) Communicate periodically (when and if required) with the __Trackers__ to collect more __Peers__ (Scrape / Announce)
-<br/>*See Tracker.cs*
+2) Communicate periodically (when and if required) with the __Trackers__ to collect more __Peers__ (Scrape / Announce) and let __DHT__ feed more Peers when it has.
+<br/>*See Tracker.cs, DHT.cs*
 
 3) Communicate with the collected __Peers__ and start downloading __Metadata__ (if required) and __Torrent data__
 <br/>*See Peer.cs, BitField.cs*
@@ -27,7 +27,7 @@ What TorSwarm does and what it doesn't: -
 
 1) __Peer__ communication is implemented over common __TCP Protocol__ (doesn't currently support *uTP, NAT Traversal, PnP, Hole-punching* etc.)
 
-2) Peer messages communication supports __Core Protocol__ (<a href="http://bittorrent.org/beps/bep_0052.html">bep_0052</a>), __Fast Extension__ (<a href="http://bittorrent.org/beps/bep_0006.html">bep_0006</a>) and for the __Extension Protocol__ (<a href="http://bittorrent.org/beps/bep_0010.html">bep_0010</a>) it supports __Metadata Extension__ (<a href="http://bittorrent.org/beps/bep_0009.html">bep_0009</a>). It does not support *DHT (<a href="http://bittorrent.org/beps/bep_0005.html">bep_0005</a>) and PEX (<a href="http://bittorrent.org/beps/bep_0011.html">bep_0011</a>)*.
+2) Peer messages communication supports __Core Protocol__ (<a href="http://bittorrent.org/beps/bep_0052.html">bep_0052</a>), __Fast Extension__ (<a href="http://bittorrent.org/beps/bep_0006.html">bep_0006</a>) and for the __Extension Protocol__ (<a href="http://bittorrent.org/beps/bep_0010.html">bep_0010</a>) it supports __Metadata Extension__ (<a href="http://bittorrent.org/beps/bep_0009.html">bep_0009</a>). It does not support *PEX (<a href="http://bittorrent.org/beps/bep_0011.html">bep_0011</a>)*.
    
 3) The whole implementation supports __Multi-Threading__ with a number of __Parametrized Options__, __Logging__ and __Statistics__. It does not currently support setting *Download & Upload Limits*.
 
