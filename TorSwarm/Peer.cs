@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Text;
+using System.Collections.Generic;
 using System.Net.Sockets;
 
 using BencodeNET.Parsing;
@@ -8,7 +9,7 @@ using BencodeNET.Objects;
 
 namespace SuRGeoNix.TorSwarm
 {
-public class Peer
+    public class Peer
     {
         /* [HANDSHAKE]              | http://bittorrent.org/beps/bep_0003.html
          * Known Assigned Numbers   | http://bittorrent.org/beps/bep_0004.html      | Reserved Bit Allocations
@@ -17,7 +18,7 @@ public class Peer
          * 00 00 00 00 00 10 00 05                                      | Reserved Bit Allocations      |  8 bytes  | Static EXT_PROTO
          * e8 3f 49 9d d6 eb 76 94 21 a2 70 17 f3 e1 08 fc 7b 9f 60 f5  | SHA-1 Hash of info dictionary | 20 bytes  | Options.Hash      Set by Client
          * 2d 55 54 33 35 35 57 2d 3c b2 29 aa 15 7d 0b 62 6b b6 ce 56  | Unique Per Session Peer ID    | 20 bytes  | Options.PeerID    Set by Client */
-        public static readonly byte[]   BIT_PROTO   = Utils.ArrayMerge(new byte[]   {0x13}, Encoding.ASCII.GetBytes("BitTorrent protocol"));
+        public static readonly byte[]   BIT_PROTO   = Utils.ArrayMerge(new byte[]   {0x13}, Encoding.UTF8.GetBytes("BitTorrent protocol"));
         public static readonly byte[]   EXT_PROTO   = Utils.ArrayMerge(new byte[]   {0, 0, 0, 0}, new byte[] {0 , 0x10, 0, (0x1 | 0x4)});
 
         // [HANDSHAKE EXTENDED]     | http://bittorrent.org/beps/bep_0010.html      | m-> {"key", "value"}, p, v, yourip, ipv6, ipv4, reqq  | Static EXT_BDIC
@@ -128,10 +129,11 @@ public class Peer
          }
         public struct Options
         {
-            public string       Hash;
+            public string       InfoHash;
             public byte[]       PeerID;
             public int          Pieces;
 
+            public DHT          DHT;
             public int          Verbosity;
             public Logger       LogFile;
 
@@ -166,6 +168,7 @@ public class Peer
         public const int        MAX_DATA_SIZE   = 0x4000;
         public string           host        { get; private set; }
         public int              port        { get; private set; }
+        public int              dhtPort     { get; private set; }
 
         public long             lastAction  { get; private set; }
 
@@ -173,7 +176,8 @@ public class Peer
         public Stage            stageYou;
         public Options          options;
 
-        private static readonly BencodeParser parser = new BencodeParser();
+        private static readonly BencodeParser   bParser         = new BencodeParser();
+        private static readonly object          lockerRequests  = new object();
 
         private TcpClient       tcpClient;
         private NetworkStream   tcpStream;
@@ -182,6 +186,11 @@ public class Peer
         private byte[]          sendBuff;
         private byte[]          recvBuff;
         private int             recvLen;
+
+        public int              PiecesRequested { get { return piecesRequested; } set { lock (lockerRequests) piecesRequested = value; } }
+        private int             piecesRequested;
+        public int              PiecesTimeout { get { return piecesTimeout; } set { lock (lockerRequests) piecesTimeout = value; } }
+        private int             piecesTimeout;
 
         public Peer(string host, int port, Options options) 
         {  
@@ -239,7 +248,7 @@ public class Peer
             {
                 Log(3, "[HANDSHAKE] Handshake Sending ...");
 
-                sendBuff = Utils.ArrayMerge(BIT_PROTO, EXT_PROTO, Utils.StringHexToArray(options.Hash), options.PeerID);
+                sendBuff = Utils.ArrayMerge(BIT_PROTO, EXT_PROTO, Utils.StringHexToArray(options.InfoHash), options.PeerID);
                 tcpStream.Write(sendBuff, 0, sendBuff.Length);
 
                 lastAction = DateTime.UtcNow.Ticks;
@@ -366,8 +375,10 @@ public class Peer
                     Log(3, "[MSG ] Have");
                     Receive(msgLen - 1);
 
+                    if ( stageYou.bitfield == null ) stageYou.bitfield = new BitField(options.Pieces);
+
                     int havePiece = Utils.ToBigEndian(recvBuff);
-                    if ( havePiece < options.Pieces) stageYou.bitfield.SetBit(havePiece);
+                    stageYou.bitfield.SetBit(havePiece);
 
                     return;
                 case Messages.BITFIELD:
@@ -387,17 +398,26 @@ public class Peer
                     int offset = Utils.ToBigEndian(recvBuff);
                     Receive(msgLen - 9);// [Data]
 
-                    status = Status.READY;
+                    lock ( lockerRequests )
+                    {
+                        piecesRequested--;
+                        if ( piecesRequested == 0 ) status = Status.READY;
+                    }
+
                     options.PieceReceivedClbk.BeginInvoke(recvBuff, piece, offset, this, null, null);
 
                     return;
                                         // DHT Extension        | http://bittorrent.org/beps/bep_0005.html | reserved[7] |= 0x01 | UDP Port for DHT 
                 case Messages.PORT:
                     Log(3, "[MSG ] Port");
-                    // TODO
+
+                    //Receive(msgLen - 1);
+                    //Array.Reverse(recvBuff);
+                    //dhtPort = (UInt16)BitConverter.ToInt16(recvBuff, 0);
+                    //options.DHT.AddNewNode(host, dhtPort);
+                    //return;
 
                     break;
-
                                         // Fast Extensions      | http://bittorrent.org/beps/bep_0006.html | reserved[7] |= 0x04
                 case Messages.REJECT_REQUEST:// Reject Request
                     Log(2, "[MSG ] Reject Request");
@@ -409,7 +429,12 @@ public class Peer
                     Receive(4);         // [Length]
                     int len = Utils.ToBigEndian(recvBuff);
 
-                    status  = Status.READY;
+                    lock ( lockerRequests )
+                    {
+                        piecesRequested--;
+                        if ( piecesRequested == 0 ) status = Status.READY;
+                    }
+                    
                     options.PieceRejectedClbk.BeginInvoke(piece, offset, len, this, null, null);
 
                     return;
@@ -444,7 +469,7 @@ public class Peer
                         Receive(msgLen - 2);
 
                         // BEncode Dictionary [Currently fills stageYou.extensions.ut_metadata]
-                        BDictionary extDic = parser.ParseString<BDictionary>(Encoding.ASCII.GetString(recvBuff));
+                        BDictionary extDic = bParser.Parse<BDictionary>(recvBuff);
                         object cur = Utils.GetFromBDic(extDic, new string[] {"m", "LT_metadata"});
                         if ( cur != null ) stageYou.extensions.ut_metadata = (byte) ((int) cur);
                         cur = Utils.GetFromBDic(extDic, new string[] {"m", "ut_metadata"});
@@ -470,8 +495,9 @@ public class Peer
                         // BEncoded msg_type
                         // MAX size of d8:msg_typei1e5:piecei99ee | d8:msg_typei1e5:piecei99e10:total_sizei1622016ee
                         uint tmp1               = recvBuff.Length > 49 ? 50 : (uint) recvBuff.Length;
-                        string mdHeaders        = Encoding.ASCII.GetString(Utils.ArraySub(ref recvBuff, 0, tmp1));
-                        BDictionary mdHeadersDic= parser.ParseString<BDictionary>(mdHeaders);
+                        byte[] mdheadersBytes   = Utils.ArraySub(ref recvBuff, 0, tmp1);
+                        //string mdHeaders        = Encoding.ASCII.GetString(mdheadersBytes);
+                        BDictionary mdHeadersDic= bParser.Parse<BDictionary>(mdheadersBytes);
 
                         switch ( mdHeadersDic.Get<BNumber>("msg_type").Value )
                         {
@@ -579,7 +605,32 @@ public class Peer
                 Disconnect();
             }
         }
-        public void RequestPiece(int piece, int offset, int len)
+        public void RequestPiece(List<Tuple<int, int, int>> pieces) // piece, offset, len
+        {
+            try
+            {
+                lock ( lockerRequests )
+                {
+                    status      = Status.DOWNLOADING;
+                    sendBuff    = new byte[0];
+
+                    foreach ( Tuple<int, int, int> piece in pieces )
+                        sendBuff = Utils.ArrayMerge(sendBuff, PrepareMessage(Messages.REQUEST, false, Utils.ArrayMerge(Utils.ToBigEndian((Int32) piece.Item1), Utils.ToBigEndian((Int32) piece.Item2), Utils.ToBigEndian((Int32) piece.Item3))));
+
+                    tcpStream.Write(sendBuff, 0, sendBuff.Length);
+
+                    piecesRequested+= pieces.Count;
+                    lastAction      = DateTime.UtcNow.Ticks;
+                }
+                
+            } catch (Exception e)
+            {
+                Log(1, $"[REQ ] Send Failed - {e.Message}\r\n{e.StackTrace}");
+                status = Status.FAILED2;
+                Disconnect();
+            }
+        }
+        public void RequestPieceRemovedJustOneBlock(int piece, int offset, int len)
         {
             try
             {

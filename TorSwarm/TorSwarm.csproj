@@ -67,6 +67,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="BitField.cs" />
+    <Compile Include="DHT.cs" />
     <Compile Include="Logger.cs" />
     <Compile Include="PartFile.cs" />
     <Compile Include="Peer.cs" />

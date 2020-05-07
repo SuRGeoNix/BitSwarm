@@ -94,7 +94,7 @@ namespace SuRGeoNix.TorSwarm
         }
 
         // Main Implementation [Connect | Receive | Announce | Scrape]
-        private bool Connect()
+        private bool ConnectUDP()
         {
             try
             {
@@ -242,7 +242,7 @@ namespace SuRGeoNix.TorSwarm
                 if ( !ReceiveTCP() ) return false;
 
                 BencodeParser parser = new BencodeParser();
-                BDictionary extDic = parser.ParseString<BDictionary>(Encoding.ASCII.GetString(recvBuff));
+                BDictionary extDic = parser.Parse<BDictionary>(recvBuff);
 
                 byte[] hashBytes = ((BString) extDic["peers"]).Value.ToArray();
 
@@ -264,7 +264,7 @@ namespace SuRGeoNix.TorSwarm
         }
         public bool AnnounceUDP(Int32 num_want = -1, Int64 downloaded = 0, Int64 left = 0, Int64 uploaded = 0)
         {
-            if ( !Connect() ) return false;
+            if ( !ConnectUDP() ) return false;
 
             try
             {
@@ -301,7 +301,7 @@ namespace SuRGeoNix.TorSwarm
 
         public bool ScrapeUDP(string infoHash)
         {
-            if ( Connect() ) return false;
+            if ( ConnectUDP() ) return false;
 
             // Scrape Request
             action = Utils.ToBigEndian((Int32) Action.SCRAPE);

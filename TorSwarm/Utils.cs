@@ -180,6 +180,10 @@ public class Utils
             }
             return rv;
         }
+        public static string ArrayToStringHext(byte[] ba)
+        {
+            return BitConverter.ToString(ba).Replace("-","");
+        }
         public static byte[] StringHexToArray(string hex) {
             return Enumerable.Range(0, hex.Length)
                      .Where(x => x % 2 == 0)
@@ -198,6 +202,7 @@ public class Utils
 
             return hex2;
         }
+
 
         // Misc
         public static string BytesToReadableString(long bytes)

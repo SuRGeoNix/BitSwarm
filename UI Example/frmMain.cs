@@ -2,6 +2,7 @@
 using System.Globalization;
 using System.IO;
 using System.Windows.Forms;
+
 using SuRGeoNix.TorSwarm;
 using SuRGeoNix;
 
@@ -42,6 +43,7 @@ namespace UI_Example
                     opt = TorSwarm.GetDefaultsOptions();
                     
                     opt.DownloadPath        = downPath.Text;
+
                     opt.MaxConnections      = int.Parse(maxCon.Text);
                     opt.MinThreads          = int.Parse(minThreads.Text);
                     opt.PeersFromTracker    = int.Parse(peersFromTrackers.Text);
@@ -49,11 +51,19 @@ namespace UI_Example
                     opt.HandshakeTimeout    = int.Parse(handTimeout.Text);
                     opt.PieceTimeout        = int.Parse(pieceTimeout.Text);
                     opt.MetadataTimeout     = int.Parse(metaTimeout.Text);
-                    opt.Verbosity           = 7;
+
                     opt.StatsCallback       = Stats;
                     opt.TorrentCallback     = TorrentInfo;
                     opt.StatusCallback      = StatusUpdate;
 
+                    opt.EnableDHT           = true;
+
+                    opt.Verbosity           = 0;
+                    opt.LogDHT              = false;
+                    opt.LogStats            = false;
+                    opt.LogTracker          = false;
+                    opt.LogPeer             = false;
+                
                     output.Text     = "Started at " + DateTime.Now.ToString("G", DateTimeFormatInfo.InvariantInfo) + "\r\n";
                     button1.Text    = "Stop";
 
@@ -62,7 +72,8 @@ namespace UI_Example
                     else
                         tr = new TorSwarm(new Uri(input.Text.Trim()), opt);
                     tr.Start();
-                } catch (Exception e1)
+                }
+                catch (Exception e1)
                 {
                     output.Text += e1.Message + "\r\n" + e1.StackTrace;
                     button1.Text = "Start";

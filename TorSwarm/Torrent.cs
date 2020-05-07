@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Collections.Generic;
+using System.Security.Cryptography;
 using System.Collections.Specialized;
 using System.Web;
 
@@ -126,6 +127,7 @@ namespace SuRGeoNix.TorSwarm
         }
 
         private static BencodeParser    bParser = new BencodeParser();
+        public  static SHA1             sha1    = new SHA1Managed();
 
         public Torrent (string downloadPath) 
         {
@@ -161,12 +163,20 @@ namespace SuRGeoNix.TorSwarm
         }
         public void FillFromTorrentFile(string fileName)
         {
-            BencodeNET.Torrents.Torrent bTorrent = bParser.Parse<BencodeNET.Torrents.Torrent>(fileName);
-            BDictionary bdicTorrent = bTorrent.ToBDictionary();
-            file.infoHash = bTorrent.GetInfoHash();
-            file.trackers = GetTrackersFromTorrent(bdicTorrent);
+            BDictionary bdicTorrent = bParser.Parse<BDictionary>(fileName);
+            BDictionary bInfo;
 
-            BDictionary bInfo = (BDictionary) bdicTorrent["info"];
+            if ( bdicTorrent["info"] != null )
+            {
+                bInfo = (BDictionary) bdicTorrent["info"];
+                file.trackers = GetTrackersFromTorrent(bdicTorrent);
+            } 
+            else if ( bdicTorrent["name"] != null )
+                bInfo = bdicTorrent;
+            else
+                throw new Exception("Invalid torrent file");
+
+            file.infoHash = Utils.ArrayToStringHext(sha1.ComputeHash(bInfo.EncodeAsBytes()));
             FillFromInfo(bInfo);
         }
         public void FillFromMetadata()
@@ -223,9 +233,16 @@ namespace SuRGeoNix.TorSwarm
 
         public static List<Uri> GetTrackersFromTorrent(BDictionary torrent)
         {
-            string tracker = ((BString) torrent["announce"]).ToString();
-            BList trackersBList = (BList) torrent["announce-list"];
-            if ( trackersBList == null && tracker == null ) return null;
+            string tracker = null;
+            BList trackersBList = null;
+
+            if ( torrent["announce"] != null )
+                tracker = ((BString) torrent["announce"]).ToString();
+
+            if ( torrent["announce-list"] != null )
+                trackersBList = (BList) torrent["announce-list"];
+
+            if ( trackersBList == null && tracker == null ) return new List<Uri>();
             //trackersBList = (BList) trackersBList[0];
             if ( trackersBList == null ) return new List<Uri>() { new Uri(tracker) };
 
