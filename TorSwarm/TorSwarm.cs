@@ -720,8 +720,13 @@ namespace SuRGeoNix.TorSwarm
 
             for (int i=0; i<Options.RequestBlocksPerPeer; i++)
             {
-                piece = torrent.data.requests.GetFirst0();
-                if ( piece == -1 || (!peer.stageYou.haveAll && !peer.stageYou.bitfield.GetBit(piece)) ) break;
+                if ( peer.stageYou.haveAll )
+                    piece = torrent.data.requests.GetFirst0();
+
+                else
+                    piece = torrent.data.requests.GetFirst01(peer.stageYou.bitfield);
+                
+                if ( piece == -1 ) break;
 
                 bool containsKey;
                 lock ( lockerTorrent ) containsKey = torrent.data.pieceProgress.ContainsKey(piece);
