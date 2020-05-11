@@ -385,7 +385,8 @@ namespace SuRGeoNix.TorSwarm
 
             long totalBytesDownloaded = Stats.BytesDownloaded + Stats.BytesDropped;
             Stats.DownRate      = (int) (totalBytesDownloaded - Stats.BytesDownloadedPrev) / 2; // Change this (2 seconds) if you change scheduler
-            Stats.AvgRate       = (int) (totalBytesDownloaded / curSeconds);
+            if ( curSeconds > 0 ) 
+                Stats.AvgRate   = (int) (totalBytesDownloaded / curSeconds);
             
             if ( torrent.data.totalSize - Stats.BytesDownloaded == 0 )
             {
@@ -402,7 +403,7 @@ namespace SuRGeoNix.TorSwarm
                 if ( Stats.BytesDownloaded  == 0 )
                     Stats.AvgETA*= 2; // Kind of infinite
                 else
-                    Stats.AvgETA = (int) ( (torrent.data.totalSize - Stats.BytesDownloaded) / (Stats.BytesDownloaded / curSeconds ) );
+                    if ( curSeconds > 0 ) Stats.AvgETA = (int) ( (torrent.data.totalSize - Stats.BytesDownloaded) / (Stats.BytesDownloaded / curSeconds ) );
             }
                                 
             if ( Stats.DownRate > Stats.MaxRate ) Stats.MaxRate = Stats.DownRate;
@@ -581,6 +582,13 @@ namespace SuRGeoNix.TorSwarm
                                 // Client -> Trackers [Announce]
                                 //if ( Stats.PeersDownloading < 25 && Stats.PeersInQueue < 10 && Stats.PeersConnected + Stats.PeersConnecting < 15)
                                 PeerBeggar();
+                            }
+
+                            // Scheduler Every 40 Seconds   [DHT Clear Cache Peers]
+                            if ( curSeconds % 40 == 0 )
+                            {
+                                if ( Options.EnableDHT && Stats.PeersInQueue < (Options.MaxConnections / 2) )
+                                    dht.ClearCachedPeers();
                             }
 
                             // Scheduler Every 1 Second     [Request Timeouts]

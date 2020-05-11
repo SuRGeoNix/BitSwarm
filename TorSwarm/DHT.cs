@@ -21,6 +21,7 @@ namespace SuRGeoNix.TorSwarm
             public int ConnectionTimeout    { get; set; }
             public int MaxBucketNodes       { get; set; }
             public int MinBucketDistance    { get; set; }
+            public int MinBucketDistance2   { get; set; }
             public int NodesPerLevel        { get; set; }
 
             public int      Verbosity       { get; set; }
@@ -41,7 +42,9 @@ namespace SuRGeoNix.TorSwarm
         private static readonly object          lockerNodes = new object();
         private static readonly object          lockerPeers = new object();
 
-        private Dictionary<string, Node>        bucketNodes;
+        private Dictionary<string, Node>        bucketNodesPointer;
+        private Dictionary<string, Node>        bucketNodes;        // Weird
+        private Dictionary<string, Node>        bucketNodes2;       // Normal
         private Dictionary<string, int>         cachedPeers;
         private Thread                          beggar;
         public Status                           status;
@@ -53,7 +56,9 @@ namespace SuRGeoNix.TorSwarm
         private byte[]                          getPeersBytes;
         private IPEndPoint                      ipEP;
 
-        private int havePeers, requested, responded, inBucket;
+        private int     havePeers, requested, responded, inBucket;
+        private bool    isWeirdStrategy;
+        private int     minBucketDistance;
 
         class Node
         {
@@ -86,6 +91,7 @@ namespace SuRGeoNix.TorSwarm
         {
             options         = (opt == null) ? GetDefaultOptions() : (Options) opt;
             bucketNodes     = new Dictionary<string, Node>();
+            bucketNodes2    = new Dictionary<string, Node>();
             cachedPeers     = new Dictionary<string, int>();
             ipEP            = new IPEndPoint(IPAddress.Any, 0);
             infoHashBytes   = Utils.StringHexToArray(infoHash);
@@ -93,7 +99,16 @@ namespace SuRGeoNix.TorSwarm
 
             status          = Status.STOPPED;
 
+            // Add Bootstraps
+            bucketNodesPointer = bucketNodes2;
             AddBootstrapNodes();
+            bucketNodesPointer = bucketNodes;
+            AddBootstrapNodes();
+
+            // Start with Weird Strategy
+            isWeirdStrategy = false;
+            FlipStrategy();
+
             PrepareRequest();
         }
         public static Options GetDefaultOptions()
@@ -103,13 +118,15 @@ namespace SuRGeoNix.TorSwarm
             options.ConnectionTimeout   = 600;
             options.MaxBucketNodes      = 200;
             options.MinBucketDistance   = 145;
+            options.MinBucketDistance2  = 67;
             options.NodesPerLevel       = 4;
             
             return options;
         }
+
         private void AddNewNode(string host, int port, short distance = 160) 
         {  
-            bucketNodes.Add(host, new Node(host, port, distance)); 
+            bucketNodesPointer.Add(host, new Node(host, port, distance)); 
         }
         private void AddBootstrapNodes()
         {
@@ -119,6 +136,7 @@ namespace SuRGeoNix.TorSwarm
             //AddNewNode("dht.transmissionbt.com"   ,  6881);
             //AddNewNode("dht.aelitis.com"          ,  6881);
         }
+
         private void PrepareRequest()
         {
             /* BEndode get_peers Request
@@ -170,6 +188,38 @@ namespace SuRGeoNix.TorSwarm
 
             } catch ( Exception ) { return null;}
         }
+
+        private void FlipStrategy()
+        {
+            isWeirdStrategy     = !isWeirdStrategy;
+            minBucketDistance   = isWeirdStrategy ? options.MinBucketDistance : options.MinBucketDistance2;
+            bucketNodesPointer  = isWeirdStrategy ? bucketNodes : bucketNodes2;
+
+            Log($"[STRATEGY] Flip to {isWeirdStrategy}");
+        }
+        // The Right Way | Closest Nodes | Stable
+        private short CalculateDistance2(byte[] nodeId)
+        {
+            short distance = 0;
+
+            for ( int i=0; i<20; i++ )
+            {
+                if ( nodeId[i] != infoHashBytes[i] )
+                {
+                    string ab = Convert.ToString(nodeId[i], 2).PadLeft(8, '0');
+                    string bb = Convert.ToString(infoHashBytes[i], 2).PadLeft(8, '0');
+
+                    for ( int l=0; l<8; l++ )
+                    {
+                        if ( ab[l] != bb[l] )
+                            distance += 1;
+                    }
+                }
+            }
+
+            return (short) distance;
+        }
+        // The Weird Way | More Like Our Hash Nodes | Faster
         private short CalculateDistance(byte[] nodeId)
         {
             short distance = 0;
@@ -195,12 +245,13 @@ namespace SuRGeoNix.TorSwarm
 
             return (short) (160 - distance);
         }
+
         private string GetMinDistanceNode()
         {
             int curMin = 161;
             
             string host = null;
-            foreach (KeyValuePair<string, Node> node in bucketNodes)
+            foreach (KeyValuePair<string, Node> node in bucketNodesPointer)
                 if ( node.Value.status == Node.Status.NEW && node.Value.distance < curMin ) { curMin = node.Value.distance; host = node.Value.host; }
 
             return host;
@@ -238,7 +289,7 @@ namespace SuRGeoNix.TorSwarm
                     for ( int i=0; i<curNodes.Length; i += 26 )
                     {
                         byte[]  curNodeId   = Utils.ArraySub(ref curNodes, (uint) i, 20, false);
-                        short   curDistance = CalculateDistance(curNodeId);
+                        short   curDistance = isWeirdStrategy ? CalculateDistance(curNodeId) : CalculateDistance2(curNodeId);
                         string  curIP       = (new IPAddress(Utils.ArraySub(ref curNodes, (uint) i + 20, 4))).ToString();
                         UInt16  curPort     = (UInt16) BitConverter.ToInt16(Utils.ArraySub(ref curNodes, (uint) i + 24, 2, true), 0);
                     
@@ -248,9 +299,9 @@ namespace SuRGeoNix.TorSwarm
 
                         lock ( lockerNodes)
                         {
-                            if ( !bucketNodes.ContainsKey(curIP) )
+                            if ( !bucketNodesPointer.ContainsKey(curIP) )
                             {
-                                if ( curDistance <= options.MinBucketDistance ) inBucket++;
+                                //if ( curDistance <= minBucketDistance ) inBucket++;
                                 AddNewNode(curIP, curPort, curDistance);
                             }
                         }
@@ -263,6 +314,12 @@ namespace SuRGeoNix.TorSwarm
                     BList values = (BList) bResponse["values"];
 
                     Dictionary<string, int> curPeers = new Dictionary<string, int>();
+
+                    if ( values.Count > 0 )
+                    {
+                        node.hasPeers = true;
+                        havePeers++;
+                    }
 
                     foreach (IBObject cur in values)
                     {
@@ -284,11 +341,7 @@ namespace SuRGeoNix.TorSwarm
                     }
 
                     if ( curPeers.Count > 0 )
-                    {
-                        havePeers++;
-                        node.hasPeers = true;
                         options.NewPeersClbk?.BeginInvoke(curPeers, null, null);
-                    }       
                 }
 
                 node.status = Node.Status.REQUESTED;
@@ -307,6 +360,7 @@ namespace SuRGeoNix.TorSwarm
 
             long lastTicks      = DateTime.UtcNow.Ticks;
             int curThreads      = 0;
+            int curSeconds      = 0;
             bool clearBucket    = false;
             List<string> curNodeKeys;
 
@@ -318,18 +372,28 @@ namespace SuRGeoNix.TorSwarm
                 {
                     string newNodeHost = GetMinDistanceNode(); // Node.Status.New && Min(distance)
                     if ( newNodeHost == null) break;
-                    bucketNodes[newNodeHost].status             = Node.Status.REQUESTING;
-                    bucketNodes[newNodeHost].lastRequestedAt    = DateTime.UtcNow.Ticks;
+                    bucketNodesPointer[newNodeHost].status             = Node.Status.REQUESTING;
+                    bucketNodesPointer[newNodeHost].lastRequestedAt    = DateTime.UtcNow.Ticks;
                     curNodeKeys.Add(newNodeHost);
                 }
 
                 curThreads = curNodeKeys.Count;
-                if ( curThreads == 0 ) { Log($"Nothing to do... curThreads == 0 ... stopping"); break; }// END?
+
+                // End of Recursion | Reset This BucketNodes with Bootstraps and Flip Strategy
+                if ( curThreads == 0 ) 
+                { 
+                    Log($"[BEGGAR] Recursion Ended (curThreads=0)... Flippping");
+                    bucketNodesPointer.Clear();
+                    AddBootstrapNodes();
+                    FlipStrategy();
+
+                    continue;
+                }
 
                 // Start <NodesPerLevel> Nodes & Wait For Them
                 foreach (string curNodeKey in curNodeKeys)
                 {
-                    Node node = bucketNodes[curNodeKey];
+                    Node node = bucketNodesPointer[curNodeKey];
 
                     ThreadPool.QueueUserWorkItem(new WaitCallback(x => { 
 
@@ -342,27 +406,45 @@ namespace SuRGeoNix.TorSwarm
 
                 while ( curThreads > 0 ) Thread.Sleep(15);
 
-                // Clean Bucket from FAILED | REQUESTED & OutOfBucket
+                // Clean Bucket from FAILED | REQUESTED | Out Of Distance
+                inBucket = 0;
                 curNodeKeys = new List<string>();
-                if ( bucketNodes.Count > options.MaxBucketNodes ) clearBucket = true;
-                foreach ( KeyValuePair<string, Node> nodeKV in bucketNodes )
+                
+                if ( bucketNodesPointer.Count > options.MaxBucketNodes )
+                    clearBucket = true;
+
+                foreach ( KeyValuePair<string, Node> nodeKV in bucketNodesPointer )
                 {
                     Node node = nodeKV.Value;
                     if ( node.status == Node.Status.FAILED) 
                         curNodeKeys.Add(node.host);
-                    else if ( node.status == Node.Status.REQUESTED && node.distance > options.MinBucketDistance && !node.hasPeers )
+                    else if ( node.status == Node.Status.REQUESTED && node.distance > minBucketDistance && !node.hasPeers )
                         curNodeKeys.Add(node.host);
-                    else if ( clearBucket && node.distance > options.MinBucketDistance && !node.hasPeers)
+                    else if ( clearBucket && node.distance > minBucketDistance && !node.hasPeers)
                         curNodeKeys.Add(node.host);
-                }
-                foreach (string curNodeKey in curNodeKeys)
-                    bucketNodes.Remove(curNodeKey);
 
-                // Stats
-                if ( DateTime.UtcNow.Ticks - lastTicks > 10000000 )
+                    if ( node.distance <= minBucketDistance ) inBucket++;
+                }
+
+                foreach (string curNodeKey in curNodeKeys)
+                    bucketNodesPointer.Remove(curNodeKey);
+
+                clearBucket = false;
+
+                // Scheduler | NOTE: Currently not exact second & curSeconds will be reset with TorSwarm Stop/Start | Calculate 'Wait for Nodes' Time
+                if ( DateTime.UtcNow.Ticks - lastTicks > 9000000 )
                 {
                     lastTicks = DateTime.UtcNow.Ticks;
-                    Log($"[STATS] [REQs: {requested}]\t[RESPs: {responded}]\t[BUCKETSIZE: {bucketNodes.Count}]\t[INBUCKET: {inBucket}]\t[PEERNODES: {havePeers}]");
+                    curSeconds++;
+
+                    // Stats
+                    Log($"[STATS] [REQs: {requested}]\t[RESPs: {responded}]\t[BUCKETSIZE: {bucketNodesPointer.Count}]\t[INBUCKET: {inBucket}]\t[PEERNODES: {havePeers}]\t[PEERS: {cachedPeers.Count}]");
+
+                    // Flip Strategy
+                    if ( curSeconds % 6 == 0 )
+                        FlipStrategy();
+
+                    // TODO: Re-request existing Peer Nodes for new Peers
                 }
 
                 Thread.Sleep(15);
@@ -371,6 +453,7 @@ namespace SuRGeoNix.TorSwarm
             Log($"[BEGGAR] STOPPED {infoHash}");
         }
 
+        // Public
         public void Start()
         {
             if ( status == Status.RUNNING ) return;
@@ -391,8 +474,13 @@ namespace SuRGeoNix.TorSwarm
 
             status = Status.STOPPED;
         }
+        public void ClearCachedPeers()
+        {
+            lock ( lockerPeers ) cachedPeers.Clear();
+            Log($"Cached Peers cleaned");
+        }
 
-
+        // Misc
         internal void Log(string msg) { if (options.Verbosity > 0) options.LogFile.Write($"[DHT] {msg}"); }
     }
 }
