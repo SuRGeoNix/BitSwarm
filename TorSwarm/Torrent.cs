@@ -104,26 +104,8 @@ namespace SuRGeoNix.TorSwarm
             public long             totalSize       { get; set; }
 
             public BitField         progress        { get; set; }
-            public BitField         requests        { get; set; }
 
-            public int              firstPieceTries { get; set; }
-
-            public List<MetadataRequest>        metadataRequests;
-
-            public struct MetadataRequest
-            {
-                public MetadataRequest(long timestamp, Peer peer, int piece, int size)
-                {
-                    this.timestamp  = timestamp;
-                    this.peer       = peer;
-                    this.piece      = piece;
-                    this.size       = size;
-                }
-                public long         timestamp;
-                public Peer         peer;
-                public int          piece;
-                public int          size;
-            }
+            public int              parallelRequests { get; set; }
         }
 
         private static BencodeParser    bParser = new BencodeParser();
@@ -139,7 +121,6 @@ namespace SuRGeoNix.TorSwarm
 
             file.trackers               = new List<Uri>();
             data.pieceRequstes          = new List<TorrentData.PieceRequest>();
-            metadata.metadataRequests   = new List<MetaData.MetadataRequest>();
         }
 
         public void FillFromMagnetLink(Uri magnetLink)

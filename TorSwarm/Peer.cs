@@ -124,7 +124,6 @@ namespace SuRGeoNix.TorSwarm
             READY           = 3,
             FAILED1         = 4,
             FAILED2         = 5,
-            //BANNED          = 6,
             DOWNLOADING     = 7
          }
         public struct Options
@@ -133,13 +132,11 @@ namespace SuRGeoNix.TorSwarm
             public byte[]       PeerID;
             public int          Pieces;
 
-            public DHT          DHT;
             public int          Verbosity;
             public Logger       LogFile;
 
             public int          ConnectionTimeout;
             public int          HandshakeTimeout;
-            public int          PieceTimeout;
 
             public Action<byte[], int, int, int, Peer>      MetadataReceivedClbk;
             public Action<int, string>                      MetadataRejectedClbk;
@@ -158,7 +155,7 @@ namespace SuRGeoNix.TorSwarm
             public bool         haveAll;
             public bool         haveNone;
 
-            public bool         fastMetadata;
+            public bool         metadataRequested;
         }
         public struct Extensions
         {
@@ -168,7 +165,6 @@ namespace SuRGeoNix.TorSwarm
         public const int        MAX_DATA_SIZE   = 0x4000;
         public string           host        { get; private set; }
         public int              port        { get; private set; }
-        public int              dhtPort     { get; private set; }
 
         public long             lastAction  { get; private set; }
 
@@ -187,9 +183,9 @@ namespace SuRGeoNix.TorSwarm
         private byte[]          recvBuff;
         private int             recvLen;
 
-        public int              PiecesRequested { get { return piecesRequested; } set { lock (lockerRequests) piecesRequested = value; } }
+        public  int             PiecesRequested { get { return piecesRequested; } set { lock (lockerRequests) piecesRequested = value; } }
         private int             piecesRequested;
-        public int              PiecesTimeout { get { return piecesTimeout; } set { lock (lockerRequests) piecesTimeout = value; } }
+        public  int             PiecesTimeout   { get { return piecesTimeout; } set { lock (lockerRequests) piecesTimeout = value; } }
         private int             piecesTimeout;
 
         public Peer(string host, int port, Options options) 
@@ -411,12 +407,6 @@ namespace SuRGeoNix.TorSwarm
                 case Messages.PORT:
                     Log(3, "[MSG ] Port");
 
-                    //Receive(msgLen - 1);
-                    //Array.Reverse(recvBuff);
-                    //dhtPort = (UInt16)BitConverter.ToInt16(recvBuff, 0);
-                    //options.DHT.AddNewNode(host, dhtPort);
-                    //return;
-
                     break;
                                         // Fast Extensions      | http://bittorrent.org/beps/bep_0006.html | reserved[7] |= 0x04
                 case Messages.REJECT_REQUEST:// Reject Request
@@ -489,6 +479,7 @@ namespace SuRGeoNix.TorSwarm
                         // MSG Extended Metadata
                         Log(3, "[MSG ] Extended Metadata");
 
+                        bool wasDownloading = status == Status.DOWNLOADING;
                         status = Status.DOWNLOADING;
                         Receive(msgLen - 2);
 
@@ -496,7 +487,6 @@ namespace SuRGeoNix.TorSwarm
                         // MAX size of d8:msg_typei1e5:piecei99ee | d8:msg_typei1e5:piecei99e10:total_sizei1622016ee
                         uint tmp1               = recvBuff.Length > 49 ? 50 : (uint) recvBuff.Length;
                         byte[] mdheadersBytes   = Utils.ArraySub(ref recvBuff, 0, tmp1);
-                        //string mdHeaders        = Encoding.ASCII.GetString(mdheadersBytes);
                         BDictionary mdHeadersDic= bParser.Parse<BDictionary>(mdheadersBytes);
 
                         switch ( mdHeadersDic.Get<BNumber>("msg_type").Value )
@@ -507,13 +497,11 @@ namespace SuRGeoNix.TorSwarm
 
                             case Messages.METADATA_RESPONSE: // (Expecting 0x4000 | 16384 bytes - except if last piece)
                                 Log(2, "[MSG ] Extended Metadata Data");
-                                stageYou.fastMetadata = true;
                                 options.MetadataReceivedClbk.BeginInvoke(recvBuff, (int) mdHeadersDic.Get<BNumber>("piece").Value, mdHeadersDic.EncodeAsString().Length, (int) mdHeadersDic.Get<BNumber>("total_size").Value, this, null, null);
                                 break;
 
                             case Messages.METADATA_REJECT:
                                 Log(2, "[MSG ] Extended Metadata Reject");
-                                stageYou.fastMetadata = false;
                                 options.MetadataRejectedClbk.BeginInvoke((int) mdHeadersDic.Get<BNumber>("piece").Value, host, null, null);
                                 break;
 
@@ -523,7 +511,8 @@ namespace SuRGeoNix.TorSwarm
 
                         } // Switch Metadata (msg_type)
 
-                        status = Status.READY;
+                        if ( !wasDownloading || piecesRequested < 1) // In case of late response of Metadata when Metadata already done and we already requested pieces
+                            status = Status.READY;
                         return; 
                     }
                     else
@@ -576,7 +565,7 @@ namespace SuRGeoNix.TorSwarm
                         totalRead += curRead;
                     } 
                 }
-                recvBuff = ms.ToArray();    
+                recvBuff = ms.ToArray();
             }
             
             recvLen = totalRead;
@@ -591,16 +580,19 @@ namespace SuRGeoNix.TorSwarm
         }
         
         // Client's Commands / Requests
-        public void RequestMetadata(int piece)
+        public void RequestMetadata(int piece, int piece2 = -1)
         {
             try
             {
-                status = Status.DOWNLOADING;
-                SendMessage(stageYou.extensions.ut_metadata, true, Encoding.UTF8.GetBytes((new BDictionary { { "msg_type", 0 }, { "piece", piece } }).EncodeAsString()));
+                sendBuff    = PrepareMessage(stageYou.extensions.ut_metadata, true, Encoding.UTF8.GetBytes((new BDictionary { { "msg_type", 0 }, { "piece", piece } }).EncodeAsString()));
+                if ( piece2 != -1 )
+                    sendBuff= Utils.ArrayMerge(sendBuff, PrepareMessage(stageYou.extensions.ut_metadata, true, Encoding.UTF8.GetBytes((new BDictionary { { "msg_type", 0 }, { "piece", piece2 } }).EncodeAsString())));
+                
+                tcpStream.Write(sendBuff, 0, sendBuff.Length);
                 lastAction = DateTime.UtcNow.Ticks;
             } catch (Exception e)
             {
-                Log(1, $"[REQ][METADATA] {piece} {e.Message}");
+                Log(1, $"[REQ][METADATA] {piece},{piece2} {e.Message}");
                 status = Status.FAILED2;
                 Disconnect();
             }

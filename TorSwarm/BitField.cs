@@ -79,6 +79,48 @@ namespace SuRGeoNix.TorSwarm
 
             return -1;
         }
+        public int GetFirst0(int from)
+        {
+            int bytePos = from / 8;
+            
+            for (int i=(bytePos*8)+(from % 8); i<(bytePos*8) + 8; i++)
+                    if ( i<size && !GetBit(i) ) return i;
+
+            bytePos++;
+
+            lock ( locker )
+            {
+                for (;bytePos<bitfield.Length; bytePos++)
+                    if ( bitfield[bytePos] != 0xff ) break;
+
+                for (int i=(bytePos*8); i<(bytePos*8) + 8; i++)
+                    if ( i<size && !GetBit(i) ) return i;
+            }
+
+            return -1;
+        }
+        public int GetFirst0(int from, int to)
+        {
+            if ( to > size ) return -2;
+
+            int bytePos = from / 8;
+            
+            for (int i=(bytePos*8)+(from % 8); i<(bytePos*8) + 8; i++)
+                    if ( i<to && !GetBit(i) ) return i;
+
+            bytePos++;
+
+            lock ( locker )
+            {
+                for (;bytePos<bitfield.Length; bytePos++)
+                    if ( bitfield[bytePos] != 0xff ) break;
+
+                for (int i=(bytePos*8); i<(bytePos*8) + 8; i++)
+                    if ( i<to && !GetBit(i) ) return i;
+            }
+
+            return -1;
+        }
         public int GetFirst01(BitField bitfield)
         {
             int bytePos = 0;

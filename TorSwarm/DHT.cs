@@ -179,14 +179,21 @@ namespace SuRGeoNix.TorSwarm
                 // Receive
                 IAsyncResult asyncResult = node.udpClient.BeginReceive(null, null);
                 asyncResult.AsyncWaitHandle.WaitOne(options.ConnectionTimeout);
-                if ( !asyncResult.IsCompleted ) return null;
+
+                if ( !asyncResult.IsCompleted )
+                {
+                    node.udpClient.Close();
+                    asyncResult = null;
+                    return null;
+                }
 
                 byte[] recvBuff = node.udpClient.EndReceive(asyncResult, ref ipEP);
                 node.udpClient.Close();
+                asyncResult = null;
 
                 return bParser.Parse<BDictionary>(recvBuff);
 
-            } catch ( Exception ) { return null;}
+            } catch ( Exception ) { node.udpClient.Close(); return null;}
         }
 
         private void FlipStrategy()
@@ -275,7 +282,7 @@ namespace SuRGeoNix.TorSwarm
                 BDictionary bResponse = GetResponse(node);
 
                 if ( bResponse == null || !bResponse.ContainsKey("y") || ((BString) bResponse["y"]).ToString() != "r" ) 
-                    { node.status = Node.Status.FAILED; return; }
+                    { node.status = Node.Status.FAILED; if ( bResponse != null ) bResponse.Clear(); return; }
 
                 Log($"[{node.distance}] [{node.host}] [RESP]");
 
@@ -346,12 +353,12 @@ namespace SuRGeoNix.TorSwarm
 
                 node.status = Node.Status.REQUESTED;
                 responded++;
+                bResponse.Clear();
             } 
             catch ( Exception e )
             {
                 node.status = Node.Status.FAILED;
                 Log($"[{node.distance}] [{node.host}] [ERROR] {e.Message}\r\n{e.StackTrace}");
-                return;
             }
         }
         private void Beggar()
