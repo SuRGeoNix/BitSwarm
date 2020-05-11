@@ -152,7 +152,7 @@ namespace SuRGeoNix.TorSwarm
             torrent                         = new Torrent(Options.DownloadPath);
             torrent.metadata.progress       = new BitField(20); // Max Metadata Pieces
             torrent.metadata.pieces         = 2;                // Consider 2 Pieces Until The First Response
-            torrent.metadata.parallelRequests= 4;               // How Many Peers We Will Ask In Parallel (firstPieceTries/2)
+            torrent.metadata.parallelRequests= 8;               // How Many Peers We Will Ask In Parallel (firstPieceTries/2)
 
             log                             = new Logger(Path.Combine(Options.DownloadPath, "session" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".log"), true);
             if ( Options.EnableDHT )
@@ -658,7 +658,6 @@ namespace SuRGeoNix.TorSwarm
             {
                 if ( peer.stageYou.metadataRequested || peer.stageYou.extensions.ut_metadata == 0 ) return;
                 if ( torrent.metadata.parallelRequests < 1 ) return;
-
 
                 if ( torrent.metadata.totalSize == 0 )
                 {   
