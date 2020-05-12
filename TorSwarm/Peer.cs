@@ -654,20 +654,26 @@ namespace SuRGeoNix.TorSwarm
         // Misc
         public void SendMessage(byte msgid, bool isExtended, byte[] payload)
         {
-            if (payload == null) payload = new byte[0];
-
-            if ( isExtended )
+            try
             {
-                sendBuff = Utils.ArrayMerge(Utils.ToBigEndian((Int32) (payload.Length + 2)), new byte[] { 20, msgid}, payload);
-            }
-            else
+                if (payload == null) payload = new byte[0];
+
+                if ( isExtended )
+                {
+                    sendBuff = Utils.ArrayMerge(Utils.ToBigEndian((Int32) (payload.Length + 2)), new byte[] { 20, msgid}, payload);
+                }
+                else
+                {
+                    sendBuff = Utils.ArrayMerge(Utils.ToBigEndian((Int32) (payload.Length + 1)), new byte[] {msgid}, payload);
+                }
+
+                tcpStream.Write(sendBuff, 0, sendBuff.Length);
+
+                lastAction = DateTime.UtcNow.Ticks;
+            } catch (Exception e)
             {
-                sendBuff = Utils.ArrayMerge(Utils.ToBigEndian((Int32) (payload.Length + 1)), new byte[] {msgid}, payload);
+                Log(1, "[SENDMESSAGE] Sending Error " + e.Message);
             }
-
-            tcpStream.Write(sendBuff, 0, sendBuff.Length);
-
-            lastAction = DateTime.UtcNow.Ticks;
         }
         public byte[] PrepareMessage(byte msgid, bool isExtended, byte[] payload)
         {
