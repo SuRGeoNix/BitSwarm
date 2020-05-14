@@ -115,10 +115,10 @@ namespace SuRGeoNix.TorSwarm
 
                 int chunkPos    = mapIdToChunkId[chunkId];
                 int chunkPos2   = chunkPos;
-                int pos         = 0;
+                long pos         = 0;
                 if ( firstChunkSize != 0 && chunkPos > firstPos)  { pos += firstChunkSize;    chunkPos2--; }
                 if ( lastChunkSize  != 0 && chunkPos > lastPos )  { pos += lastChunkSize;     chunkPos2--; }
-                pos += ChunkSize * chunkPos2;
+                pos += (long)ChunkSize * chunkPos2;
 
                 byte[] data = new byte[len];
                 fileStream.Seek(pos, SeekOrigin.Begin);

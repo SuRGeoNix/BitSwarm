@@ -1,12 +1,13 @@
 ﻿using System;
+using System.Collections.Generic;
 
 namespace SuRGeoNix.TorSwarm
 {
     public class BitField
     {
-        public byte[]   bitfield;
-        public int      size;
-        public int      setsCounter;
+        public byte[]   bitfield    { get; private set; }
+        public int      size        { get; private set; }
+        public int      setsCounter { get; private set; }
 
         private static readonly object locker = new object();
 
@@ -27,7 +28,7 @@ namespace SuRGeoNix.TorSwarm
 
         public void SetBit(int input)
         {
-            if ( input >= size ) throw new Exception("Out of range");
+            if ( input >= size || input < 0 ) throw new Exception($"Out of range input: {input} size: {size}");
 
             int bytePos = input / 8;
             int bitPos  = input % 8;
@@ -40,7 +41,7 @@ namespace SuRGeoNix.TorSwarm
         }
         public void UnSetBit(int input)
         {
-            if ( input >= size ) throw new Exception("Out of range");
+            if ( input >= size || input < 0 ) throw new Exception($"Out of range input: {input} size: {size}");
 
             int bytePos = input / 8;
             int bitPos  = input % 8;
@@ -53,7 +54,7 @@ namespace SuRGeoNix.TorSwarm
         }
         public bool GetBit(int input)
         {
-            if ( input >= size ) throw new Exception("Out of range");
+            if ( input >= size || input < 0 ) throw new Exception($"Out of range input: {input} size: {size}");
 
             int bytePos = input / 8;
             int bitPos  = input % 8;
@@ -64,6 +65,7 @@ namespace SuRGeoNix.TorSwarm
             return false;
         }
 
+        // TODO: Review locking
         public int GetFirst0()
         {
             int bytePos = 0;
@@ -79,64 +81,163 @@ namespace SuRGeoNix.TorSwarm
 
             return -1;
         }
-        public int GetFirst0(int from)
+        public int GetFirst0(int from, int to = -1)
         {
-            int bytePos = from / 8;
-            
-            for (int i=(bytePos*8)+(from % 8); i<(bytePos*8) + 8; i++)
-                    if ( i<size && !GetBit(i) ) return i;
+            to = to == -1 ? size - 1 : to;
 
-            bytePos++;
-
-            lock ( locker )
-            {
-                for (;bytePos<bitfield.Length; bytePos++)
-                    if ( bitfield[bytePos] != 0xff ) break;
-
-                for (int i=(bytePos*8); i<(bytePos*8) + 8; i++)
-                    if ( i<size && !GetBit(i) ) return i;
-            }
-
-            return -1;
-        }
-        public int GetFirst0(int from, int to)
-        {
-            if ( to > size ) return -2;
+            if ( from >= size || to >= size || from < 0 || to < 0 ) return -2;
 
             int bytePos = from / 8;
             
             for (int i=(bytePos*8)+(from % 8); i<(bytePos*8) + 8; i++)
-                    if ( i<to && !GetBit(i) ) return i;
+                    if ( i<=to && !GetBit(i) ) return i;
 
             bytePos++;
 
-            lock ( locker )
-            {
-                for (;bytePos<bitfield.Length; bytePos++)
+            for (;bytePos<to/8; bytePos++)
                     if ( bitfield[bytePos] != 0xff ) break;
 
-                for (int i=(bytePos*8); i<(bytePos*8) + 8; i++)
-                    if ( i<to && !GetBit(i) ) return i;
-            }
+            for (int i=(bytePos*8); i<(bytePos*8) + 8; i++)
+                if ( i<=to && !GetBit(i) ) return i;
 
             return -1;
         }
         public int GetFirst01(BitField bitfield)
         {
+            if ( bitfield == null ) return -2;
+
             int bytePos = 0;
 
-            lock ( locker )
-            {
-                for (;bytePos<this.bitfield.Length;bytePos++)
-                    if ( this.bitfield[bytePos] != 0xff && bitfield.bitfield[bytePos] != 0x00 && ((this.bitfield[bytePos] ^ bitfield.bitfield[bytePos]) & bitfield.bitfield[bytePos] ) != 0 ) break;
+            for (;bytePos<this.bitfield.Length;bytePos++)
+                if ( this.bitfield[bytePos] != 0xff && bitfield.bitfield[bytePos] != 0x00 && ((this.bitfield[bytePos] ^ bitfield.bitfield[bytePos]) & bitfield.bitfield[bytePos] ) != 0 ) break;
 
-                for (int i=(bytePos*8); i<(bytePos*8) + 8; i++)
-                    if ( i< size && !GetBit(i) && bitfield.GetBit(i) ) return i;
-            }
+            for (int i=(bytePos*8); i<(bytePos*8) + 8; i++)
+                if ( i < size && !GetBit(i) && bitfield.GetBit(i) ) return i;
             
             return -1;
         }
-        
+        public int GetFirst01(BitField bitfield, int from, int to = -1)
+        {
+            to = to == -1 ? size - 1 : to;
+
+            if ( from >= size || to >= size || from < 0 || to < 0 || bitfield == null ) return -2;
+
+            int bytePos = from / 8;
+
+            if ( this.bitfield[bytePos] != 0xff && bitfield.bitfield[bytePos] != 0x00 && ((this.bitfield[bytePos] ^ bitfield.bitfield[bytePos]) & bitfield.bitfield[bytePos] ) != 0 )
+                for (int i=(bytePos*8)+(from % 8); i<(bytePos*8) + 8; i++)
+                    if ( i<=to && !GetBit(i) && bitfield.GetBit(i) ) return i;
+
+            bytePos++;
+
+            for (;bytePos<to/8;bytePos++)
+                if ( this.bitfield[bytePos] != 0xff && bitfield.bitfield[bytePos] != 0x00 && ((this.bitfield[bytePos] ^ bitfield.bitfield[bytePos]) & bitfield.bitfield[bytePos] ) != 0 ) 
+                    break;
+
+            for (int i=(bytePos*8); i<(bytePos*8) + 8; i++)
+                if ( i<=to && !GetBit(i) && bitfield.GetBit(i) ) return i;
+            
+            return -1;
+        }
+
+        public int GetFirst0Reversed(int from = 0, int to = -1)
+        {
+            to = to == -1 ? size - 1 : to;
+
+            if ( from >= size || from < 0 || to >=size || to < 0 || to < from ) return -2;
+
+            int bytePos = to / 8;
+
+            for (int i=(bytePos*8) + to%8; i>=bytePos*8; i--)
+                if ( i>=from && !GetBit(i) ) return i;
+
+            bytePos--;
+
+            for (;bytePos>=from/8; bytePos--)
+                if ( bitfield[bytePos] != 0xff ) break;
+
+            for (int i=(bytePos*8) + 7; i>=bytePos*8; i--)
+                if ( i>=from && !GetBit(i) ) return i;
+
+            return -1;
+        }
+        public int GetFirst01Reversed(BitField bitfield, int from = 0, int to = -1)
+        {
+            to = to == -1 ? size - 1 : to;
+
+            if ( from >= size || from < 0 || to >=size || to < 0 || to < from || bitfield == null ) return -2;
+
+            int bytePos = to / 8;
+
+            if ( this.bitfield[bytePos] != 0xff && bitfield.bitfield[bytePos] != 0x00 && ((this.bitfield[bytePos] ^ bitfield.bitfield[bytePos]) & bitfield.bitfield[bytePos] ) != 0 )
+                for (int i=(bytePos*8) + to%8; i>=bytePos*8; i--)
+                    if ( i>=from && !GetBit(i) && bitfield.GetBit(i) ) return i;
+
+            bytePos--;
+
+            for (;bytePos>=from/8; bytePos--)
+                if ( this.bitfield[bytePos] != 0xff && bitfield.bitfield[bytePos] != 0x00 && ((this.bitfield[bytePos] ^ bitfield.bitfield[bytePos]) & bitfield.bitfield[bytePos] ) != 0 ) 
+                    break;
+
+            for (int i=(bytePos*8) + 7; i>=bytePos*8; i--)
+                if ( i>=from && !GetBit(i) && bitfield.GetBit(i) ) return i;
+            
+            return -1;
+        }
+
+        public List<int> GetAll0()
+        {
+            List<int> ret = new List<int>();
+            int cur = -1;
+            int from = 0;
+
+            while ( from < size && (cur = GetFirst0(from)) >= 0 )
+            {
+                ret.Add(cur);
+                from = cur + 1;
+            }
+
+            return ret;
+        }
+
+        public List<int> GetAll0(BitField bitfield)
+        {
+            if ( bitfield == null ) return new List<int>();
+
+            List<int> ret = new List<int>();
+            int cur = -1;
+            int from = 0;
+
+            while ( from < size && (cur = GetFirst01(bitfield, from)) >= 0 )
+            {
+                ret.Add(cur);
+                from = cur + 1;
+            }
+
+            return ret;
+        }
+
+        public void SetAll0()
+        {
+            lock ( locker )
+            {
+                for (int i=0; i<bitfield.Length; i++)
+                    bitfield[i] = 0x00;
+
+                setsCounter = size;
+            }
+        }
+        public void SetAll1()
+        {
+            lock ( locker )
+            {
+                for (int i=0; i<bitfield.Length; i++)
+                    bitfield[i] = 0xff;
+
+                setsCounter = 0;
+            }
+        }
+
         public void PrintBitField()
         {
             Console.WriteLine($"====== BitField ({size}) ======");

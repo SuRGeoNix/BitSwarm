@@ -58,9 +58,9 @@ namespace UI_Example
 
                     opt.EnableDHT           = true;
 
-                    opt.Verbosity           = 0;
+                    opt.Verbosity           = 1;
                     opt.LogDHT              = false;
-                    opt.LogStats            = false;
+                    opt.LogStats            = true;
                     opt.LogTracker          = false;
                     opt.LogPeer             = false;
                 
@@ -109,24 +109,24 @@ namespace UI_Example
             {
                 BeginInvoke(new Action(() => StatusUpdate(status, errMsg)));
                 return;
-            } else
+            }
+
+            button1.Text = "Start";
+
+            if ( status == 0 )
             {
-                if ( status == 0 )
-                {
-                    if ( torrent.file.name != null ) MessageBox.Show("Downloaded successfully!\r\n" + torrent.file.name);
-                    output.Text += "\r\n\r\nFinished at "   + DateTime.Now.ToString("G", DateTimeFormatInfo.InvariantInfo);
-                } else
-                {
-                    output.Text += "\r\n\r\nStopped at "    + DateTime.Now.ToString("G", DateTimeFormatInfo.InvariantInfo);
+                output.Text += "\r\n\r\nFinished at "   + DateTime.Now.ToString("G", DateTimeFormatInfo.InvariantInfo);
+                if ( torrent.file.name != null ) MessageBox.Show("Downloaded successfully!\r\n" + torrent.file.name);
+            }
+            else
+            {
+                output.Text += "\r\n\r\nStopped at "    + DateTime.Now.ToString("G", DateTimeFormatInfo.InvariantInfo);
 
-                    if ( status == 2 ) 
-                    {
-                        MessageBox.Show("An error occured :( " + errMsg);
-                        output.Text += "\r\n\r\n" + "An error occurred :(\r\n\t" + errMsg;
-                    }
+                if ( status == 2 ) 
+                {
+                    output.Text += "\r\n\r\n" + "An error occurred :(\r\n\t" + errMsg;
+                    MessageBox.Show("An error occured :( " + errMsg);
                 }
-
-                button1.Text = "Start";
             }
         }
         private void Stats(TorSwarm.StatsStructure stats)

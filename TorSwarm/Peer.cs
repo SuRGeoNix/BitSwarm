@@ -167,6 +167,8 @@ namespace SuRGeoNix.TorSwarm
         public int              port        { get; private set; }
 
         public long             lastAction  { get; private set; }
+        public long             connectedAt { get; private set; }
+        public long             chokedAt    { get; private set; }
 
         public Status           status;
         public Stage            stageYou;
@@ -196,7 +198,12 @@ namespace SuRGeoNix.TorSwarm
 
             stageYou            = new Stage();
             stageYou.extensions = new Extensions();
+
+            if ( options.Pieces != 0 )
             stageYou.bitfield   = new BitField(options.Pieces);
+
+            connectedAt         = long.MaxValue;
+            chokedAt            = long.MaxValue;
         }
 
         // Connection | Handshake | LTEP Handshake
@@ -247,7 +254,9 @@ namespace SuRGeoNix.TorSwarm
                 sendBuff = Utils.ArrayMerge(BIT_PROTO, EXT_PROTO, Utils.StringHexToArray(options.InfoHash), options.PeerID);
                 tcpStream.Write(sendBuff, 0, sendBuff.Length);
 
-                lastAction = DateTime.UtcNow.Ticks;
+                lastAction  = DateTime.UtcNow.Ticks;
+                connectedAt = lastAction;
+                chokedAt    = lastAction;
             } catch (Exception e)
             {
                 Log(1, "[HANDSHAKE] Handshake Sending Error " + e.Message);
@@ -355,6 +364,7 @@ namespace SuRGeoNix.TorSwarm
                 case Messages.CHOKE:
                     Log(2, "[MSG ] Choke");
                     stageYou.unchoked = false;
+                    chokedAt = DateTime.UtcNow.Ticks;
 
                     break;
                 case Messages.UNCHOKE:
@@ -370,8 +380,9 @@ namespace SuRGeoNix.TorSwarm
                 case Messages.HAVE:
                     Log(3, "[MSG ] Have");
                     Receive(msgLen - 1);
+                    stageYou.haveNone = false;
 
-                    if ( stageYou.bitfield == null ) stageYou.bitfield = new BitField(options.Pieces);
+                    if ( stageYou.bitfield == null ) stageYou.bitfield = new BitField(15000); // MAX PIECES GUESS?
 
                     int havePiece = Utils.ToBigEndian(recvBuff);
                     stageYou.bitfield.SetBit(havePiece);
