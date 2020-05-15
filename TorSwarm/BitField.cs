@@ -199,7 +199,6 @@ namespace SuRGeoNix.TorSwarm
 
             return ret;
         }
-
         public List<int> GetAll0(BitField bitfield)
         {
             if ( bitfield == null ) return new List<int>();
@@ -217,25 +216,114 @@ namespace SuRGeoNix.TorSwarm
             return ret;
         }
 
-        public void SetAll0()
+        public bool SetBits(int from, int to = -1)
+        {
+            to = to == -1 ? size - 1 : to;
+
+            if ( from >= size || from < 0 || to >=size || to < 0 || to < from ) return false;
+
+            int bytePos = from / 8;
+            
+            for (int i=(bytePos*8)+(from % 8); i<(bytePos*8) + 8; i++)
+                if ( i<=to ) SetBit(i);
+
+            bytePos++;
+            int endBytePos = (to/8);
+            lock ( locker )
+            {
+                for (;bytePos<=endBytePos; bytePos++)
+                {
+                    if ( bitfield[bytePos] == 0x00 && bytePos != endBytePos)
+                    {
+                        bitfield[bytePos] = 0xff;
+                        setsCounter += 8;
+                    }
+                    else
+                    {
+                        for (int i=(bytePos*8); i<(bytePos*8) + 8; i++)
+                            if ( i<=to ) SetBit(i);
+                    }
+                }
+            }
+            
+            return true;
+        }
+        public bool UnSetBits(int from, int to = -1)
+        {
+            to = to == -1 ? size - 1 : to;
+
+            if ( from >= size || from < 0 || to >=size || to < 0 || to < from ) return false;
+
+            int bytePos = from / 8;
+            
+            for (int i=(bytePos*8)+(from % 8); i<(bytePos*8) + 8; i++)
+                if ( i<=to ) UnSetBit(i);
+
+            bytePos++;
+            int endBytePos = (to/8);
+            lock ( locker )
+            {
+                for (;bytePos<=endBytePos; bytePos++)
+                {
+                    if ( bitfield[bytePos] == 0xff && bytePos != endBytePos)
+                    {
+                        bitfield[bytePos] = 0x00;
+                        setsCounter -= 8;
+                    }
+                    else
+                    {
+                        for (int i=(bytePos*8); i<(bytePos*8) + 8; i++)
+                            if ( i<=to ) UnSetBit(i);
+                    }
+                }
+            }
+            
+            return true;
+        }
+        public void UnSetAll()
         {
             lock ( locker )
             {
                 for (int i=0; i<bitfield.Length; i++)
                     bitfield[i] = 0x00;
 
-                setsCounter = size;
+                setsCounter = 0;
             }
         }
-        public void SetAll1()
+        public void SetAll()
         {
             lock ( locker )
             {
                 for (int i=0; i<bitfield.Length; i++)
                     bitfield[i] = 0xff;
 
-                setsCounter = 0;
+                setsCounter = size;
             }
+        }
+
+        public bool CopyFrom(BitField bitfield)
+        {
+            lock ( locker )
+            {
+                if ( bitfield.size != size ) return false;
+
+                Buffer.BlockCopy(bitfield.bitfield, 0, this.bitfield, 0, this.bitfield.Length);
+                size = bitfield.size;
+                setsCounter = bitfield.setsCounter;
+            }
+
+            return true;
+        }
+        public bool CopyFrom(BitField bitfield, int from, int to =-1)
+        {
+            to = to == -1 ? size - 1 : to;
+
+            if ( from >= size || from < 0 || to >=size || to < 0 || to < from ) return false;
+
+            for (int i=from; i<=to; i++)
+                if ( bitfield.GetBit(i) ) SetBit(i); else UnSetBit(i);
+
+            return true;
         }
 
         public void PrintBitField()

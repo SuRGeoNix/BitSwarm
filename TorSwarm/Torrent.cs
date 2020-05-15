@@ -45,6 +45,7 @@ namespace SuRGeoNix.TorSwarm
             public bool             isDone          { get; set; }
 
             public List<PartFile>   files           { get; set; }
+            public List<string>     filesIncludes   { get; set; }
             public string           folder          { get; set; }
             public long             totalSize       { get; set; }
 
@@ -57,10 +58,12 @@ namespace SuRGeoNix.TorSwarm
 
             public BitField         progress        { get; set; }
             public BitField         requests        { get; set; }
+            public BitField         progressPrev    { get; set; }
+            public BitField         requestsPrev    { get; set; }
 
 
             public Dictionary<int, PieceProgress>   pieceProgress;
-            public List<PieceRequest>               pieceRequstes;
+            public List<PieceRequest>               pieceRequests;
 
             public struct PieceProgress
             {
@@ -120,7 +123,7 @@ namespace SuRGeoNix.TorSwarm
             metadata                    = new MetaData();
 
             file.trackers               = new List<Uri>();
-            data.pieceRequstes          = new List<TorrentData.PieceRequest>();
+            data.pieceRequests          = new List<TorrentData.PieceRequest>();
         }
 
         public void FillFromMagnetLink(Uri magnetLink)
@@ -178,6 +181,7 @@ namespace SuRGeoNix.TorSwarm
             file.pieceLength    = (BNumber) bInfo["piece length"];
 
             data.files          = new List<PartFile>();
+            data.filesIncludes  = new List<string>();
 
             if ( isMultiFile )
             {
@@ -187,8 +191,12 @@ namespace SuRGeoNix.TorSwarm
 
                 data.folder = Utils.FindNextAvailableDir(Path.Combine(DownloadPath, file.name));
                 for (int i=0; i<file.paths.Count; i++)
+                {
                     data.files.Add(new PartFile(Path.Combine(data.folder, file.paths[i]), file.pieceLength, file.lengths[i]));
-            } else
+                    data.filesIncludes.Add(file.paths[i]);
+                }
+            }
+            else
             {
                 file.length     = (BNumber) bInfo["length"];  
                 data.totalSize  = file.length;
@@ -200,16 +208,18 @@ namespace SuRGeoNix.TorSwarm
 
             data.pieces         = file.pieces.Count;
             data.pieceSize      = file.pieceLength;
+            
             data.progress       = new BitField(data.pieces);
             data.requests       = new BitField(data.pieces);
+            data.progressPrev   = new BitField(data.pieces);
+            data.requestsPrev   = new BitField(data.pieces);
 
             data.blockSize      = Math.Min(Peer.MAX_DATA_SIZE, data.pieceSize);
             data.blocks         = ( (data.pieceSize -1) / data.blockSize ) + 1;
             data.blockLastSize  = data.pieceSize % data.blockSize == 0 ? data.blockSize : data.pieceSize % data.blockSize;
 
             data.pieceProgress  = new Dictionary<int, TorrentData.PieceProgress>();
-            data.pieceRequstes  = new List<TorrentData.PieceRequest>();
-
+            data.pieceRequests  = new List<TorrentData.PieceRequest>();
         }
 
         public static List<Uri> GetTrackersFromTorrent(BDictionary torrent)

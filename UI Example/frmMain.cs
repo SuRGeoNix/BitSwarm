@@ -5,6 +5,7 @@ using System.Windows.Forms;
 
 using SuRGeoNix.TorSwarm;
 using SuRGeoNix;
+using System.Collections.Generic;
 
 namespace UI_Example
 {
@@ -13,6 +14,8 @@ namespace UI_Example
         Torrent                 torrent;
         TorSwarm                tr;
         TorSwarm.OptionsStruct  opt;
+
+        long requestedBytes = 0;
 
         public frmMain()
         {
@@ -37,6 +40,8 @@ namespace UI_Example
             if ( button1.Text == "Start" )
             {
                 output.Text = "";
+                listBox1.Items.Clear();
+                button2.Enabled = false;
 
                 try
                 {
@@ -77,6 +82,7 @@ namespace UI_Example
                 {
                     output.Text += e1.Message + "\r\n" + e1.StackTrace;
                     button1.Text = "Start";
+                    button2.Enabled = false;
                 }
 
             } else
@@ -92,15 +98,25 @@ namespace UI_Example
             {
                 BeginInvoke(new Action(() => TorrentInfo(torrent)));
                 return;
-            } else
+            }
+            else
             {
                 this.torrent = torrent;
                 string str = "Name ->\t\t" + torrent.file.name + "\r\nSize ->\t\t" + Utils.BytesToReadableString(torrent.data.totalSize) + "\r\n\r\nFiles\r\n==============================\r\n";
 
                 for (int i=0; i<torrent.data.files.Count; i++)
+                {
                     str += torrent.data.files[i].FileName + "\t\t(" + Utils.BytesToReadableString(torrent.data.files[i].Size) + ")\r\n";
+                    listBox1.Items.Add(torrent.file.paths[i]);
+                }
 
                 output.Text += str;
+
+                listBox1.BeginUpdate();
+                for (int i = 0; i < listBox1.Items.Count; i++)
+                    listBox1.SetSelected(i, true);
+                listBox1.EndUpdate();
+                button2.Enabled = true;
             }
         }
         private void StatusUpdate(int status, string errMsg)
@@ -135,7 +151,8 @@ namespace UI_Example
             {
                 BeginInvoke(new Action(() => Stats(stats)));
                 return;
-            } else
+            } 
+            else
             {
                 downRate.Text       = String.Format("{0:n0}", (stats.DownRate / 1024)) + " KB/s";
                 downRateAvg.Text    = String.Format("{0:n0}", (stats.AvgRate  / 1024)) + " KB/s";
@@ -158,11 +175,11 @@ namespace UI_Example
                 pDropped.Text       = stats.PeersDropped.ToString();
 
                 if ( torrent != null && torrent.data.totalSize != 0) 
-                    progress.Value  = (int) (stats.BytesDownloaded * 100.0 / torrent.data.totalSize);
+                    progress.Value  = (int) (torrent.data.progress.setsCounter * 100.0 / torrent.data.progress.size);
+                    //progress.Value  = (int) (stats.BytesDownloaded * 100.0 / torrent.data.totalSize);
             }
 
         }
-        
         private void frmMain_DragEnter(object sender, DragEventArgs e)
         {
             e.Effect = DragDropEffects.All;
@@ -183,6 +200,26 @@ namespace UI_Example
         private void frmMain_FormClosing(object sender, FormClosingEventArgs e)
         {
             if ( tr != null) tr.Stop();
+        }
+
+        
+        private void button2_Click(object sender, EventArgs e)
+        {
+            if ( listBox1.SelectedItems.Count < 1 || torrent == null ) return;
+
+            List<string> fileNames = new List<string>();
+
+            foreach (var o in listBox1.SelectedItems)
+                fileNames.Add(o.ToString());
+            
+            tr.IncludeFiles(fileNames);
+
+            requestedBytes = 0;
+            for (int i=0; i<torrent.file.paths.Count; i++)
+                foreach (string fileName in fileNames)
+                    if ( fileName == torrent.file.paths[i] ) {  requestedBytes += torrent.file.lengths[i]; break; }
+
+            output.Text += "\r\nNew Total Size Requested: " + Utils.BytesToReadableString(requestedBytes) + "\r\n";
         }
     }
 }

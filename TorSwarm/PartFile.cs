@@ -11,6 +11,8 @@ namespace SuRGeoNix.TorSwarm
         public int          ChunkSize       { get; private set; }
         public int          chunksCounter   { get; private set; }
         public bool         FileCreated     { get; private set; }
+        public bool         AutoCreate      { get { return autoCreate; } set { autoCreate = value; if ( value && fileStream.Length == Size ) CreateFile(); } }
+        private bool        autoCreate;
 
         private FileStream  fileStream;
         private Dictionary<int, int> mapIdToChunkId;
@@ -22,7 +24,7 @@ namespace SuRGeoNix.TorSwarm
 
         private static readonly object locker = new object();
 
-        public PartFile(string fileName, int chunkSize, long size = -1)
+        public PartFile(string fileName, int chunkSize, long size = -1, bool autoCreate = true)
         {
             if ( File.Exists(fileName) || File.Exists(fileName + ".part") ) throw new IOException("File " + fileName + " already exists");
             if ( chunkSize < 1 ) throw new Exception("Chunk size must be > 0");
@@ -30,9 +32,10 @@ namespace SuRGeoNix.TorSwarm
             Directory.CreateDirectory(Path.GetDirectoryName(fileName));
             fileStream = File.Open(fileName + ".part", FileMode.CreateNew);
 
-            this.FileName   = fileName;
-            this.Size       = size;
-            this.ChunkSize  = chunkSize;
+            FileName   = fileName;
+            Size       = size;
+            ChunkSize  = chunkSize;
+            AutoCreate = autoCreate;
 
             mapIdToChunkId  = new Dictionary<int, int>();
             chunksCounter   = -1;
@@ -62,18 +65,22 @@ namespace SuRGeoNix.TorSwarm
         {
             lock (locker)
             {
+                if ( FileCreated ) return;
+
                 fileStream.Write(chunk, offset, (int) ChunkSize);
                 fileStream.Flush();
                 chunksCounter++;
                 mapIdToChunkId.Add(chunkId, chunksCounter);
 
-                if ( fileStream.Length == Size ) CreateFile();
+                if ( AutoCreate && fileStream.Length == Size ) CreateFile();
             }
         }
         public void WriteFirst(byte[] chunk, int offset, int len)
         {
             lock (locker)
             {
+                if ( FileCreated ) return;
+
                 if ( firstChunkSize != 0 ) throw new Exception("First chunk already exists");
 
                 fileStream.Write(chunk, offset, (int) len);
@@ -83,13 +90,15 @@ namespace SuRGeoNix.TorSwarm
                 firstChunkSize = len;
                 firstPos = chunksCounter;
 
-                if ( fileStream.Length == Size ) CreateFile();
+                if ( AutoCreate && fileStream.Length == Size ) CreateFile();
             }
         }
         public void WriteLast(int chunkId, byte[] chunk, int offset, int len)
         {
             lock (locker)
             {
+                if ( FileCreated ) return;
+
                 if ( lastChunkSize != 0 ) throw new Exception("Last chunk already exists");
                 
                 fileStream.Write(chunk, offset, (int) len);
@@ -99,7 +108,7 @@ namespace SuRGeoNix.TorSwarm
                 lastChunkSize = len;
                 lastPos = chunksCounter;
 
-                if ( fileStream.Length == Size ) CreateFile();
+                if ( AutoCreate && fileStream.Length == Size ) CreateFile();
             }
         }
 

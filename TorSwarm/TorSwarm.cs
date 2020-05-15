@@ -142,6 +142,8 @@ namespace SuRGeoNix.TorSwarm
         }
         public TorSwarm(Uri magnetLink, OptionsStruct? opt = null)
         {
+            // TODO: Add Support For base32 links
+            // magnet:?xt=urn:btih:RX46NCATYQRS3MCQNSEXVZGCCDNKTASQ -> magnet:?xt=urn:btih:8df9e68813c4232db0506c897ae4c210daa98250
             Options         = (opt == null) ? GetDefaultsOptions() : (OptionsStruct) opt;
             Initiliaze();
             torrent.FillFromMagnetLink(magnetLink);
@@ -251,6 +253,52 @@ namespace SuRGeoNix.TorSwarm
 
             return opt;
         }
+        public void IncludeFiles(List<string> includeFiles)
+        {
+            if ( !torrent.metadata.isDone ) return;
+
+            BitField newProgress = new BitField(torrent.data.pieces);
+            BitField newRequests = new BitField(torrent.data.pieces);
+            newProgress.SetAll();
+            newRequests.SetAll();
+
+            lock ( lockerTorrent)
+            {
+                long curDistance = 0;
+                for ( int i=0; i<torrent.file.paths.Count; i++ )
+                { 
+                    foreach (string file in includeFiles)
+                    {
+                        if ( file == torrent.file.paths[i] )
+                        {
+                            if ( !torrent.data.filesIncludes.Contains(torrent.file.paths[i]))
+                            {
+                                newProgress.CopyFrom(torrent.data.progressPrev, (int) (curDistance/torrent.file.pieceLength), (int) ((curDistance + torrent.file.lengths[i])/torrent.file.pieceLength));
+                                newRequests.CopyFrom(torrent.data.requestsPrev, (int) (curDistance/torrent.file.pieceLength), (int) ((curDistance + torrent.file.lengths[i])/torrent.file.pieceLength));
+                            }
+                            else if ( torrent.data.filesIncludes.Contains(torrent.file.paths[i]))
+                            {
+                                newProgress.CopyFrom(torrent.data.progress,     (int) (curDistance/torrent.file.pieceLength), (int) ((curDistance + torrent.file.lengths[i])/torrent.file.pieceLength));
+                                newRequests.CopyFrom(torrent.data.requests,     (int) (curDistance/torrent.file.pieceLength), (int) ((curDistance + torrent.file.lengths[i])/torrent.file.pieceLength));
+                            }
+
+                            break; 
+                        }
+                    }
+
+                    curDistance += torrent.file.lengths[i];
+                }
+
+                torrent.data.filesIncludes = includeFiles;
+
+                torrent.data.pieceRequests.Clear(); // Otherwise it will UnSetBits on requests
+
+                torrent.data.progressPrev.CopyFrom(torrent.data.progress);
+                torrent.data.requestsPrev.CopyFrom(torrent.data.requests);
+                torrent.data.progress.CopyFrom(newProgress);
+                torrent.data.requests.CopyFrom(newRequests);                
+            }
+        }
 
         // Start / Pause / Stop
         public void Start()
@@ -263,7 +311,6 @@ namespace SuRGeoNix.TorSwarm
             {
                 Beggar();
 
-                if ( torrent.metadata.isDone ) FillStats();
                 if (torrent.data.isDone)
                     Options.StatusCallback?.BeginInvoke(0, "", null, null);
                 else
@@ -679,11 +726,13 @@ namespace SuRGeoNix.TorSwarm
                 foreach (Peer peer in peers)
                     peer.Disconnect();
 
+                if ( torrent.metadata.isDone ) FillStats();
+
                 torrent.Dispose();
                 log.Dispose();
 
             } catch (ThreadAbortException) {
-            } catch (Exception e) { Options.StatusCallback?.BeginInvoke(2, e.Message, null, null); Log($"[BEGGAR] Beggar(), Msg: {e.Message}\r\n{e.StackTrace}"); }
+            } catch (Exception e) { Log($"[BEGGAR] Beggar(), Msg: {e.Message}\r\n{e.StackTrace}"); Options.StatusCallback?.BeginInvoke(2, e.Message, null, null); }
 
             Utils.TimeEndPeriod(1);
         }
@@ -692,33 +741,33 @@ namespace SuRGeoNix.TorSwarm
         {
             lock ( lockerTorrent )
             {
-                for (int i=torrent.data.pieceRequstes.Count-1; i>=0; i--)
+                for (int i=torrent.data.pieceRequests.Count-1; i>=0; i--)
                 {
-                    if ( curSecondTicks - torrent.data.pieceRequstes[i].timestamp > Options.PieceTimeout * 10000 )
+                    if ( curSecondTicks - torrent.data.pieceRequests[i].timestamp > Options.PieceTimeout * 10000 )
                     {
                         // !(Piece Done | Block Done)
-                        bool containsKey = torrent.data.pieceProgress.ContainsKey(torrent.data.pieceRequstes[i].piece);
-                        if ( !(( !containsKey && torrent.data.progress.GetBit(torrent.data.pieceRequstes[i].piece) ) 
-                             ||(  containsKey && torrent.data.pieceProgress[torrent.data.pieceRequstes[i].piece].progress.GetBit(torrent.data.pieceRequstes[i].block))) )
+                        bool containsKey = torrent.data.pieceProgress.ContainsKey(torrent.data.pieceRequests[i].piece);
+                        if ( !(( !containsKey && torrent.data.progress.GetBit(torrent.data.pieceRequests[i].piece) ) 
+                             ||(  containsKey && torrent.data.pieceProgress[torrent.data.pieceRequests[i].piece].progress.GetBit(torrent.data.pieceRequests[i].block))) )
                         { 
-                            torrent.data.pieceRequstes[i].peer.PiecesTimeout++;
-                            Log($"[{torrent.data.pieceRequstes[i].peer.host.PadRight(15, ' ')}] [REQT][P]\tPiece: {torrent.data.pieceRequstes[i].piece} Block: {torrent.data.pieceRequstes[i].block} Offset: {torrent.data.pieceRequstes[i].block * torrent.data.blockSize} Size: {torrent.data.pieceRequstes[i].size} Requests: {torrent.data.pieceRequstes[i].peer.PiecesRequested} Timeouts: {torrent.data.pieceRequstes[i].peer.PiecesTimeout} Piece timeout");
+                            torrent.data.pieceRequests[i].peer.PiecesTimeout++;
+                            Log($"[{torrent.data.pieceRequests[i].peer.host.PadRight(15, ' ')}] [REQT][P]\tPiece: {torrent.data.pieceRequests[i].piece} Block: {torrent.data.pieceRequests[i].block} Offset: {torrent.data.pieceRequests[i].block * torrent.data.blockSize} Size: {torrent.data.pieceRequests[i].size} Requests: {torrent.data.pieceRequests[i].peer.PiecesRequested} Timeouts: {torrent.data.pieceRequests[i].peer.PiecesTimeout} Piece timeout");
 
-                            if ( torrent.data.pieceRequstes[i].peer.status != Peer.Status.READY && torrent.data.pieceRequstes[i].peer.PiecesTimeout >= Options.RequestBlocksPerPeer )
+                            if ( torrent.data.pieceRequests[i].peer.status != Peer.Status.READY && torrent.data.pieceRequests[i].peer.PiecesTimeout >= Options.RequestBlocksPerPeer )
                             {
-                                Log($"[DROP] [{torrent.data.pieceRequstes[i].peer.host.PadRight(15, ' ')}] [REQT][P]\tRequests: {torrent.data.pieceRequstes[i].peer.PiecesRequested} Timeouts: {torrent.data.pieceRequstes[i].peer.PiecesTimeout} Piece timeout");
-                                torrent.data.pieceRequstes[i].peer.status  = Peer.Status.FAILED2; torrent.data.pieceRequstes[i].peer.Disconnect(); 
+                                Log($"[DROP] [{torrent.data.pieceRequests[i].peer.host.PadRight(15, ' ')}] [REQT][P]\tRequests: {torrent.data.pieceRequests[i].peer.PiecesRequested} Timeouts: {torrent.data.pieceRequests[i].peer.PiecesTimeout} Piece timeout");
+                                torrent.data.pieceRequests[i].peer.status  = Peer.Status.FAILED2; torrent.data.pieceRequests[i].peer.Disconnect(); 
                             }
-                            else if ( torrent.data.pieceRequstes[i].peer.status == Peer.Status.DOWNLOADING )
-                                 torrent.data.pieceRequstes[i].peer.status  = Peer.Status.READY;
+                            else if ( torrent.data.pieceRequests[i].peer.status == Peer.Status.DOWNLOADING )
+                                 torrent.data.pieceRequests[i].peer.status  = Peer.Status.READY;
 
-                            if ( containsKey ) torrent.data.pieceProgress[torrent.data.pieceRequstes[i].piece].requests.UnSetBit(torrent.data.pieceRequstes[i].block);
+                            if ( containsKey ) torrent.data.pieceProgress[torrent.data.pieceRequests[i].piece].requests.UnSetBit(torrent.data.pieceRequests[i].block);
 
-                            torrent.data.requests.UnSetBit(torrent.data.pieceRequstes[i].piece);
+                            torrent.data.requests.UnSetBit(torrent.data.pieceRequests[i].piece);
                             pieceTimeouts++;
                         }
 
-                        torrent.data.pieceRequstes.RemoveAt(i);
+                        torrent.data.pieceRequests.RemoveAt(i);
                     }
                 }
             }
@@ -812,7 +861,7 @@ namespace SuRGeoNix.TorSwarm
                     if ( Options.Verbosity > 1) Log($"[{peer.host.PadRight(15, ' ')}] [REQE][P]\tPiece: {piece} Block: {block} Offset: {block * torrent.data.blockSize} Size: {blockSize} Requests: {peer.PiecesRequested} Timeouts: {peer.PiecesTimeout}");
 
                     requests.Add(new Tuple<int, int, int>(piece, block * torrent.data.blockSize, blockSize));
-                    lock ( lockerTorrent ) torrent.data.pieceRequstes.Add( new PieceRequest(DateTime.UtcNow.Ticks, peer, piece, block, blockSize) );
+                    lock ( lockerTorrent ) torrent.data.pieceRequests.Add( new PieceRequest(DateTime.UtcNow.Ticks, peer, piece, block, blockSize) );
 
                     piecesBlocksLeft.RemoveAt(curPieceBlock);
                 }
@@ -824,32 +873,34 @@ namespace SuRGeoNix.TorSwarm
 
             if ( !peer.stageYou.unchoked || peer.stageYou.haveNone || (!peer.stageYou.haveAll && peer.stageYou.bitfield == null) ) return;
 
-            for (int i=0; i<Options.RequestBlocksPerPeer; i++)
+            lock ( lockerTorrent )
             {
-                if ( peer.stageYou.haveAll )
-                    piece = torrent.data.requests.GetFirst0();
-
-                else
-                    piece = torrent.data.requests.GetFirst01(peer.stageYou.bitfield);
+                for (int i=0; i<Options.RequestBlocksPerPeer; i++)
+                {
+                    if ( peer.stageYou.haveAll )
+                        piece = torrent.data.requests.GetFirst0();
+                    else
+                        piece = torrent.data.requests.GetFirst01(peer.stageYou.bitfield);
                 
-                if ( piece < 0 ) break;
+                    if ( piece < 0 ) break;
 
-                CreatePieceProgress(piece);
-                block = torrent.data.pieceProgress[piece].requests.GetFirst0();
-                if ( block < 0 ) { Log($"Shouldn't be here! Piece: {piece}"); break; }
+                    CreatePieceProgress(piece);
+                    block = torrent.data.pieceProgress[piece].requests.GetFirst0();
+                    if ( block < 0 ) { Log($"Shouldn't be here! Piece: {piece}"); break; }
 
-                torrent.data.pieceProgress[piece].requests.SetBit(block);
-                if ( torrent.data.pieceProgress[piece].requests.GetFirst0() == -1 ) torrent.data.requests.SetBit(piece);
+                    torrent.data.pieceProgress[piece].requests.SetBit(block);
+                    if ( torrent.data.pieceProgress[piece].requests.GetFirst0() == -1 ) torrent.data.requests.SetBit(piece);
 
-                int blockSize = GetBlockSize(piece, block);
+                    int blockSize = GetBlockSize(piece, block);
 
-                if ( Options.Verbosity > 1) Log($"[{peer.host.PadRight(15, ' ')}] [REQ ][P]\tPiece: {piece} Block: {block} Offset: {block * torrent.data.blockSize} Size: {blockSize} Requests: {peer.PiecesRequested} Timeouts: {peer.PiecesTimeout}");
+                    if ( Options.Verbosity > 1) Log($"[{peer.host.PadRight(15, ' ')}] [REQ ][P]\tPiece: {piece} Block: {block} Offset: {block * torrent.data.blockSize} Size: {blockSize} Requests: {peer.PiecesRequested} Timeouts: {peer.PiecesTimeout}");
 
-                // TODO: Requests Timeouts should be related to <i> | 0 1 2 3 4 5 Requests | i * (timeout/15) ? 
-                requests.Add(new Tuple<int, int, int>(piece, block * torrent.data.blockSize, blockSize));
-                lock ( lockerTorrent ) torrent.data.pieceRequstes.Add( new PieceRequest(DateTime.UtcNow.Ticks, peer, piece, block, blockSize) );
+                    // TODO: Requests Timeouts should be related to <i> | 0 1 2 3 4 5 Requests | i * (timeout/15) ? 
+                    requests.Add(new Tuple<int, int, int>(piece, block * torrent.data.blockSize, blockSize));
+                    torrent.data.pieceRequests.Add( new PieceRequest(DateTime.UtcNow.Ticks, peer, piece, block, blockSize) );
+                }
             }
-                
+   
             if ( requests.Count > 0 ) peer.RequestPiece(requests);
         }
         private void SavePiece(byte[] data, int piece, int size)
@@ -906,9 +957,9 @@ namespace SuRGeoNix.TorSwarm
                     torrent.metadata.progress   = new BitField((totalSize/Peer.MAX_DATA_SIZE) + 1);
                     torrent.metadata.pieces     = (totalSize/Peer.MAX_DATA_SIZE) + 1;
                     if ( torrent.file.name != null ) 
-                        torrent.metadata.file       = new PartFile(Utils.FindNextAvailablePartFile(Path.Combine(Options.DownloadPath, string.Join("_", torrent.file.name.Split(Path.GetInvalidFileNameChars())) + ".torrent")), Peer.MAX_DATA_SIZE, totalSize);
+                        torrent.metadata.file       = new PartFile(Utils.FindNextAvailablePartFile(Path.Combine(Options.DownloadPath, string.Join("_", torrent.file.name.Split(Path.GetInvalidFileNameChars())) + ".torrent")), Peer.MAX_DATA_SIZE, totalSize, false);
                     else
-                        torrent.metadata.file       = new PartFile(Utils.FindNextAvailablePartFile(Path.Combine(Options.DownloadPath, "metadata" + rnd.Next(10000) + ".torrent")), Peer.MAX_DATA_SIZE, totalSize);
+                        torrent.metadata.file       = new PartFile(Utils.FindNextAvailablePartFile(Path.Combine(Options.DownloadPath, "metadata" + rnd.Next(10000) + ".torrent")), Peer.MAX_DATA_SIZE, totalSize, false);
                 }
 
                 if ( torrent.metadata.progress.GetBit(piece) ) { Log($"[{peer.host.PadRight(15, ' ')}] [RECV][M]\tPiece: {piece} Already received"); return; }
@@ -960,63 +1011,63 @@ namespace SuRGeoNix.TorSwarm
                 containsKey                     = torrent.data.pieceProgress.ContainsKey(piece);
                 pieceProgress                   = torrent.data.progress.GetBit(piece);
                 if (containsKey) blockProgress  = torrent.data.pieceProgress[piece].progress.GetBit(block);
-            }
-                
-            // Piece Done | Block Done
-            if (   (!containsKey && pieceProgress )     // Piece Done
-                || ( containsKey && blockProgress ) )   // Block Done
-            { 
-                Stats.BytesDropped += data.Length; 
-                pieceAlreadyRecv++;
-                Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P]\tPiece: {piece} Block: {block} Offset: {offset} Size: {data.Length} Already received"); 
+    
+                // Piece Done | Block Done
+                if (   (!containsKey && pieceProgress )     // Piece Done
+                    || ( containsKey && blockProgress ) )   // Block Done
+                { 
+                    Stats.BytesDropped += data.Length; 
+                    pieceAlreadyRecv++;
+                    Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P]\tPiece: {piece} Block: {block} Offset: {offset} Size: {data.Length} Already received"); 
 
-                return; 
-            }
+                    return; 
+                }
             
-            if ( Options.Verbosity > 1) Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P]\tPiece: {piece} Block: {block} Offset: {offset} Size: {data.Length} Requests: {peer.PiecesRequested} Timeouts: {peer.PiecesTimeout}");
-            Stats.BytesDownloaded += data.Length;
+                if ( Options.Verbosity > 1) Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P]\tPiece: {piece} Block: {block} Offset: {offset} Size: {data.Length} Requests: {peer.PiecesRequested} Timeouts: {peer.PiecesTimeout}");
+                Stats.BytesDownloaded += data.Length;
 
-            // Parse Block Data to Piece Data
-            Buffer.BlockCopy(data, 0, torrent.data.pieceProgress[piece].data, offset, data.Length);
+                // Parse Block Data to Piece Data
+                Buffer.BlockCopy(data, 0, torrent.data.pieceProgress[piece].data, offset, data.Length);
 
-            // SetBit Block | Leave if more blocks required for Piece
-            torrent.data.pieceProgress[piece].progress.     SetBit(block);
-            torrent.data.pieceProgress[piece].requests.     SetBit(block); // In case of Timed out (to avoid re-requesting)
-            if ( torrent.data.pieceProgress[piece].progress.GetFirst0() != -1 ) return;
+                // SetBit Block | Leave if more blocks required for Piece
+                torrent.data.pieceProgress[piece].progress.     SetBit(block);
+                torrent.data.pieceProgress[piece].requests.     SetBit(block); // In case of Timed out (to avoid re-requesting)
+                if ( torrent.data.pieceProgress[piece].progress.GetFirst0() != -1 ) return;
             
-            // SHA-1 Validation for Piece Data | Failed? -> Re-request whole Piece! | Lock, No thread-safe!
-            byte[] pieceHash;
-            lock ( lockerTorrent ) pieceHash = sha1.ComputeHash(torrent.data.pieceProgress[piece].data);
-            if ( !Utils.ArrayComp(torrent.file.pieces[piece], pieceHash) )
-            {
-                Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P]\tPiece: {piece} Block: {block} Offset: {offset} Size: {data.Length} Size2: {torrent.data.pieceProgress[piece].data.Length} SHA-1 validation failed");
+                // SHA-1 Validation for Piece Data | Failed? -> Re-request whole Piece! | Lock, No thread-safe!
+                byte[] pieceHash;
+                pieceHash = sha1.ComputeHash(torrent.data.pieceProgress[piece].data);
+                if ( !Utils.ArrayComp(torrent.file.pieces[piece], pieceHash) )
+                {
+                    Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P]\tPiece: {piece} Block: {block} Offset: {offset} Size: {data.Length} Size2: {torrent.data.pieceProgress[piece].data.Length} SHA-1 validation failed");
 
-                Stats.BytesDropped      += torrent.data.pieceProgress[piece].data.Length;
-                Stats.BytesDownloaded   -= torrent.data.pieceProgress[piece].data.Length;
-                sha1Fails++;
+                    Stats.BytesDropped      += torrent.data.pieceProgress[piece].data.Length;
+                    Stats.BytesDownloaded   -= torrent.data.pieceProgress[piece].data.Length;
+                    sha1Fails++;
 
-                torrent.data.requests.      UnSetBit(piece);
+                    torrent.data.requests.      UnSetBit(piece);
+                    torrent.data.pieceProgress. Remove(piece);
+
+                    return;
+                }
+
+                // Save Piece in PartFiles [Thread-safe?]
+                SavePiece(torrent.data.pieceProgress[piece].data, piece, torrent.data.pieceProgress[piece].data.Length);
+
+                // [SetBit for Progress | Remove Block Progress] | Done => CreateFiles
+                torrent.data.progress.      SetBit(piece);
+                torrent.data.requests.      SetBit(piece); // In case of Timed out (to avoid re-requesting)
                 torrent.data.pieceProgress. Remove(piece);
 
-                return;
-            }
-            
-            // Save Piece in PartFiles [No lock | Thread-safe]
-            SavePiece(torrent.data.pieceProgress[piece].data, piece, torrent.data.pieceProgress[piece].data.Length);
+                if ( torrent.data.progress.GetFirst0() == - 1 ) // just compare with pieces size
+                {
+                    Log("[FINISH]");
+                    //for (int i = 0; i < torrent.data.files.Count; i++)
+                        //torrent.data.files[i].CreateFile();
 
-            // [SetBit for Progress | Remove Block Progress] | Done => CreateFiles
-            torrent.data.progress.      SetBit(piece);
-            torrent.data.requests.      SetBit(piece); // In case of Timed out (to avoid re-requesting)
-            torrent.data.pieceProgress. Remove(piece);
-            
-            if ( torrent.data.progress.GetFirst0() == - 1 ) // just compare with pieces size
-            {
-                Log("[FINISH] Creating Files ...");
-                for (int i = 0; i < torrent.data.files.Count; i++)
-                    torrent.data.files[i].CreateFile();
-
-                torrent.data.isDone = true;
-                status              = Status.STOPPED;
+                    torrent.data.isDone = true;
+                    status              = Status.STOPPED;
+                }
             }
         }
         private void PieceRejected(int piece, int offset, int size, Peer peer)
@@ -1072,6 +1123,5 @@ namespace SuRGeoNix.TorSwarm
             return blockSize;
         }
         private void Log(string msg) { if (Options.Verbosity > 0) log.Write($"[TorSwarm] {msg}"); }
-
     }
 }
