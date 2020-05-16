@@ -8,6 +8,7 @@ using System.Security;
 
 using BencodeNET.Parsing;
 using BencodeNET.Objects;
+using System.Text;
 
 namespace SuRGeoNix
 {
@@ -180,7 +181,7 @@ public class Utils
             }
             return rv;
         }
-        public static string ArrayToStringHext(byte[] ba)
+        public static string ArrayToStringHex(byte[] ba)
         {
             return BitConverter.ToString(ba).Replace("-","");
         }
@@ -220,6 +221,51 @@ public class Utils
 
             return bd;
         }
+        public static byte[] FromBase32String(string encoded) { // https://gist.github.com/BravoTango86
+            Dictionary<char, int> CHAR_MAP = new Dictionary<char, int>();
+            char[] DIGITS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".ToCharArray();
+            int MASK = DIGITS.Length - 1;
+            int SHIFT = numberOfTrailingZeros(DIGITS.Length);
+
+            for (int i = 0; i < DIGITS.Length; i++) CHAR_MAP[DIGITS[i]] = i;
+            
+            encoded = encoded.Trim().Replace("-", "");
+            encoded = Regex.Replace(encoded, "[=]*$", "");
+            encoded = encoded.ToUpper();
+            if (encoded.Length == 0) return new byte[0];
+
+            int encodedLength = encoded.Length;
+            int outLength = encodedLength * SHIFT / 8;
+            byte[] result = new byte[outLength];
+            int buffer = 0;
+            int next = 0;
+            int bitsLeft = 0;
+            foreach (char c in encoded.ToCharArray()) {
+                if (!CHAR_MAP.ContainsKey(c)) {
+                    throw new Exception("Illegal character: " + c);
+                }
+                buffer <<= SHIFT;
+                buffer |= CHAR_MAP[c] & MASK;
+                bitsLeft += SHIFT;
+                if (bitsLeft >= 8) {
+                    result[next++] = (byte)(buffer >> (bitsLeft - 8));
+                    bitsLeft -= 8;
+                }
+            }
+        
+            return result;
+        }
+        private static int numberOfTrailingZeros(int i) {
+        // HD, Figure 5-14
+        int y;
+        if (i == 0) return 32;
+        int n = 31;
+        y = i << 16; if (y != 0) { n = n - 16; i = y; }
+        y = i << 8; if (y != 0) { n = n - 8; i = y; }
+        y = i << 4; if (y != 0) { n = n - 4; i = y; }
+        y = i << 2; if (y != 0) { n = n - 2; i = y; }
+        return n - (int)((uint)(i << 1) >> 31);
+    }
         
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Interoperability", "CA1401:PInvokesShouldNotBeVisible"), System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Security", "CA2118:ReviewSuppressUnmanagedCodeSecurityUsage"), SuppressUnmanagedCodeSecurity]
         [DllImport("winmm.dll", EntryPoint = "timeBeginPeriod", SetLastError = true)]

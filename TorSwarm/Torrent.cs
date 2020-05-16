@@ -133,15 +133,28 @@ namespace SuRGeoNix.TorSwarm
 
             NameValueCollection nvc = HttpUtility.ParseQueryString(magnetLink.Query);
             string[] xt     = nvc.Get("xt") == null ? null  : nvc.GetValues("xt")[0].Split(Char.Parse(":"));
-            if ( xt == null || xt.Length != 3 || xt[1].ToLower() != "btih" || xt[2].Length != 40 ) throw new Exception("[Magnet][xt] No hash found " + magnetLink);
+            if ( xt == null || xt.Length != 3 || xt[1].ToLower() != "btih" || xt[2].Length < 20 ) throw new Exception("[Magnet][xt] No hash found " + magnetLink);
 
             file.name       = nvc.Get("dn") == null ? null  : nvc.GetValues("dn")[0] ;
             file.length     = nvc.Get("xl") == null ? 0     : (int) UInt32.Parse(nvc.GetValues("xl")[0]);
             file.infoHash   = xt[2];
 
+            // Base32 Hash
+            if ( file.infoHash.Length != 40 )
+            {
+                if ( System.Text.RegularExpressions.Regex.IsMatch(file.infoHash,@"[QAZ2WSX3EDC4RFV5TGB6YHN7UJM8K9LP]+") )
+                {
+                    try
+                    {
+                        file.infoHash = Utils.ArrayToStringHex(Utils.FromBase32String(file.infoHash));
+                        if ( file.infoHash.Length != 40 ) throw new Exception("[Magnet][xt] No valid hash found " + magnetLink);
+                    } catch (Exception e) { throw new Exception("[Magnet][xt] No valid hash found " + magnetLink); }   
+                } else { throw new Exception("[Magnet][xt] No valid hash found " + magnetLink); }
+            }
+
             string[] tr     = nvc.Get("tr") == null ? null  : nvc.GetValues("tr");
             if ( tr == null  ) return;
-
+            
             for (int i=0; i<tr.Length; i++)
                 file.trackers.Add(new Uri(tr[i]));
         }
@@ -160,7 +173,7 @@ namespace SuRGeoNix.TorSwarm
             else
                 throw new Exception("Invalid torrent file");
 
-            file.infoHash = Utils.ArrayToStringHext(sha1.ComputeHash(bInfo.EncodeAsBytes()));
+            file.infoHash = Utils.ArrayToStringHex(sha1.ComputeHash(bInfo.EncodeAsBytes()));
             FillFromInfo(bInfo);
         }
         public void FillFromMetadata()

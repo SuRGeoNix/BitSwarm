@@ -142,8 +142,6 @@ namespace SuRGeoNix.TorSwarm
         }
         public TorSwarm(Uri magnetLink, OptionsStruct? opt = null)
         {
-            // TODO: Add Support For base32 links
-            // magnet:?xt=urn:btih:RX46NCATYQRS3MCQNSEXVZGCCDNKTASQ -> magnet:?xt=urn:btih:8df9e68813c4232db0506c897ae4c210daa98250
             Options         = (opt == null) ? GetDefaultsOptions() : (OptionsStruct) opt;
             Initiliaze();
             torrent.FillFromMagnetLink(magnetLink);
