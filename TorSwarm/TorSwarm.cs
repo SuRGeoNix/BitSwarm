@@ -6,6 +6,7 @@ using System.Collections.Generic;
 
 using static SuRGeoNix.TorSwarm.Torrent.TorrentData;
 using static SuRGeoNix.TorSwarm.Torrent.MetaData;
+using System.Linq;
 
 namespace SuRGeoNix.TorSwarm
 {
@@ -50,6 +51,7 @@ namespace SuRGeoNix.TorSwarm
             public Action<StatsStructure>       StatsCallback       { get; set; }
             public Action<Torrent>              TorrentCallback     { get; set; }
             public Action<int, string>          StatusCallback      { get; set; }
+            public Action<long>                 FocusPointCompleted { get; set; }
         }
         public struct StatsStructure
         {
@@ -77,6 +79,20 @@ namespace SuRGeoNix.TorSwarm
             public int      PeersDownloading    { get; set; }
             public int      PeersDropped        { get; set; }
         }
+
+        // Focus Points
+        public class FocusPoint
+        {
+            public FocusPoint(long id, int fromPiece, int toPiece/*, int block*/) {  this.id = id; this.fromPiece = fromPiece; this.toPiece = toPiece; }
+            public long id;
+            public int fromPiece;
+            public int toPiece;
+            public bool isDone;
+        }
+        public Dictionary<long, FocusPoint> FocusPoints                 { get; private set; } = new Dictionary<long, TorSwarm.FocusPoint>();
+        public void CreateFocusPoint(FocusPoint fp) { Log($"[DEBUG001] Creating Focus Point from {fp.fromPiece} to {fp.toPiece}"); lock ( FocusPoints ) if ( !FocusPoints.ContainsKey(fp.id) ) FocusPoints.Add(fp.id, fp); }
+        public void DeleteFocusPoint(long id)       { Log($"[DEBUG001] Deleting Focus Point from {id}");    lock ( FocusPoints ) FocusPoints.Remove(id); }
+        public void DeleteFocusPoints()             { Log($"[DEBUG001] Deleting Focus Points");             lock ( FocusPoints ) FocusPoints.Clear(); }
 
         // ====================== PRIVATE =====================
 
@@ -226,10 +242,10 @@ namespace SuRGeoNix.TorSwarm
             opt.DownloadPath        = Path.GetTempPath();
             opt.TempPath            = Path.GetTempPath();
 
-            opt.MaxConnections      =  75;
+            opt.MaxConnections      =  60;
             opt.MinThreads          = 270;
             opt.MaxThreads          = Timeout.Infinite;
-            opt.PeersFromTracker    = - 1;
+            opt.PeersFromTracker    =  -1;
 
             opt.DownloadLimit       = Timeout.Infinite;
             opt.UploadLimit         = Timeout.Infinite;
@@ -288,9 +304,6 @@ namespace SuRGeoNix.TorSwarm
                 }
 
                 torrent.data.filesIncludes = includeFiles;
-
-                torrent.data.pieceRequests.Clear(); // Otherwise it will UnSetBits on requests
-
                 torrent.data.progressPrev.CopyFrom(torrent.data.progress);
                 torrent.data.requestsPrev.CopyFrom(torrent.data.requests);
                 torrent.data.progress.CopyFrom(newProgress);
@@ -316,7 +329,6 @@ namespace SuRGeoNix.TorSwarm
             });
 
             beggar.SetApartmentState(ApartmentState.STA);
-            beggar.Priority = ThreadPriority.AboveNormal;
             beggar.Start();
         }
         public void Pause()
@@ -612,7 +624,7 @@ namespace SuRGeoNix.TorSwarm
                                                     peer.Disconnect();
                                                 }
                                             }
-                                            if ( peer.status == Peer.Status.READY && Stats.PeersDownloading < Options.MaxConnections / 2 && curSecondTicks - peer.connectedAt > 3 * 1000 * 10000 && ( !peer.stageYou.haveAll || peer.stageYou.haveNone || peer.stageYou.bitfield == null || torrent.data.requests.GetFirst01(peer.stageYou.bitfield) < 0 ) )
+                                            if ( peer.status == Peer.Status.READY && Stats.PeersDownloading < Options.MaxConnections / 2 && curSecondTicks - peer.connectedAt > 3 * 1000 * 10000 && (peer.stageYou.haveNone || (!peer.stageYou.haveAll && peer.stageYou.bitfield == null) || torrent.data.requests.GetFirst01(peer.stageYou.bitfield) == -1 ) )
                                             {
                                                 Log($"[DROP] No Pieces Peer | Case0 0x01 {peer.host}");
                                                 peer.status = Peer.Status.FAILED2;
@@ -681,7 +693,7 @@ namespace SuRGeoNix.TorSwarm
                                             }
 
                                             // Peers without our pieces (3 seconds after connected to ensure we have the info from peer)
-                                            if ( peer.status == Peer.Status.READY && Stats.PeersDownloading < Options.MaxConnections / 2 && curSecondTicks - peer.connectedAt > 3 * 1000 * 10000 && ( !peer.stageYou.haveAll || peer.stageYou.haveNone || peer.stageYou.bitfield == null || torrent.data.requests.GetFirst01(peer.stageYou.bitfield) < 0 ) )
+                                            if ( peer.status == Peer.Status.READY && Stats.PeersDownloading < Options.MaxConnections / 2 && curSecondTicks - peer.connectedAt > 3 * 1000 * 10000 && (peer.stageYou.haveNone || (!peer.stageYou.haveAll && peer.stageYou.bitfield == null) || torrent.data.requests.GetFirst01(peer.stageYou.bitfield) == -1 ) )
                                             {
                                                 Log($"[DROP] No Pieces Peer | Case1 0x01 {peer.host}");
                                                 peer.status = Peer.Status.FAILED2;
@@ -713,7 +725,7 @@ namespace SuRGeoNix.TorSwarm
 
                     } // Lock Peers
 
-                    Thread.Sleep(15);
+                    Thread.Sleep(35);
 
                 } // While
 
@@ -726,7 +738,7 @@ namespace SuRGeoNix.TorSwarm
 
                 if ( torrent.metadata.isDone ) FillStats();
 
-                torrent.Dispose();
+                //torrent.Dispose();
                 log.Dispose();
 
             } catch (ThreadAbortException) {
@@ -759,9 +771,9 @@ namespace SuRGeoNix.TorSwarm
                             else if ( torrent.data.pieceRequests[i].peer.status == Peer.Status.DOWNLOADING )
                                  torrent.data.pieceRequests[i].peer.status  = Peer.Status.READY;
 
-                            if ( containsKey ) torrent.data.pieceProgress[torrent.data.pieceRequests[i].piece].requests.UnSetBit(torrent.data.pieceRequests[i].block);
+                            if ( containsKey && !torrent.data.pieceRequests[i].aggressive) torrent.data.pieceProgress[torrent.data.pieceRequests[i].piece].requests.UnSetBit(torrent.data.pieceRequests[i].block);
 
-                            torrent.data.requests.UnSetBit(torrent.data.pieceRequests[i].piece);
+                            if (!torrent.data.pieceRequests[i].aggressive) torrent.data.requests.UnSetBit(torrent.data.pieceRequests[i].piece);
                             pieceTimeouts++;
                         }
 
@@ -774,7 +786,7 @@ namespace SuRGeoNix.TorSwarm
         // Main Implementation  [RequestPiece | SavePiece]
         private void RequestPiece(Peer peer)
         {
-            int piece, block;
+            int piece, block, blockSize;
 
             // Metadata Requests (Until Done)
             if ( !torrent.metadata.isDone )
@@ -854,7 +866,7 @@ namespace SuRGeoNix.TorSwarm
 
                     piece = piecesBlocksLeft[curPieceBlock].Item1;
                     block = piecesBlocksLeft[curPieceBlock].Item2;
-                    int blockSize = GetBlockSize(piece, block);
+                    blockSize = GetBlockSize(piece, block);
 
                     if ( Options.Verbosity > 1) Log($"[{peer.host.PadRight(15, ' ')}] [REQE][P]\tPiece: {piece} Block: {block} Offset: {block * torrent.data.blockSize} Size: {blockSize} Requests: {peer.PiecesRequested} Timeouts: {peer.PiecesTimeout}");
 
@@ -871,25 +883,87 @@ namespace SuRGeoNix.TorSwarm
 
             if ( !peer.stageYou.unchoked || peer.stageYou.haveNone || (!peer.stageYou.haveAll && peer.stageYou.bitfield == null) ) return;
 
+            // Focus points
             lock ( lockerTorrent )
-            {
+            { 
                 for (int i=0; i<Options.RequestBlocksPerPeer; i++)
                 {
-                    if ( peer.stageYou.haveAll )
+                    piece           = -1;
+                    block           = -1;
+                    FocusPoint fp   = null;
+
+                    lock ( FocusPoints )
+                    {
+                        if ( FocusPoints.Count > 0 )
+                        {
+                            // Choose Random FP
+                            fp = FocusPoints.ElementAt(rnd.Next(0, FocusPoints.Count)).Value;
+
+                            // Piece Left (if not Delete FP & return)
+                            List<int> piecesLeft;
+                            if (peer.stageYou.haveAll)
+                            {
+                                piecesLeft = torrent.data.progress.GetAll0(fp.fromPiece, fp.toPiece);
+                            }
+                            else
+                            {
+                                piecesLeft = torrent.data.progress.GetAll0(peer.stageYou.bitfield, fp.fromPiece, fp.toPiece);
+                                if (piecesLeft.Count == 0 && torrent.data.progress.GetAll0(fp.fromPiece, fp.toPiece).Count > 0) { peer.Disconnect(); return; }
+                            }
+                            if ( piecesLeft.Count == 0 ) { DeleteFocusPoint(fp.id); Options.FocusPointCompleted?.BeginInvoke(fp.id, null, null); return; }
+
+                            List<Tuple<int, int>> piecesBlocksLeft = new List<Tuple<int, int>>();
+                            foreach (int pieceLeft in piecesLeft)
+                            {
+                                CreatePieceProgress(pieceLeft);
+                                List<int> pieceBlocksLeft = torrent.data.pieceProgress[pieceLeft].progress.GetAll0();
+                                foreach (int blockLeft in pieceBlocksLeft)
+                                    piecesBlocksLeft.Add(new Tuple<int, int>(pieceLeft, blockLeft));
+                            }
+
+                            // Piece | Block Left choose Random
+                            int requestsCounter = Math.Min(Options.RequestBlocksPerPeer, piecesBlocksLeft.Count);
+                            for (int l=0;l<requestsCounter; l++)
+                            {
+                                int curPieceBlock = rnd.Next(0, piecesBlocksLeft.Count);
+
+                                piece = piecesBlocksLeft[curPieceBlock].Item1;
+                                block = piecesBlocksLeft[curPieceBlock].Item2;
+                                blockSize = GetBlockSize(piece, block);
+
+                                Log($"[{peer.host.PadRight(15, ' ')}] [REQF][P]\tPiece: {piece} Block: {block} Offset: {block * torrent.data.blockSize} Size: {blockSize} Requests: {peer.PiecesRequested} Timeouts: {peer.PiecesTimeout}");
+
+                                requests.Add(new Tuple<int, int, int>(piece, block * torrent.data.blockSize, blockSize));
+                                torrent.data.pieceRequests.Add(new PieceRequest(DateTime.UtcNow.Ticks, peer, piece, block, blockSize, true));
+
+                                piecesBlocksLeft.RemoveAt(curPieceBlock);
+                            }
+
+                            if (requests.Count == Options.RequestBlocksPerPeer) { peer.RequestPiece(requests); Thread.Sleep(10); return; } // Avoid Reaching Upload Limits
+
+                            // Let it fill the rest requests
+                            i += requests.Count;
+                            piece = -1;
+                            block = -1;
+                        }   
+                    }
+
+                    // Fall Back to Normal Requests
+                    if (peer.stageYou.haveAll)
                         piece = torrent.data.requests.GetFirst0();
                     else
                         piece = torrent.data.requests.GetFirst01(peer.stageYou.bitfield);
-                
+
                     if ( piece < 0 ) break;
 
                     CreatePieceProgress(piece);
                     block = torrent.data.pieceProgress[piece].requests.GetFirst0();
-                    if ( block < 0 ) { Log($"Shouldn't be here! Piece: {piece}"); break; }
+                    if (block < 0) { Log($"Shouldn't be here! Piece: {piece}"); break; }
 
                     torrent.data.pieceProgress[piece].requests.SetBit(block);
                     if ( torrent.data.pieceProgress[piece].requests.GetFirst0() == -1 ) torrent.data.requests.SetBit(piece);
 
-                    int blockSize = GetBlockSize(piece, block);
+                    blockSize = GetBlockSize(piece, block);
 
                     if ( Options.Verbosity > 1) Log($"[{peer.host.PadRight(15, ' ')}] [REQ ][P]\tPiece: {piece} Block: {block} Offset: {block * torrent.data.blockSize} Size: {blockSize} Requests: {peer.PiecesRequested} Timeouts: {peer.PiecesTimeout}");
 
@@ -898,7 +972,7 @@ namespace SuRGeoNix.TorSwarm
                     torrent.data.pieceRequests.Add( new PieceRequest(DateTime.UtcNow.Ticks, peer, piece, block, blockSize) );
                 }
             }
-   
+                
             if ( requests.Count > 0 ) peer.RequestPiece(requests);
         }
         private void SavePiece(byte[] data, int piece, int size)
@@ -978,6 +1052,7 @@ namespace SuRGeoNix.TorSwarm
                     torrent.metadata.parallelRequests = -1000;
                     Log($"Creating Metadata File {torrent.metadata.file.FileName}");
                     torrent.metadata.file.CreateFile();
+                    torrent.metadata.file.CloseFile();
                     torrent.FillFromMetadata();
                     peerOpt.Pieces = torrent.data.pieces;
                     Options.TorrentCallback?.BeginInvoke(torrent, null, null);
@@ -1051,6 +1126,7 @@ namespace SuRGeoNix.TorSwarm
 
                 // Save Piece in PartFiles [Thread-safe?]
                 SavePiece(torrent.data.pieceProgress[piece].data, piece, torrent.data.pieceProgress[piece].data.Length);
+                Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P]\tPiece: {piece} Full"); 
 
                 // [SetBit for Progress | Remove Block Progress] | Done => CreateFiles
                 torrent.data.progress.      SetBit(piece);

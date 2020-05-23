@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace SuRGeoNix.TorSwarm
 {
@@ -23,6 +24,7 @@ namespace SuRGeoNix.TorSwarm
         private int         lastChunkSize;
 
         private static readonly object locker = new object();
+        private static readonly object fileCreating = new object();
 
         public PartFile(string fileName, int chunkSize, long size = -1, bool autoCreate = true)
         {
@@ -66,7 +68,6 @@ namespace SuRGeoNix.TorSwarm
             lock (locker)
             {
                 if ( FileCreated ) return;
-
                 fileStream.Write(chunk, offset, (int) ChunkSize);
                 fileStream.Flush();
                 chunksCounter++;
@@ -80,7 +81,6 @@ namespace SuRGeoNix.TorSwarm
             lock (locker)
             {
                 if ( FileCreated ) return;
-
                 if ( firstChunkSize != 0 ) throw new Exception("First chunk already exists");
 
                 fileStream.Write(chunk, offset, (int) len);
@@ -98,6 +98,7 @@ namespace SuRGeoNix.TorSwarm
             lock (locker)
             {
                 if ( FileCreated ) return;
+                if ( chunksCounter == -1 && chunkId == 0) { WriteFirst(chunk, offset, len); return; } // WriteLast as WriteFirst
 
                 if ( lastChunkSize != 0 ) throw new Exception("Last chunk already exists");
                 
@@ -112,26 +113,108 @@ namespace SuRGeoNix.TorSwarm
             }
         }
 
-        public byte[] Read(int chunkId)
+        public byte[] Read(long pos, long size)
+        {
+            lock (fileCreating)
+            {
+                if (firstPos == -1) return null; // Possible allow it for firstChunkSize == chunkSize
+
+                byte[] retData = null;
+
+                if (FileCreated)
+                {
+                    retData = new byte[size];
+                    fileStream.Seek(pos, SeekOrigin.Begin);
+                    fileStream.Read(retData, 0, (int)size);
+                    return retData;
+                }
+                
+                long writeSize;
+                long startByte;
+                byte[] curChunk;
+                long sizeLeft = size;
+
+                int chunkId     = (int)((pos - firstChunkSize) / ChunkSize) + 1;
+                int lastChunkId = (int)((Size - firstChunkSize - 1) / ChunkSize) + 1;
+                
+                if (pos < firstChunkSize)
+                {
+                    chunkId     = 0;
+                    startByte   = pos;
+                    writeSize   = Math.Min(sizeLeft, firstChunkSize - startByte);
+                }
+                else if (chunkId == lastChunkId && lastPos != -1)
+                {
+                    startByte   = ((pos - firstChunkSize) % ChunkSize);
+                    writeSize   = Math.Min(sizeLeft, lastChunkSize - startByte);
+                }
+                else
+                {
+                    startByte   = ((pos - firstChunkSize) % ChunkSize);
+                    writeSize   = Math.Min(sizeLeft, ChunkSize - startByte);
+                }
+
+                // For progress.GetFirst0() == -1 but didnt have enough time to write it in the file | Also for ThreadAborts
+                try
+                {
+                    curChunk = ReadChunk(chunkId);
+                    retData = Utils.ArraySub(ref curChunk, (uint)startByte, (uint)writeSize);
+                    sizeLeft -= writeSize;
+                }
+                catch (ThreadAbortException t)
+                {
+                    throw t;
+                }
+                catch (Exception) { }
+
+                while (sizeLeft > 0)
+                {
+                    try
+                    {
+                        chunkId++;
+
+                        curChunk = ReadChunk(chunkId);
+                        if (chunkId == lastChunkId && lastPos != -1)
+                            writeSize = (uint)Math.Min(sizeLeft, lastChunkSize);
+                        else
+                            writeSize = (uint)Math.Min(sizeLeft, ChunkSize);
+                        retData = Utils.ArrayMerge(retData, Utils.ArraySub(ref curChunk, 0, (uint)writeSize));
+                        sizeLeft -= writeSize;
+                    }
+                    catch (ThreadAbortException t)
+                    {
+                        throw t;
+                    }
+                    catch (Exception) { }
+                }
+
+                return retData;
+            }
+        }
+        public byte[] ReadChunk(int chunkId)
         {
             lock (locker)
             {
+                if (FileCreated) return null;
+
                 int len = ChunkSize;
-                if ( chunkId == 0 && firstChunkSize != 0 ) 
+                if (chunkId == 0 && firstChunkSize != 0)
                     len = firstChunkSize;
-                else if ( chunkId == chunksCounter && lastChunkSize != 0 )
+                else if (chunkId == chunksCounter && lastChunkSize != 0)
                     len = lastChunkSize;
 
                 int chunkPos    = mapIdToChunkId[chunkId];
                 int chunkPos2   = chunkPos;
-                long pos         = 0;
-                if ( firstChunkSize != 0 && chunkPos > firstPos)  { pos += firstChunkSize;    chunkPos2--; }
-                if ( lastChunkSize  != 0 && chunkPos > lastPos )  { pos += lastChunkSize;     chunkPos2--; }
+                long pos        = 0;
+                if (firstChunkSize != 0 && chunkPos > firstPos) { pos += firstChunkSize; chunkPos2--; }
+                if (lastChunkSize  != 0 && chunkPos > lastPos ) { pos += lastChunkSize;  chunkPos2--; }
                 pos += (long)ChunkSize * chunkPos2;
 
                 byte[] data = new byte[len];
+                long savePos = fileStream.Position;
                 fileStream.Seek(pos, SeekOrigin.Begin);
                 fileStream.Read(data, 0, len);
+                fileStream.Seek(savePos, SeekOrigin.Begin);
 
                 return data;
             }
@@ -139,27 +222,38 @@ namespace SuRGeoNix.TorSwarm
 
         public void CreateFile()
         {
+            // MR Testing (Disabled it to work only with part file)
+            //if ( !force ) return;
             lock (locker)
             {
-                if ( FileCreated ) return;
-
-                using (FileStream fs = File.Open(FileName, FileMode.CreateNew) )
+                lock (fileCreating)
                 {
-                    for (int i=0; i<=chunksCounter; i++)
+                    if (FileCreated) return;
+
+                    using (FileStream fs = File.Open(FileName, FileMode.CreateNew))
                     {
-                        byte[] data = Read(i);
-                        fs.Write(data,0,data.Length);
+                        if (Size > 0)
+                        {
+                            for (int i = 0; i <= chunksCounter; i++)
+                            {
+                                byte[] data = ReadChunk(i);
+                                fs.Write(data, 0, data.Length);
+                            }
+                        }
+
+                        FileCreated = true;
                     }
-
-                    FileCreated = true;
+                    fileStream.Close();
+                    fileStream = File.Open(FileName, FileMode.Open, FileAccess.Read);
+                    File.Delete(FileName + ".part");
+                    
                 }
-
-                fileStream.Close();
-                fileStream = null;
-                File.Delete(FileName + ".part");
             }
         }
-
+        public void CloseFile()
+        {
+            if (fileStream != null)  fileStream.Close(); 
+        }
         public void Dispose()
         {
             bool deleteFile = false;

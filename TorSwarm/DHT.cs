@@ -403,15 +403,12 @@ namespace SuRGeoNix.TorSwarm
                     Node node = bucketNodesPointer[curNodeKey];
 
                     ThreadPool.QueueUserWorkItem(new WaitCallback(x => { 
-
                         GetPeers(node); 
-
                         Interlocked.Decrement(ref curThreads);
-
                     }), null);
                 }
 
-                while ( curThreads > 0 ) Thread.Sleep(15);
+                while ( curThreads > 0 ) Thread.Sleep(20);
 
                 // Clean Bucket from FAILED | REQUESTED | Out Of Distance
                 inBucket = 0;
@@ -454,7 +451,7 @@ namespace SuRGeoNix.TorSwarm
                     // TODO: Re-request existing Peer Nodes for new Peers
                 }
 
-                Thread.Sleep(15);
+                Thread.Sleep(45);
             }
 
             Log($"[BEGGAR] STOPPED {infoHash}");

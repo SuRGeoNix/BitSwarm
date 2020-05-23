@@ -8,7 +8,6 @@ using System.Security;
 
 using BencodeNET.Parsing;
 using BencodeNET.Objects;
-using System.Text;
 
 namespace SuRGeoNix
 {
@@ -148,10 +147,10 @@ public class Utils
         }
 
         // Arrays
-        public static T[] ArraySub<T>(ref T[] data, uint index, uint length, bool reverse = false)
+        public static T[] ArraySub<T>(ref T[] data, long index, long length, bool reverse = false)
         {
             T[] result = new T[length];
-            Array.Copy(data, index, result, 0, length);
+            Buffer.BlockCopy(data, (int)index, result, 0, (int)length);
             if ( reverse ) Array.Reverse(result);
             return result;
         }
@@ -206,6 +205,39 @@ public class Utils
 
 
         // Misc
+        public static List<Tuple<long, int>> MergeByteRanges(List<Tuple<long, int>> byteRanges, int allowSpaceBytes = 0)
+        {
+            if ( byteRanges == null || byteRanges.Count < 1 ) return new List<Tuple<long, int>>();
+
+            List<Tuple<long, int>> byteRangesCopy = new List<Tuple<long, int>>(byteRanges);
+            
+            byteRangesCopy.Sort((x, y) => x.Item1.CompareTo(y.Item1));
+
+            List<Tuple<long, int>> cByteRanges = new List<Tuple<long, int>>();
+
+            Tuple<long, int> prevRange = byteRangesCopy[0];
+
+            for (int i=1; i<byteRangesCopy.Count; i++)
+            {
+                Tuple<long, int> curRange = byteRangesCopy[i];
+
+                // Same Start => End = Max(Len1/2)
+                if ( curRange.Item1 == prevRange.Item1 ) { prevRange = new Tuple<long, int>(prevRange.Item1, Math.Max(prevRange.Item2, curRange.Item2)); continue; }
+
+                // Out of Allowed Bytes => Add new Range / Set prev to cur
+                if ( curRange.Item1 > prevRange.Item1 + prevRange.Item2 + allowSpaceBytes) { cByteRanges.Add(prevRange); prevRange = new Tuple<long, int>(curRange.Item1, curRange.Item2); continue; }
+
+                // It's inside prev ... skip
+                if ( curRange.Item1 + curRange.Item2 <= prevRange.Item1 + prevRange.Item2 ) continue;
+
+                // From prev Start to Max(End1/2) - Start
+                prevRange = new Tuple<long, int>(prevRange.Item1, (int) (Math.Max(curRange.Item1 + curRange.Item2, prevRange.Item1 + prevRange.Item2) - prevRange.Item1));
+            }
+
+            cByteRanges.Add(prevRange);
+
+            return cByteRanges;
+        }
         public static string BytesToReadableString(long bytes)
         {
             string bd = "";
@@ -256,16 +288,16 @@ public class Utils
             return result;
         }
         private static int numberOfTrailingZeros(int i) {
-        // HD, Figure 5-14
-        int y;
-        if (i == 0) return 32;
-        int n = 31;
-        y = i << 16; if (y != 0) { n = n - 16; i = y; }
-        y = i << 8; if (y != 0) { n = n - 8; i = y; }
-        y = i << 4; if (y != 0) { n = n - 4; i = y; }
-        y = i << 2; if (y != 0) { n = n - 2; i = y; }
-        return n - (int)((uint)(i << 1) >> 31);
-    }
+            // HD, Figure 5-14
+            int y;
+            if (i == 0) return 32;
+            int n = 31;
+            y = i << 16; if (y != 0) { n = n - 16; i = y; }
+            y = i << 8; if (y != 0) { n = n - 8; i = y; }
+            y = i << 4; if (y != 0) { n = n - 4; i = y; }
+            y = i << 2; if (y != 0) { n = n - 2; i = y; }
+            return n - (int)((uint)(i << 1) >> 31);
+        }
         
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Interoperability", "CA1401:PInvokesShouldNotBeVisible"), System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Security", "CA2118:ReviewSuppressUnmanagedCodeSecurityUsage"), SuppressUnmanagedCodeSecurity]
         [DllImport("winmm.dll", EntryPoint = "timeBeginPeriod", SetLastError = true)]

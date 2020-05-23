@@ -185,13 +185,17 @@ namespace SuRGeoNix.TorSwarm
             return -1;
         }
 
-        public List<int> GetAll0()
+        public List<int> GetAll0(int from = 0, int to = -1)
         {
+            to = to == -1 ? size - 1 : to;
+
+            if (from >= size || to >= size || from < 0 || to < 0 ) return new List<int>();
+
             List<int> ret = new List<int>();
             int cur = -1;
-            int from = 0;
+            //int from = 0;
 
-            while ( from < size && (cur = GetFirst0(from)) >= 0 )
+            while ( from <= to && (cur = GetFirst0(from, to)) >= 0 )
             {
                 ret.Add(cur);
                 from = cur + 1;
@@ -199,15 +203,18 @@ namespace SuRGeoNix.TorSwarm
 
             return ret;
         }
-        public List<int> GetAll0(BitField bitfield)
+        public List<int> GetAll0(BitField bitfield, int from = 0, int to = -1)
         {
+            to = to == -1 ? size - 1 : to;
+
+            if (from >= size || to >= size || from < 0 || to < 0) return new List<int>();
+
             if ( bitfield == null ) return new List<int>();
 
             List<int> ret = new List<int>();
             int cur = -1;
-            int from = 0;
 
-            while ( from < size && (cur = GetFirst01(bitfield, from)) >= 0 )
+            while ( from <= to && (cur = GetFirst01(bitfield, from, to)) >= 0 )
             {
                 ret.Add(cur);
                 from = cur + 1;

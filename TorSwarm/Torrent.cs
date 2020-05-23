@@ -83,19 +83,21 @@ namespace SuRGeoNix.TorSwarm
             }
             public struct PieceRequest
             {
-                public PieceRequest(long timestamp, Peer peer, int piece, int block, int size)
+                public PieceRequest(long timestamp, Peer peer, int piece, int block, int size, bool aggressive = false)
                 {
                     this.timestamp  = timestamp;
                     this.peer       = peer;
                     this.piece      = piece;
                     this.block      = block;
                     this.size       = size;
+                    this.aggressive = aggressive;
                 }
                 public long         timestamp;
                 public Peer         peer;
                 public int          piece;
                 public int          block;
                 public int          size;
+                public bool         aggressive;
             }
         }
         public struct MetaData
@@ -148,13 +150,13 @@ namespace SuRGeoNix.TorSwarm
                     {
                         file.infoHash = Utils.ArrayToStringHex(Utils.FromBase32String(file.infoHash));
                         if ( file.infoHash.Length != 40 ) throw new Exception("[Magnet][xt] No valid hash found " + magnetLink);
-                    } catch (Exception e) { throw new Exception("[Magnet][xt] No valid hash found " + magnetLink); }   
+                    } catch (Exception) { throw new Exception("[Magnet][xt] No valid hash found " + magnetLink); }   
                 } else { throw new Exception("[Magnet][xt] No valid hash found " + magnetLink); }
             }
 
             string[] tr     = nvc.Get("tr") == null ? null  : nvc.GetValues("tr");
             if ( tr == null  ) return;
-            
+
             for (int i=0; i<tr.Length; i++)
                 file.trackers.Add(new Uri(tr[i]));
         }
@@ -215,8 +217,10 @@ namespace SuRGeoNix.TorSwarm
                 data.totalSize  = file.length;
                 data.files.Add(new PartFile(Utils.FindNextAvailablePartFile(Path.Combine(DownloadPath, file.name)), file.pieceLength, file.length));
 
-                file.paths      = new List<string>()    { data.files[0].FileName };
-                file.lengths    = new List<long>()      { file.length            };
+                file.paths      = new List<string>()    { file.name     };
+                file.lengths    = new List<long>()      { file.length   };
+
+                data.filesIncludes.Add(file.name);
             }
 
             data.pieces         = file.pieces.Count;

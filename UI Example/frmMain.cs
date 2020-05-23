@@ -144,6 +144,8 @@ namespace UI_Example
                     MessageBox.Show("An error occured :( " + errMsg);
                 }
             }
+
+            if (torrent != null) torrent.Dispose();
         }
         private void Stats(TorSwarm.StatsStructure stats)
         {
