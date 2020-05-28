@@ -90,7 +90,7 @@ namespace SuRGeoNix.TorSwarm
             public bool isDone;
         }
         public Dictionary<long, FocusPoint> FocusPoints                 { get; private set; } = new Dictionary<long, TorSwarm.FocusPoint>();
-        public void CreateFocusPoint(FocusPoint fp) { Log($"[DEBUG001] Creating Focus Point from {fp.fromPiece} to {fp.toPiece}"); lock ( FocusPoints ) if ( !FocusPoints.ContainsKey(fp.id) ) FocusPoints.Add(fp.id, fp); }
+        public void CreateFocusPoint(FocusPoint fp) { Log($"[DEBUG001] Creating Focus Point from {fp.fromPiece} to {fp.toPiece}"); lock ( FocusPoints ) if ( !FocusPoints.ContainsKey(fp.id) ) FocusPoints.Add(fp.id, fp); else FocusPoints[fp.id].toPiece = Math.Max(FocusPoints[fp.id].toPiece, fp.toPiece); }
         public void DeleteFocusPoint(long id)       { Log($"[DEBUG001] Deleting Focus Point from {id}");    lock ( FocusPoints ) FocusPoints.Remove(id); }
         public void DeleteFocusPoints()             { Log($"[DEBUG001] Deleting Focus Points");             lock ( FocusPoints ) FocusPoints.Clear(); }
 
@@ -725,7 +725,7 @@ namespace SuRGeoNix.TorSwarm
 
                     } // Lock Peers
 
-                    Thread.Sleep(35);
+                    Thread.Sleep(20);
 
                 } // While
 
@@ -900,17 +900,28 @@ namespace SuRGeoNix.TorSwarm
                             fp = FocusPoints.ElementAt(rnd.Next(0, FocusPoints.Count)).Value;
 
                             // Piece Left (if not Delete FP & return)
-                            List<int> piecesLeft;
+                            List<int> piecesLeft = new List<int>();
+                            int firstPiece = -1;
+
                             if (peer.stageYou.haveAll)
                             {
-                                piecesLeft = torrent.data.progress.GetAll0(fp.fromPiece, fp.toPiece);
+                                //piecesLeft = torrent.data.progress.GetAll0(fp.fromPiece, fp.toPiece);
+                                firstPiece = torrent.data.progress.GetFirst0(fp.fromPiece, fp.toPiece);
+
                             }
                             else
                             {
-                                piecesLeft = torrent.data.progress.GetAll0(peer.stageYou.bitfield, fp.fromPiece, fp.toPiece);
-                                if (piecesLeft.Count == 0 && torrent.data.progress.GetAll0(fp.fromPiece, fp.toPiece).Count > 0) { peer.Disconnect(); return; }
+                                //piecesLeft = torrent.data.progress.GetAll0(peer.stageYou.bitfield, fp.fromPiece, fp.toPiece);
+                                firstPiece =  torrent.data.progress.GetFirst01(peer.stageYou.bitfield, fp.fromPiece, fp.toPiece);
+                                if (firstPiece < 0 && torrent.data.progress.GetFirst0(fp.fromPiece, fp.toPiece) > -1) { peer.Disconnect(); return; }
+                                //if (piecesLeft.Count == 0 && torrent.data.progress.GetAll0(fp.fromPiece, fp.toPiece).Count > 0) { peer.Disconnect(); return; }
                             }
-                            if ( piecesLeft.Count == 0 ) { DeleteFocusPoint(fp.id); Options.FocusPointCompleted?.BeginInvoke(fp.id, null, null); return; }
+
+                            if ( firstPiece < 0 ) { DeleteFocusPoint(fp.id); Options.FocusPointCompleted?.BeginInvoke(fp.id, null, null); return; }
+
+                            piecesLeft.Add(firstPiece);
+
+                            //if ( piecesLeft.Count == 0 ) { DeleteFocusPoint(fp.id); Options.FocusPointCompleted?.BeginInvoke(fp.id, null, null); return; }
 
                             List<Tuple<int, int>> piecesBlocksLeft = new List<Tuple<int, int>>();
                             foreach (int pieceLeft in piecesLeft)

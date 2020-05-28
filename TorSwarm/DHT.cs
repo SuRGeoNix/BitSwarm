@@ -451,7 +451,7 @@ namespace SuRGeoNix.TorSwarm
                     // TODO: Re-request existing Peer Nodes for new Peers
                 }
 
-                Thread.Sleep(45);
+                Thread.Sleep(20);
             }
 
             Log($"[BEGGAR] STOPPED {infoHash}");
