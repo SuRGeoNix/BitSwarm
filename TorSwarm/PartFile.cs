@@ -117,7 +117,7 @@ namespace SuRGeoNix.TorSwarm
         {
             lock (fileCreating)
             {
-                if (firstPos == -1) return null; // Possible allow it for firstChunkSize == chunkSize
+                if (firstPos == -1) return null; // Possible allow it for firstChunkSize == chunkSize | We dont even need firstPos to be able read
 
                 byte[] retData = null;
 
@@ -154,38 +154,21 @@ namespace SuRGeoNix.TorSwarm
                     writeSize   = Math.Min(sizeLeft, ChunkSize - startByte);
                 }
 
-                // For progress.GetFirst0() == -1 but didnt have enough time to write it in the file | Also for ThreadAborts
-                try
-                {
-                    curChunk = ReadChunk(chunkId);
-                    retData = Utils.ArraySub(ref curChunk, (uint)startByte, (uint)writeSize);
-                    sizeLeft -= writeSize;
-                }
-                catch (ThreadAbortException t)
-                {
-                    throw t;
-                }
-                catch (Exception) { }
+                curChunk = ReadChunk(chunkId);
+                retData = Utils.ArraySub(ref curChunk, (uint)startByte, (uint)writeSize);
+                sizeLeft -= writeSize;
 
                 while (sizeLeft > 0)
                 {
-                    try
-                    {
-                        chunkId++;
+                    chunkId++;
 
-                        curChunk = ReadChunk(chunkId);
-                        if (chunkId == lastChunkId && lastPos != -1)
-                            writeSize = (uint)Math.Min(sizeLeft, lastChunkSize);
-                        else
-                            writeSize = (uint)Math.Min(sizeLeft, ChunkSize);
-                        retData = Utils.ArrayMerge(retData, Utils.ArraySub(ref curChunk, 0, (uint)writeSize));
-                        sizeLeft -= writeSize;
-                    }
-                    catch (ThreadAbortException t)
-                    {
-                        throw t;
-                    }
-                    catch (Exception) { }
+                    curChunk = ReadChunk(chunkId);
+                    if (chunkId == lastChunkId && lastPos != -1)
+                        writeSize = (uint)Math.Min(sizeLeft, lastChunkSize);
+                    else
+                        writeSize = (uint)Math.Min(sizeLeft, ChunkSize);
+                    retData = Utils.ArrayMerge(retData, Utils.ArraySub(ref curChunk, 0, (uint)writeSize));
+                    sizeLeft -= writeSize;
                 }
 
                 return retData;
@@ -193,37 +176,45 @@ namespace SuRGeoNix.TorSwarm
         }
         public byte[] ReadChunk(int chunkId)
         {
+            long pos    = 0;
+            int  len    = ChunkSize;
+
             lock (locker)
             {
                 if (FileCreated) return null;
 
-                int len = ChunkSize;
                 if (chunkId == 0 && firstChunkSize != 0)
                     len = firstChunkSize;
-                else if (chunkId == chunksCounter && lastChunkSize != 0)
+                else if (chunkId == (int)((Size - firstChunkSize - 1) / ChunkSize) + 1 && lastChunkSize != 0)
                     len = lastChunkSize;
 
                 int chunkPos    = mapIdToChunkId[chunkId];
                 int chunkPos2   = chunkPos;
-                long pos        = 0;
                 if (firstChunkSize != 0 && chunkPos > firstPos) { pos += firstChunkSize; chunkPos2--; }
                 if (lastChunkSize  != 0 && chunkPos > lastPos ) { pos += lastChunkSize;  chunkPos2--; }
                 pos += (long)ChunkSize * chunkPos2;
 
-                byte[] data = new byte[len];
-                long savePos = fileStream.Position;
-                fileStream.Seek(pos, SeekOrigin.Begin);
-                fileStream.Read(data, 0, len);
-                fileStream.Seek(savePos, SeekOrigin.Begin);
-
-                return data;
+                if ( pos < fileStream.Length )
+                {
+                    byte[] data = new byte[len];
+                    long savePos = fileStream.Position;
+                    try
+                    {
+                        fileStream.Seek(pos, SeekOrigin.Begin);
+                        fileStream.Read(data, 0, len);
+                        fileStream.Seek(savePos, SeekOrigin.Begin);
+                        return data;
+                    }
+                    catch (Exception e) { fileStream.Seek(savePos, SeekOrigin.Begin); throw e; }
+                }
             }
+
+            // pos >= fileStream.Length
+            throw new Exception("Data not available");
         }
 
         public void CreateFile()
         {
-            // MR Testing (Disabled it to work only with part file)
-            //if ( !force ) return;
             lock (locker)
             {
                 lock (fileCreating)
