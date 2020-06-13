@@ -204,7 +204,7 @@ namespace SuRGeoNix.TorSwarm
                 file.lengths    = GetFileLengthsFromInfo(bInfo, out  tmpTotalSize);
                 data.totalSize  = tmpTotalSize;
 
-                data.folder = Utils.FindNextAvailableDir(Path.Combine(DownloadPath, file.name));
+                data.folder = Utils.FindNextAvailableDir(Path.Combine(DownloadPath, file.name)).Replace("..","_");
                 for (int i=0; i<file.paths.Count; i++)
                 {
                     data.files.Add(new PartFile(Path.Combine(data.folder, file.paths[i]), file.pieceLength, file.lengths[i]));

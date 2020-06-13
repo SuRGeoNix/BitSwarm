@@ -68,6 +68,8 @@ namespace SuRGeoNix.TorSwarm
             lock (locker)
             {
                 if ( FileCreated ) return;
+                if ( mapIdToChunkId.ContainsKey(chunkId) ) { Console.WriteLine($"ChunkId {chunkId} already written!"); return; }
+
                 fileStream.Write(chunk, offset, (int) ChunkSize);
                 fileStream.Flush();
                 chunksCounter++;
@@ -81,6 +83,7 @@ namespace SuRGeoNix.TorSwarm
             lock (locker)
             {
                 if ( FileCreated ) return;
+                if ( mapIdToChunkId.ContainsKey(0) ) { Console.WriteLine($"ChunkId 0 already written!"); return; }
                 if ( firstChunkSize != 0 ) throw new Exception("First chunk already exists");
 
                 fileStream.Write(chunk, offset, (int) len);
@@ -99,6 +102,7 @@ namespace SuRGeoNix.TorSwarm
             {
                 if ( FileCreated ) return;
                 if ( chunksCounter == -1 && chunkId == 0) { WriteFirst(chunk, offset, len); return; } // WriteLast as WriteFirst
+                if ( mapIdToChunkId.ContainsKey(chunkId) ) { Console.WriteLine($"ChunkId {chunkId} already written!"); return; }
 
                 if ( lastChunkSize != 0 ) throw new Exception("Last chunk already exists");
                 

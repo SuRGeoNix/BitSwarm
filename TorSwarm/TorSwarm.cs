@@ -281,6 +281,8 @@ namespace SuRGeoNix.TorSwarm
                 long curDistance = 0;
                 for ( int i=0; i<torrent.file.paths.Count; i++ )
                 { 
+                    bool isIncluded = false;
+
                     foreach (string file in includeFiles)
                     {
                         if ( file == torrent.file.paths[i] )
@@ -296,27 +298,34 @@ namespace SuRGeoNix.TorSwarm
                                 newRequests.CopyFrom(torrent.data.requests,     (int) (curDistance/torrent.file.pieceLength), (int) ((curDistance + torrent.file.lengths[i])/torrent.file.pieceLength));
                             }
 
+                            isIncluded = true;
                             break; 
                         }
+                    }
+
+                    if (torrent.data.filesIncludes.Contains(torrent.file.paths[i]) && !isIncluded )
+                    {
+                        torrent.data.progressPrev.CopyFrom(torrent.data.progress, (int) (curDistance/torrent.file.pieceLength), (int) ((curDistance + torrent.file.lengths[i])/torrent.file.pieceLength));
+                        torrent.data.requestsPrev.CopyFrom(torrent.data.requests, (int) (curDistance/torrent.file.pieceLength), (int) ((curDistance + torrent.file.lengths[i])/torrent.file.pieceLength));
                     }
 
                     curDistance += torrent.file.lengths[i];
                 }
 
                 torrent.data.filesIncludes = includeFiles;
-                torrent.data.progressPrev.CopyFrom(torrent.data.progress);
-                torrent.data.requestsPrev.CopyFrom(torrent.data.requests);
                 torrent.data.progress.CopyFrom(newProgress);
-                torrent.data.requests.CopyFrom(newRequests);                
+                torrent.data.requests.CopyFrom(newRequests);
             }
         }
 
         // Start / Pause / Stop
         public void Start()
         {
-            if ( status == Status.RUNNING ) return;
-
+            if ( status == Status.RUNNING || (torrent.data.progress != null && torrent.data.progress.GetFirst0() == - 1) ) return;
+            
             status = Status.RUNNING;
+            mode = Mode.NORMAL;
+            torrent.data.isDone = false;
 
             beggar = new Thread(() =>
             {
@@ -345,6 +354,11 @@ namespace SuRGeoNix.TorSwarm
             Thread.Sleep(800);
             
             if ( beggar != null ) beggar.Abort();
+        }
+        public void Dispose()
+        {
+            if (torrent != null) torrent.Dispose();
+            if (log != null) log.Dispose();
         }
 
         // ================ PRIVATE METHODS =================
@@ -739,7 +753,7 @@ namespace SuRGeoNix.TorSwarm
                 if ( torrent.metadata.isDone ) FillStats();
 
                 //torrent.Dispose();
-                log.Dispose();
+                //log.Dispose();
 
             } catch (ThreadAbortException) {
             } catch (Exception e) { Log($"[BEGGAR] Beggar(), Msg: {e.Message}\r\n{e.StackTrace}"); Options.StatusCallback?.BeginInvoke(2, e.Message, null, null); }
@@ -773,7 +787,7 @@ namespace SuRGeoNix.TorSwarm
 
                             if ( containsKey && !torrent.data.pieceRequests[i].aggressive) torrent.data.pieceProgress[torrent.data.pieceRequests[i].piece].requests.UnSetBit(torrent.data.pieceRequests[i].block);
 
-                            if (!torrent.data.pieceRequests[i].aggressive) torrent.data.requests.UnSetBit(torrent.data.pieceRequests[i].piece);
+                            if (!torrent.data.pieceRequests[i].aggressive) { torrent.data.requests.UnSetBit(torrent.data.pieceRequests[i].piece); torrent.data.requestsPrev.UnSetBit(torrent.data.pieceRequests[i].piece); }
                             pieceTimeouts++;
                         }
 
@@ -1142,6 +1156,8 @@ namespace SuRGeoNix.TorSwarm
                 // [SetBit for Progress | Remove Block Progress] | Done => CreateFiles
                 torrent.data.progress.      SetBit(piece);
                 torrent.data.requests.      SetBit(piece); // In case of Timed out (to avoid re-requesting)
+                torrent.data.progressPrev.  SetBit(piece);
+                torrent.data.requestsPrev.  SetBit(piece);
                 torrent.data.pieceProgress. Remove(piece);
 
                 if ( torrent.data.progress.GetFirst0() == - 1 ) // just compare with pieces size
