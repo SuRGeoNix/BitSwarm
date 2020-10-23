@@ -2,6 +2,7 @@
  * http://www.bittorrent.org/beps/bep_0005.html
  * 
  */
+
 using System;
 using System.Collections.Generic;
 using System.Net;
@@ -11,7 +12,7 @@ using System.Threading;
 using BencodeNET.Objects;
 using BencodeNET.Parsing;
 
-namespace SuRGeoNix.TorSwarm
+namespace SuRGeoNix.BEP
 {
     public class DHT
     {
@@ -37,15 +38,15 @@ namespace SuRGeoNix.TorSwarm
             STOPPED
         }
 
-        private static readonly BencodeParser   bParser     = new BencodeParser();
-        private static readonly Random          rnd         = new Random();
-        private static readonly object          lockerNodes = new object();
-        private static readonly object          lockerPeers = new object();
+        static readonly BencodeParser   bParser     = new BencodeParser();
+        readonly Random          rnd         = new Random();
+        readonly object          lockerNodes = new object();
+        readonly object          lockerPeers = new object();
 
         private Dictionary<string, Node>        bucketNodesPointer;
         private Dictionary<string, Node>        bucketNodes;        // Weird
         private Dictionary<string, Node>        bucketNodes2;       // Normal
-        private Dictionary<string, int>         cachedPeers;
+        public Dictionary<string, int>          cachedPeers;
         private Thread                          beggar;
         public Status                           status;
 
@@ -389,6 +390,8 @@ namespace SuRGeoNix.TorSwarm
                 // End of Recursion | Reset This BucketNodes with Bootstraps and Flip Strategy
                 if ( curThreads == 0 ) 
                 { 
+                    if (status != Status.RUNNING) break;
+
                     Log($"[BEGGAR] Recursion Ended (curThreads=0)... Flippping");
                     bucketNodesPointer.Clear();
                     AddBootstrapNodes();
@@ -408,7 +411,8 @@ namespace SuRGeoNix.TorSwarm
                     }), null);
                 }
 
-                while ( curThreads > 0 ) Thread.Sleep(20);
+                while ( curThreads > 0 ) { Thread.Sleep(20); if (status != Status.RUNNING) break; }
+                if (status != Status.RUNNING) break;
 
                 // Clean Bucket from FAILED | REQUESTED | Out Of Distance
                 inBucket = 0;
@@ -435,7 +439,9 @@ namespace SuRGeoNix.TorSwarm
 
                 clearBucket = false;
 
-                // Scheduler | NOTE: Currently not exact second & curSeconds will be reset with TorSwarm Stop/Start | Calculate 'Wait for Nodes' Time
+                if (status != Status.RUNNING) break;
+
+                // Scheduler | NOTE: Currently not exact second & curSeconds will be reset with BitSwarm Stop/Start | Calculate 'Wait for Nodes' Time
                 if ( DateTime.UtcNow.Ticks - lastTicks > 9000000 )
                 {
                     lastTicks = DateTime.UtcNow.Ticks;
@@ -464,9 +470,12 @@ namespace SuRGeoNix.TorSwarm
 
             status = Status.RUNNING;
 
+            Utils.EnsureThreadDone(beggar);
+
             beggar = new Thread(() =>
             {
                 Beggar();
+                status = Status.STOPPED;
             });
 
             beggar.SetApartmentState(ApartmentState.STA);

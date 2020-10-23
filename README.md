@@ -1,4 +1,4 @@
-# TorSwarm
+# BitSwarm
 <p align="center"><img src="Images/readme1.png"/></p>
 
 ## Introduction
@@ -6,7 +6,7 @@ I've always found P2P architectures a very exciting and interesting field but I'
 
 ## Design
 
-TorSwarm implements __Bittorrent Protocol v2__ (<a href="http://bittorrent.org/beps/bep_0052.html">bep_0052</a>) to achieve the following: -
+BitSwarm implements __Bittorrent Protocol v2__ (<a href="http://bittorrent.org/beps/bep_0052.html">bep_0052</a>) to achieve the following: -
 
 1) Properly read input of a __Torrent File__ or __Magnet Link__ and extract all the required information for the P2P communication. If you enable __DHT__ (<a href="http://bittorrent.org/beps/bep_0005.html">bep_0005</a>) requires only a Magnet Link with a Hash.
 <br/>(such as *Info-Hash, Name, Size, Trackers, Paths/Sizes, Piece Length, Piece Hashes*)
@@ -19,11 +19,11 @@ TorSwarm implements __Bittorrent Protocol v2__ (<a href="http://bittorrent.org/b
 <br/>*See Peer.cs, BitField.cs*
 
 4) Saves received data to __Part Files__ and creates the completed files when done
-<br/>*See TorSwarm.cs, PartFile.cs*
+<br/>*See BitSwarm.cs, PartFile.cs*
 
 ## Limitations
 
-What TorSwarm does and what it doesn't: -
+What BitSwarm does and what it doesn't: -
 
 1) __Peer__ communication is implemented over common __TCP Protocol__ (doesn't currently support *uTP, NAT Traversal, PnP, Hole-punching* etc.)
 

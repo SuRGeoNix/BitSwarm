@@ -1,14 +1,15 @@
 ﻿using System;
-using System.IO;
 using System.Collections.Generic;
-using System.Security.Cryptography;
 using System.Collections.Specialized;
+using System.IO;
+using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 using System.Web;
 
 using BencodeNET.Parsing;
 using BencodeNET.Objects;
 
-namespace SuRGeoNix.TorSwarm
+namespace SuRGeoNix.BEP
 {
     public class Torrent : IDisposable
     {
@@ -142,9 +143,9 @@ namespace SuRGeoNix.TorSwarm
             file.infoHash   = xt[2];
 
             // Base32 Hash
-            if ( file.infoHash.Length != 40 )
+            if (file.infoHash.Length != 40)
             {
-                if ( System.Text.RegularExpressions.Regex.IsMatch(file.infoHash,@"[QAZ2WSX3EDC4RFV5TGB6YHN7UJM8K9LP]+") )
+                if (Regex.IsMatch(file.infoHash,@"[QAZ2WSX3EDC4RFV5TGB6YHN7UJM8K9LP]+"))
                 {
                     try
                     {
@@ -155,7 +156,7 @@ namespace SuRGeoNix.TorSwarm
             }
 
             string[] tr     = nvc.Get("tr") == null ? null  : nvc.GetValues("tr");
-            if ( tr == null  ) return;
+            if (tr == null ) return;
 
             for (int i=0; i<tr.Length; i++)
                 file.trackers.Add(new Uri(tr[i]));
@@ -165,12 +166,12 @@ namespace SuRGeoNix.TorSwarm
             BDictionary bdicTorrent = bParser.Parse<BDictionary>(fileName);
             BDictionary bInfo;
 
-            if ( bdicTorrent["info"] != null )
+            if (bdicTorrent["info"] != null)
             {
                 bInfo = (BDictionary) bdicTorrent["info"];
                 file.trackers = GetTrackersFromTorrent(bdicTorrent);
             } 
-            else if ( bdicTorrent["name"] != null )
+            else if (bdicTorrent["name"] != null)
                 bInfo = bdicTorrent;
             else
                 throw new Exception("Invalid torrent file");
@@ -180,14 +181,14 @@ namespace SuRGeoNix.TorSwarm
         }
         public void FillFromMetadata()
         {
-            if ( metadata.file  == null ) throw new Exception("No metadata found");
+            if (metadata.file  == null) throw new Exception("No metadata found");
 
             BDictionary bInfo   = (BDictionary) bParser.Parse(metadata.file.FileName);
             FillFromInfo(bInfo);
         }
         public void FillFromInfo(BDictionary bInfo)
         {
-            if ( DownloadPath   == null ) throw new Exception("DownloadPath cannot be empty");
+            if (DownloadPath == null) throw new Exception("DownloadPath cannot be empty");
 
             isMultiFile         = (BList) bInfo["files"] == null ? false : true;
 
@@ -198,7 +199,7 @@ namespace SuRGeoNix.TorSwarm
             data.files          = new List<PartFile>();
             data.filesIncludes  = new List<string>();
 
-            if ( isMultiFile )
+            if (isMultiFile)
             {
                 file.paths      = GetPathsFromInfo(bInfo);      long tmpTotalSize;
                 file.lengths    = GetFileLengthsFromInfo(bInfo, out  tmpTotalSize);
@@ -207,7 +208,7 @@ namespace SuRGeoNix.TorSwarm
                 data.folder = Utils.FindNextAvailableDir(Path.Combine(DownloadPath, file.name)).Replace("..","_");
                 for (int i=0; i<file.paths.Count; i++)
                 {
-                    data.files.Add(new PartFile(Path.Combine(data.folder, file.paths[i]), file.pieceLength, file.lengths[i]));
+                    data.files.Add(new PartFile(Utils.FindNextAvailablePartFile(Path.Combine(data.folder, file.paths[i])), file.pieceLength, file.lengths[i]));
                     data.filesIncludes.Add(file.paths[i]);
                 }
             }

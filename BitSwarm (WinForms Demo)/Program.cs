@@ -4,7 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
-namespace UI_Example
+namespace SuRGeoNix.BitSwarmClient
 {
     static class Program
     {

@@ -5,7 +5,7 @@ using System.Text;
 
 namespace SuRGeoNix
 {
-    public class Logger : IDisposable
+    public class Logger
     {
         public string       FileName        { get; private set; }
         
@@ -13,7 +13,7 @@ namespace SuRGeoNix
         private Stopwatch   sw;
 
         private bool disposed = false;
-        private static readonly object locker = new object();
+        private readonly object locker = new object();
 
         public Logger(string fileName, bool start = false) 
         {

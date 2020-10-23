@@ -1,16 +1,15 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
-using System.Text;
-using System.Collections.Generic;
-using System.Security.Cryptography.X509Certificates;
 using System.Net.Security;
+using System.Text.RegularExpressions;
+using System.Security.Cryptography.X509Certificates;
 
 using BencodeNET.Parsing;
 using BencodeNET.Objects;
-using System.Text.RegularExpressions;
 
-namespace SuRGeoNix.TorSwarm
+namespace SuRGeoNix.BEP
 {
     public class Tracker
     {

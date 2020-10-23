@@ -3,6 +3,7 @@ using System.IO;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Text.RegularExpressions;
 using System.Security;
 
@@ -11,11 +12,14 @@ using BencodeNET.Objects;
 
 namespace SuRGeoNix
 {
-public class Utils
+    public partial class Utils
     {
         // Dir / File Next Available
         public static string FindNextAvailablePartFile(string fileName)
         {
+            // Windows MAX_PATH = 260
+            if (fileName.Length > 250) fileName = fileName.Substring(0, 250 - Path.GetExtension(fileName).Length) + Path.GetExtension(fileName);
+
             if ( !File.Exists(fileName) && !File.Exists(fileName + ".part") ) return fileName;
 
             string tmp = Path.Combine(Path.GetDirectoryName(fileName),Regex.Replace(Path.GetFileNameWithoutExtension(fileName), @"(.*) (\([0-9]+)\)$", "$1"));
@@ -297,6 +301,30 @@ public class Utils
             y = i << 4; if (y != 0) { n = n - 4; i = y; }
             y = i << 2; if (y != 0) { n = n - 2; i = y; }
             return n - (int)((uint)(i << 1) >> 31);
+        }
+
+        public static void EnsureThreadDone(Thread t, long maxMS = 250, int minMS = 10)
+        {
+            if (t != null && !t.IsAlive) return;
+
+            long escapeInfinity = maxMS / minMS;
+
+            while (t != null && t.IsAlive && escapeInfinity > 0)
+            {
+                Thread.Sleep(minMS);
+                escapeInfinity--;
+            }
+
+            if (t != null && t.IsAlive)
+            {
+                t.Abort();
+                escapeInfinity = maxMS / minMS;
+                while (t != null && t.IsAlive && escapeInfinity > 0)
+                {
+                    Thread.Sleep(minMS);
+                    escapeInfinity--;
+                }
+            }
         }
         
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Interoperability", "CA1401:PInvokesShouldNotBeVisible"), System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Security", "CA2118:ReviewSuppressUnmanagedCodeSecurityUsage"), SuppressUnmanagedCodeSecurity]

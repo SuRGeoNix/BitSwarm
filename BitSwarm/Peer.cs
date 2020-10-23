@@ -7,7 +7,7 @@ using System.Net.Sockets;
 using BencodeNET.Parsing;
 using BencodeNET.Objects;
 
-namespace SuRGeoNix.TorSwarm
+namespace SuRGeoNix.BEP
 {
     public class Peer
     {
@@ -105,7 +105,7 @@ namespace SuRGeoNix.TorSwarm
          *  3.X [UN]CHOKED | [NOT_]INTRESTED        |   Update StageYou
          * 
          * 
-         * 4. Client Messages | Send<>()            |   TorSwarm Commands / Requests when Peer is READY
+         * 4. Client Messages | Send<>()            |   BitSwarm Commands / Requests when Peer is READY
          * 
          *  4.1 METADATA_REQUEST
          *      RequestMetadata()                   |   Status.READY        -> Status.DOWNLOADING
@@ -175,7 +175,7 @@ namespace SuRGeoNix.TorSwarm
         public Options          options;
 
         private static readonly BencodeParser   bParser         = new BencodeParser();
-        private static readonly object          lockerRequests  = new object();
+        private readonly object lockerRequests  = new object();
 
         private TcpClient       tcpClient;
         private NetworkStream   tcpStream;
@@ -608,6 +608,33 @@ namespace SuRGeoNix.TorSwarm
                 Disconnect();
             }
         }
+
+        //List<Tuple<int, int, int>> lastPieces = new List<Tuple<int, int, int>>();
+        //public void CancelPieces()
+        //{
+        //    try
+        //    {
+        //        lock ( lockerRequests )
+        //        {
+        //            status      = Status.READY;
+        //            sendBuff    = new byte[0];
+
+        //            foreach ( Tuple<int, int, int> piece in lastPieces )
+        //                sendBuff = Utils.ArrayMerge(sendBuff, PrepareMessage(Messages.CANCEL, false, Utils.ArrayMerge(Utils.ToBigEndian((Int32) piece.Item1), Utils.ToBigEndian((Int32) piece.Item2), Utils.ToBigEndian((Int32) piece.Item3))));
+
+        //            tcpStream.Write(sendBuff, 0, sendBuff.Length);
+
+        //            //piecesRequested = 0;
+        //            //piecesTimeout   = 0;
+        //            lastAction      = DateTime.UtcNow.Ticks;
+        //        }
+        //    } catch (Exception e)
+        //    {
+        //        Log(1, $"[REQ ] Send Cancel Failed - {e.Message}\r\n{e.StackTrace}");
+        //        status = Status.FAILED2;
+        //        Disconnect();
+        //    }
+        //}
         public void RequestPiece(List<Tuple<int, int, int>> pieces) // piece, offset, len
         {
             try
@@ -622,6 +649,7 @@ namespace SuRGeoNix.TorSwarm
 
                     tcpStream.Write(sendBuff, 0, sendBuff.Length);
 
+                    //lastPieces      = pieces;
                     piecesRequested+= pieces.Count;
                     lastAction      = DateTime.UtcNow.Ticks;
                 }
@@ -649,6 +677,8 @@ namespace SuRGeoNix.TorSwarm
                 Disconnect();
             }
         }
+
+        // Misc
         public void SendKeepAlive()
         {
             try
@@ -661,8 +691,6 @@ namespace SuRGeoNix.TorSwarm
             }
             
         }
-
-        // Misc
         public void SendMessage(byte msgid, bool isExtended, byte[] payload)
         {
             try

@@ -2,18 +2,17 @@
 using System.Globalization;
 using System.IO;
 using System.Windows.Forms;
-
-using SuRGeoNix.TorSwarm;
-using SuRGeoNix;
 using System.Collections.Generic;
 
-namespace UI_Example
+using SuRGeoNix.BEP;
+
+namespace SuRGeoNix.BitSwarmClient
 {
     public partial class frmMain : Form
     {
         Torrent                 torrent;
-        TorSwarm                tr;
-        TorSwarm.OptionsStruct  opt;
+        BitSwarm                tr;
+        BitSwarm.OptionsStruct  opt;
 
         long requestedBytes = 0;
 
@@ -24,7 +23,7 @@ namespace UI_Example
         
         private void frmMain_Load(object sender, EventArgs e)
         {
-            TorSwarm.OptionsStruct opt = TorSwarm.GetDefaultsOptions();
+            BitSwarm.OptionsStruct opt = BitSwarm.GetDefaultsOptions();
 
             downPath.Text           = opt.DownloadPath;
             maxCon.Text             = opt.MaxConnections.ToString();
@@ -45,7 +44,7 @@ namespace UI_Example
 
                 try
                 {
-                    opt = TorSwarm.GetDefaultsOptions();
+                    opt = BitSwarm.GetDefaultsOptions();
                     
                     opt.DownloadPath        = downPath.Text;
 
@@ -63,19 +62,19 @@ namespace UI_Example
 
                     opt.EnableDHT           = true;
 
-                    opt.Verbosity           = 1;
+                    opt.Verbosity           = 0;
                     opt.LogDHT              = false;
-                    opt.LogStats            = true;
+                    opt.LogStats            = false;
                     opt.LogTracker          = false;
                     opt.LogPeer             = false;
                 
                     output.Text     = "Started at " + DateTime.Now.ToString("G", DateTimeFormatInfo.InvariantInfo) + "\r\n";
                     button1.Text    = "Stop";
 
-                    if ( File.Exists(input.Text.Trim()) ) 
-                        tr = new TorSwarm(input.Text.Trim(), opt);
+                    if (File.Exists(input.Text.Trim())) 
+                        tr = new BitSwarm(input.Text.Trim(), opt);
                     else
-                        tr = new TorSwarm(new Uri(input.Text.Trim()), opt);
+                        tr = new BitSwarm(new Uri(input.Text.Trim()), opt);
                     tr.Start();
                 }
                 catch (Exception e1)
@@ -87,7 +86,7 @@ namespace UI_Example
 
             } else
             {
-                tr.Stop();
+                tr.Dispose();
                 button1.Text = "Start";
             }
         }
@@ -147,7 +146,7 @@ namespace UI_Example
 
             if (torrent != null) torrent.Dispose();
         }
-        private void Stats(TorSwarm.StatsStructure stats)
+        private void Stats(BitSwarm.StatsStructure stats)
         {
             if ( InvokeRequired )
             {
@@ -201,7 +200,7 @@ namespace UI_Example
         }
         private void frmMain_FormClosing(object sender, FormClosingEventArgs e)
         {
-            if ( tr != null) tr.Stop();
+            if ( tr != null) tr.Dispose();
         }
 
         

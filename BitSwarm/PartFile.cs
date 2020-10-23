@@ -1,9 +1,8 @@
 ﻿using System;
-using System.IO;
 using System.Collections.Generic;
-using System.Threading;
+using System.IO;
 
-namespace SuRGeoNix.TorSwarm
+namespace SuRGeoNix
 {
     public class PartFile : IDisposable
     {
@@ -23,8 +22,8 @@ namespace SuRGeoNix.TorSwarm
         private int         lastPos;
         private int         lastChunkSize;
 
-        private static readonly object locker = new object();
-        private static readonly object fileCreating = new object();
+        readonly object locker = new object();
+        readonly object fileCreating = new object();
 
         public PartFile(string fileName, int chunkSize, long size = -1, bool autoCreate = true)
         {

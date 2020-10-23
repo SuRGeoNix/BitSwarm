@@ -1,16 +1,16 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
-VisualStudioVersion = 16.0.30011.22
+VisualStudioVersion = 16.0.30523.141
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TorSwarm", "TorSwarm\TorSwarm.csproj", "{F1C06E1A-3783-441E-BECC-3113D90A9796}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BitSwarm", "BitSwarm\BitSwarm.csproj", "{373AC16D-9FB0-4215-B09B-E576516932D0}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UI Example", "UI Example\UI Example.csproj", "{54478B08-BB57-4B2A-A2E4-0A9598EB8635}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BitSwarm (WinForms Demo)", "BitSwarm (WinForms Demo)\BitSwarm (WinForms Demo).csproj", "{54478B08-BB57-4B2A-A2E4-0A9598EB8635}"
 	ProjectSection(ProjectDependencies) = postProject
-		{F1C06E1A-3783-441E-BECC-3113D90A9796} = {F1C06E1A-3783-441E-BECC-3113D90A9796}
+		{373AC16D-9FB0-4215-B09B-E576516932D0} = {373AC16D-9FB0-4215-B09B-E576516932D0}
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{436C99D1-C75F-4C6C-AC06-F122E5E02118}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{9A8A0907-6A1E-4E2B-B82E-49060C07F398}"
 	ProjectSection(SolutionItems) = preProject
 		README.md = README.md
 	EndProjectSection
@@ -25,18 +25,18 @@ Global
 		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{F1C06E1A-3783-441E-BECC-3113D90A9796}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{F1C06E1A-3783-441E-BECC-3113D90A9796}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{F1C06E1A-3783-441E-BECC-3113D90A9796}.Debug|x64.ActiveCfg = Debug|x64
-		{F1C06E1A-3783-441E-BECC-3113D90A9796}.Debug|x64.Build.0 = Debug|x64
-		{F1C06E1A-3783-441E-BECC-3113D90A9796}.Debug|x86.ActiveCfg = Debug|x86
-		{F1C06E1A-3783-441E-BECC-3113D90A9796}.Debug|x86.Build.0 = Debug|x86
-		{F1C06E1A-3783-441E-BECC-3113D90A9796}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{F1C06E1A-3783-441E-BECC-3113D90A9796}.Release|Any CPU.Build.0 = Release|Any CPU
-		{F1C06E1A-3783-441E-BECC-3113D90A9796}.Release|x64.ActiveCfg = Release|x64
-		{F1C06E1A-3783-441E-BECC-3113D90A9796}.Release|x64.Build.0 = Release|x64
-		{F1C06E1A-3783-441E-BECC-3113D90A9796}.Release|x86.ActiveCfg = Release|x86
-		{F1C06E1A-3783-441E-BECC-3113D90A9796}.Release|x86.Build.0 = Release|x86
+		{373AC16D-9FB0-4215-B09B-E576516932D0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{373AC16D-9FB0-4215-B09B-E576516932D0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{373AC16D-9FB0-4215-B09B-E576516932D0}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{373AC16D-9FB0-4215-B09B-E576516932D0}.Debug|x64.Build.0 = Debug|Any CPU
+		{373AC16D-9FB0-4215-B09B-E576516932D0}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{373AC16D-9FB0-4215-B09B-E576516932D0}.Debug|x86.Build.0 = Debug|Any CPU
+		{373AC16D-9FB0-4215-B09B-E576516932D0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{373AC16D-9FB0-4215-B09B-E576516932D0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{373AC16D-9FB0-4215-B09B-E576516932D0}.Release|x64.ActiveCfg = Release|Any CPU
+		{373AC16D-9FB0-4215-B09B-E576516932D0}.Release|x64.Build.0 = Release|Any CPU
+		{373AC16D-9FB0-4215-B09B-E576516932D0}.Release|x86.ActiveCfg = Release|Any CPU
+		{373AC16D-9FB0-4215-B09B-E576516932D0}.Release|x86.Build.0 = Release|Any CPU
 		{54478B08-BB57-4B2A-A2E4-0A9598EB8635}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{54478B08-BB57-4B2A-A2E4-0A9598EB8635}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{54478B08-BB57-4B2A-A2E4-0A9598EB8635}.Debug|x64.ActiveCfg = Debug|x64
@@ -54,6 +54,6 @@ Global
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {9B085194-7110-4D40-94E9-FE31F2DD16A4}
+		SolutionGuid = {4DAE6868-09D7-4283-963F-55DE9AB2BD34}
 	EndGlobalSection
 EndGlobal

@@ -1,16 +1,16 @@
 ﻿using System;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Security.Cryptography;
 using System.Collections.Generic;
 
-using static SuRGeoNix.TorSwarm.Torrent.TorrentData;
-using static SuRGeoNix.TorSwarm.Torrent.MetaData;
-using System.Linq;
+using SuRGeoNix.BEP;
+using static SuRGeoNix.BEP.Torrent.TorrentData;
 
-namespace SuRGeoNix.TorSwarm
+namespace SuRGeoNix
 {
-    public class TorSwarm
+    public class BitSwarm
     {
         // ====================== PUBLIC ======================
 
@@ -42,7 +42,7 @@ namespace SuRGeoNix.TorSwarm
             public bool     EnableDHT           { get; set; }
             public int      RequestBlocksPerPeer{ get; set; }
 
-            public int      Verbosity           { get; set; }   // 1 -> TorSwarm, 2 -> Peers | Trackers
+            public int      Verbosity           { get; set; }   // 1 -> BitSwarm, 2 -> Peers | Trackers
             public bool     LogTracker          { get; set; }
             public bool     LogPeer             { get; set; }
             public bool     LogDHT              { get; set; }
@@ -89,7 +89,7 @@ namespace SuRGeoNix.TorSwarm
             public int toPiece;
             public bool isDone;
         }
-        public Dictionary<long, FocusPoint> FocusPoints                 { get; private set; } = new Dictionary<long, TorSwarm.FocusPoint>();
+        public Dictionary<long, FocusPoint> FocusPoints                 { get; private set; } = new Dictionary<long, FocusPoint>();
         public void CreateFocusPoint(FocusPoint fp) { Log($"[DEBUG001] Creating Focus Point from {fp.fromPiece} to {fp.toPiece}"); lock ( FocusPoints ) if ( !FocusPoints.ContainsKey(fp.id) ) FocusPoints.Add(fp.id, fp); else FocusPoints[fp.id].toPiece = Math.Max(FocusPoints[fp.id].toPiece, fp.toPiece); }
         public void DeleteFocusPoint(long id)       { Log($"[DEBUG001] Deleting Focus Point from {id}");    lock ( FocusPoints ) FocusPoints.Remove(id); }
         public void DeleteFocusPoints()             { Log($"[DEBUG001] Deleting Focus Points");             lock ( FocusPoints ) FocusPoints.Clear(); }
@@ -97,9 +97,9 @@ namespace SuRGeoNix.TorSwarm
         // ====================== PRIVATE =====================
 
         // Lockers
-        private static readonly object  lockerTorrent       = new object();
-        private static readonly object  lockerMetadata      = new object();
-        private static readonly object  lockerPeers         = new object();
+        readonly object  lockerTorrent       = new object();
+        readonly object  lockerMetadata      = new object();
+        readonly object  lockerPeers         = new object();
 
         // Generators (Hash / Random)
         public  static SHA1             sha1                = new SHA1Managed();
@@ -149,14 +149,14 @@ namespace SuRGeoNix.TorSwarm
         // ================= PUBLIC METHODS ===================
 
         // Constructors
-        public TorSwarm(string torrent, OptionsStruct? opt = null)
+        public BitSwarm(string torrent, OptionsStruct? opt = null)
         { 
             Options         = (opt == null) ? GetDefaultsOptions() : (OptionsStruct) opt;
             Initiliaze();
             this.torrent.FillFromTorrentFile(torrent);
             Setup();
         }
-        public TorSwarm(Uri magnetLink, OptionsStruct? opt = null)
+        public BitSwarm(Uri magnetLink, OptionsStruct? opt = null)
         {
             Options         = (opt == null) ? GetDefaultsOptions() : (OptionsStruct) opt;
             Initiliaze();
@@ -279,7 +279,7 @@ namespace SuRGeoNix.TorSwarm
             lock ( lockerTorrent)
             {
                 long curDistance = 0;
-                for ( int i=0; i<torrent.file.paths.Count; i++ )
+                for (int i=0; i<torrent.file.paths.Count; i++)
                 { 
                     bool isIncluded = false;
 
@@ -287,12 +287,12 @@ namespace SuRGeoNix.TorSwarm
                     {
                         if ( file == torrent.file.paths[i] )
                         {
-                            if ( !torrent.data.filesIncludes.Contains(torrent.file.paths[i]))
+                            if (!torrent.data.filesIncludes.Contains(torrent.file.paths[i]))
                             {
                                 newProgress.CopyFrom(torrent.data.progressPrev, (int) (curDistance/torrent.file.pieceLength), (int) ((curDistance + torrent.file.lengths[i])/torrent.file.pieceLength));
                                 newRequests.CopyFrom(torrent.data.requestsPrev, (int) (curDistance/torrent.file.pieceLength), (int) ((curDistance + torrent.file.lengths[i])/torrent.file.pieceLength));
                             }
-                            else if ( torrent.data.filesIncludes.Contains(torrent.file.paths[i]))
+                            else if (torrent.data.filesIncludes.Contains(torrent.file.paths[i]))
                             {
                                 newProgress.CopyFrom(torrent.data.progress,     (int) (curDistance/torrent.file.pieceLength), (int) ((curDistance + torrent.file.lengths[i])/torrent.file.pieceLength));
                                 newRequests.CopyFrom(torrent.data.requests,     (int) (curDistance/torrent.file.pieceLength), (int) ((curDistance + torrent.file.lengths[i])/torrent.file.pieceLength));
@@ -321,11 +321,13 @@ namespace SuRGeoNix.TorSwarm
         // Start / Pause / Stop
         public void Start()
         {
-            if ( status == Status.RUNNING || (torrent.data.progress != null && torrent.data.progress.GetFirst0() == - 1) ) return;
+            if (status == Status.RUNNING || (torrent.data.progress != null && torrent.data.progress.GetFirst0() == - 1)) return;
             
             status = Status.RUNNING;
             mode = Mode.NORMAL;
             torrent.data.isDone = false;
+
+            Utils.EnsureThreadDone(beggar);
 
             beggar = new Thread(() =>
             {
@@ -345,20 +347,25 @@ namespace SuRGeoNix.TorSwarm
             if ( status == Status.PAUSED ) return;
 
             status = Status.PAUSED;
-        }
-        public void Stop()
-        {
-            if ( status == Status.STOPPED ) return;
-
-            status = Status.STOPPED;
-            Thread.Sleep(800);
-            
-            if ( beggar != null ) beggar.Abort();
+            Utils.EnsureThreadDone(beggar);
         }
         public void Dispose()
         {
-            if (torrent != null) torrent.Dispose();
-            if (log != null) log.Dispose();
+            try
+            {
+
+                status = Status.STOPPED;
+                Utils.EnsureThreadDone(beggar);
+
+                if (peers != null)
+                    foreach (Peer peer in peers)
+                        peer.Disconnect();
+
+                if (torrent != null) torrent.Dispose();
+
+                if (log != null) log.Dispose();
+            } catch (Exception) { }
+            
         }
 
         // ================ PRIVATE METHODS =================
@@ -368,7 +375,7 @@ namespace SuRGeoNix.TorSwarm
         {
             foreach (Uri uri in torrent.file.trackers)
             {
-                if ( uri.Scheme.ToLower() == "http" || uri.Scheme.ToLower() == "https" || uri.Scheme.ToLower() == "udp" )
+                if (uri.Scheme.ToLower() == "http" || uri.Scheme.ToLower() == "https" || uri.Scheme.ToLower() == "udp")
                 {
                     Log($"[Torrent] [Tracker] [ADD] {uri}");
                     trackers.Add(new Tracker(uri, trackerOpt));
@@ -379,8 +386,8 @@ namespace SuRGeoNix.TorSwarm
         }
         private void FillPeersFromTracker(int pos)
         {
-            if ( !trackers[pos].Announce(Options.PeersFromTracker) ) { if ( Options.LogTracker) trackers[pos].Log($"[{trackers[pos].host}:{trackers[pos].port} Failed"); return; }
-            if ( trackers[pos].peers == null) {trackers[pos].Log($"[{trackers[pos].host}:{trackers[pos].port}] No peers"); return; }
+            if (!trackers[pos].Announce(Options.PeersFromTracker) ) { if ( Options.LogTracker) trackers[pos].Log($"[{trackers[pos].host}:{trackers[pos].port} Failed"); return; }
+            if (trackers[pos].peers == null) {trackers[pos].Log($"[{trackers[pos].host}:{trackers[pos].port}] No peers"); return; }
 
             lock ( lockerPeers )
             {
@@ -396,9 +403,9 @@ namespace SuRGeoNix.TorSwarm
         }
         private void FillPeersFromDHT(Dictionary<string, int> newPeers)
         {   
-            lock ( lockerPeers )
+            lock (lockerPeers)
             {
-                if ( Options.LogDHT) dht.Log($"[BEFORE] Adding {newPeers.Count} in Peers {peers.Count}");
+                if (Options.LogDHT) dht.Log($"[BEFORE] Adding {newPeers.Count} in Peers {peers.Count}");
 
                 foreach (Peer peer in peers)
                     if ( newPeers.ContainsKey(peer.host) ) { if ( Options.LogDHT) dht.Log($"Peer {peer.host} already exists"); newPeers.Remove(peer.host); }
@@ -426,7 +433,7 @@ namespace SuRGeoNix.TorSwarm
                             
             foreach (Peer peer in peers)
             {
-                switch ( peer.status )
+                switch (peer.status)
                 {
                     case Peer.Status.NEW:
                         Stats.PeersInQueue++;
@@ -471,28 +478,28 @@ namespace SuRGeoNix.TorSwarm
 
             long totalBytesDownloaded = Stats.BytesDownloaded + Stats.BytesDropped;
             Stats.DownRate      = (int) (totalBytesDownloaded - Stats.BytesDownloadedPrev) / 2; // Change this (2 seconds) if you change scheduler
-            if ( curSeconds > 0 ) 
+            if (curSeconds > 0) 
                 Stats.AvgRate   = (int) (totalBytesDownloaded / curSeconds);
             
-            if ( torrent.data.totalSize - Stats.BytesDownloaded == 0 )
+            if (torrent.data.totalSize - Stats.BytesDownloaded == 0)
             {
                 Stats.ETA       = 0;
                 Stats.AvgETA    = 0;
             } 
             else
             {
-                if ( Stats.BytesDownloaded - Stats.BytesDownloadedPrev == 0 )
+                if (Stats.BytesDownloaded - Stats.BytesDownloadedPrev == 0)
                     Stats.ETA  *= 2; // Kind of infinite | int overflow nice
                 else 
                     Stats.ETA   = (int) ( (torrent.data.totalSize - Stats.BytesDownloaded) / ((Stats.BytesDownloaded - Stats.BytesDownloadedPrev) / 2) );
 
-                if ( Stats.BytesDownloaded  == 0 )
+                if (Stats.BytesDownloaded  == 0)
                     Stats.AvgETA*= 2; // Kind of infinite
                 else
-                    if ( curSeconds > 0 ) Stats.AvgETA = (int) ( (torrent.data.totalSize - Stats.BytesDownloaded) / (Stats.BytesDownloaded / curSeconds ) );
+                    if (curSeconds > 0) Stats.AvgETA = (int) ( (torrent.data.totalSize - Stats.BytesDownloaded) / (Stats.BytesDownloaded / curSeconds ) );
             }
                                 
-            if ( Stats.DownRate > Stats.MaxRate ) Stats.MaxRate = Stats.DownRate;
+            if (Stats.DownRate > Stats.MaxRate) Stats.MaxRate = Stats.DownRate;
 
             Stats.BytesDownloadedPrev   = totalBytesDownloaded;
             Stats.PeersTotal            = peers.Count;
@@ -501,7 +508,7 @@ namespace SuRGeoNix.TorSwarm
             Options.StatsCallback?.BeginInvoke(Stats, null, null);
 
             // Stats -> Log
-            if ( Options.LogStats )
+            if (Options.LogStats)
             {
                 Log($"[STATS] [INQUEUE: {String.Format("{0,3}",Stats.PeersInQueue)}]\t[DROPPED: {String.Format("{0,3}",Stats.PeersDropped)}]\t[CONNECTS: {String.Format("{0,3}",openConnections)}]\t[CONNECTING: {String.Format("{0,3}",Stats.PeersConnecting)}]\t[FAIL1: {String.Format("{0,3}",Stats.PeersFailed1)}]\t[FAIL2: {String.Format("{0,3}",Stats.PeersFailed2)}]\t[READY: {String.Format("{0,3}",Stats.PeersConnected)}]\t[CHOKED: {String.Format("{0,3}",Stats.PeersChoked)}]\t[UNCHOKED: {String.Format("{0,3}",Stats.PeersUnChoked)}]\t[DOWNLOADING: {String.Format("{0,3}",Stats.PeersDownloading)}]");
                 Log($"[STATS] [CUR MAX: {String.Format("{0:n0}", (Stats.MaxRate / 1024)) + " KB/s"}]\t[DOWN CUR: {String.Format("{0:n0}", (Stats.DownRate / 1024)) + " KB/s"}]\t[DOWN AVG: {String.Format("{0:n0}", (Stats.AvgRate / 1024)) + " KB/s"}]\t[ETA CUR: {TimeSpan.FromSeconds(Stats.ETA).ToString(@"hh\:mm\:ss")}]\t[ETA AVG: {TimeSpan.FromSeconds(Stats.AvgETA).ToString(@"hh\:mm\:ss")}]\t[ETA R: {TimeSpan.FromSeconds((Stats.ETA + Stats.AvgETA)/2).ToString(@"hh\:mm\:ss")}]");
@@ -536,22 +543,25 @@ namespace SuRGeoNix.TorSwarm
                 curSeconds              = 0;
                 metadataLastRequested   = DateTime.UtcNow.Ticks;
 
+                for (int i=0; i<peers.Count; i++)
+                    peers[i] = new Peer(peers[i].host, peers[i].port, peerOpt);
+
                 log.RestartTime();
-                if ( Options.EnableDHT ) { logDHT.RestartTime(); dht.Start(); }
+                if ( Options.EnableDHT ) { logDHT.RestartTime(); FillPeersFromDHT(dht.cachedPeers); dht.ClearCachedPeers(); dht.Start(); }
                 PeerBeggar();
 
                 Log("[BEGGAR  ] " + status);
 
-                while ( status == Status.RUNNING )
+                while (status == Status.RUNNING)
                 {
-                    lock ( lockerPeers )
+                    lock (lockerPeers)
                     {
                         openConnections = 0;
 
                         // Request Piece | Count Connections
                         foreach (Peer peer in peers)
                         {
-                            if ( status != Status.RUNNING ) break;
+                            if (status != Status.RUNNING) break;
                             switch ( peer.status )
                             {
                                 case Peer.Status.CONNECTING:
@@ -570,11 +580,11 @@ namespace SuRGeoNix.TorSwarm
                         // Request Piece | New Connections 
                         foreach (Peer peer in peers)
                         {
-                            if ( status != Status.RUNNING ) break;
-                            switch ( peer.status )
+                            if (status != Status.RUNNING) break;
+                            switch (peer.status)
                             {
                                 case Peer.Status.NEW:
-                                    if ( openConnections < Options.MaxConnections )
+                                    if (openConnections < Options.MaxConnections)
                                     {
                                         openConnections++;
                                         peer.status = Peer.Status.CONNECTING;
@@ -593,44 +603,44 @@ namespace SuRGeoNix.TorSwarm
                         }
 
                         // Scheduler
-                        if ( log.GetTime() - (curSeconds * 1000) > 990 )
+                        if (log.GetTime() - (curSeconds * 1000) > 990)
                         {
                             // Scheduler Every 1 Second
                             curSecondTicks = DateTime.UtcNow.Ticks;
                             curSeconds++;
 
                             // Check Request Timeouts
-                            if ( torrent.metadata.isDone )
+                            if (torrent.metadata.isDone)
                                 CheckRequestTimeouts();
                             else
-                                if ( curSecondTicks - metadataLastRequested > Options.MetadataTimeout * 10000 ) { torrent.metadata.parallelRequests += 2; Log($"[REQ ] [M] Timeout"); }
+                                if (curSecondTicks - metadataLastRequested > Options.MetadataTimeout * 10000) { torrent.metadata.parallelRequests += 2; Log($"[REQ ] [M] Timeout"); }
 
                             // Scheduler Every 2 Seconds    [Stats | Clean Failed Peers]
-                            if ( curSeconds % 2 == 0 )
+                            if (curSeconds % 2 == 0)
                             {
-                                if ( torrent.metadata.isDone && torrent.data.pieces > 0 &&  (torrent.data.pieces - torrent.data.progress.setsCounter) * torrent.data.blocks < 300 )
+                                if (torrent.metadata.isDone && torrent.data.pieces > 0 &&  (torrent.data.pieces - torrent.data.progress.setsCounter) * torrent.data.blocks < 300)
                                 {
                                     Log($"[MODE] Getting in End Game Mode");
                                     mode = Mode.ENDGAME;
                                 }
 
                                 // Same as below just more often.... | To be reviewed
-                                if ( torrent.metadata.isDone && torrent.data.pieces > 0 &&  (torrent.data.progress.setsCounter / torrent.data.pieces) * 100 > 90 )
+                                if (torrent.metadata.isDone && torrent.data.pieces > 0 &&  (torrent.data.progress.setsCounter / torrent.data.pieces) * 100 > 90)
                                 {
                                     foreach (Peer peer in peers)
                                     {
-                                        if ( peer.status == Peer.Status.READY )
+                                        if (peer.status == Peer.Status.READY)
                                         {
                                             if ( !peer.stageYou.unchoked )
                                             {
-                                                if ( Stats.PeersChoked > Options.MaxConnections / 2 && Stats.PeersInQueue > Options.MaxConnections / 4 )
+                                                if (Stats.PeersChoked > Options.MaxConnections / 2 && Stats.PeersInQueue > Options.MaxConnections / 4)
                                                 {
                                                     Log($"[DROP] Choked Peer | Case0 0x02 {peer.host}");
                                                     Stats.PeersChoked--;
                                                     peer.status = Peer.Status.FAILED2;
                                                     peer.Disconnect();
                                                 }
-                                                else if ( curSecondTicks - peer.chokedAt > 30 * 1000 * 10000 )
+                                                else if (curSecondTicks - peer.chokedAt > 30 * 1000 * 10000)
                                                 {
                                                     Log($"[DROP] Choked Peer | Case0 0x03 {peer.host}");
                                                     Stats.PeersChoked--;
@@ -638,7 +648,7 @@ namespace SuRGeoNix.TorSwarm
                                                     peer.Disconnect();
                                                 }
                                             }
-                                            if ( peer.status == Peer.Status.READY && Stats.PeersDownloading < Options.MaxConnections / 2 && curSecondTicks - peer.connectedAt > 3 * 1000 * 10000 && (peer.stageYou.haveNone || (!peer.stageYou.haveAll && peer.stageYou.bitfield == null) || torrent.data.requests.GetFirst01(peer.stageYou.bitfield) == -1 ) )
+                                            if (peer.status == Peer.Status.READY && Stats.PeersDownloading < Options.MaxConnections / 2 && curSecondTicks - peer.connectedAt > 3 * 1000 * 10000 && (peer.stageYou.haveNone || (!peer.stageYou.haveAll && peer.stageYou.bitfield == null) || torrent.data.requests.GetFirst01(peer.stageYou.bitfield) == -1 ))
                                             {
                                                 Log($"[DROP] No Pieces Peer | Case0 0x01 {peer.host}");
                                                 peer.status = Peer.Status.FAILED2;
@@ -649,9 +659,9 @@ namespace SuRGeoNix.TorSwarm
                                     }
                                 }
 
-                                if ( torrent.metadata.isDone ) FillStats();
+                                if (torrent.metadata.isDone) FillStats();
 
-                                if ( Options.EnableDHT )
+                                if (Options.EnableDHT)
                                     if (        dht.status == DHT.Status.RUNNING && Stats.PeersInQueue > Options.MaxConnections ) 
                                         dht.Stop();
                                     else if (   dht.status == DHT.Status.STOPPED && Stats.PeersInQueue < (Options.MaxConnections / 3) )
@@ -659,12 +669,12 @@ namespace SuRGeoNix.TorSwarm
                             }
 
                             // Scheduler Every 5 Seconds    [Peers MSG Keep Alive]
-                            if ( curSeconds % 5 == 0 )
+                            if (curSeconds % 5 == 0)
                             {
                                 // Keep Alives / Interested
                                 foreach (Peer peer in peers)
                                 {
-                                    switch ( peer.status )
+                                    switch (peer.status)
                                     {
                                         case Peer.Status.READY:
                                             if ( (curSecondTicks - peer.lastAction) / 10000 > 3000 )
@@ -676,28 +686,28 @@ namespace SuRGeoNix.TorSwarm
                             }
 
                             // Scheduler Every 16 Seconds   [Peers MSG Intrested | Drop Peer without our Pieces]
-                            if ( curSeconds % 16 == 0 )
+                            if (curSeconds % 16 == 0)
                             {
                                 // Client-> Peers [MSG Intrested]
                                 foreach (Peer peer in peers)
                                 {
-                                    switch ( peer.status )
+                                    switch (peer.status)
                                     {
                                         case Peer.Status.READY:
 
                                             // TODO: Check how you affect the Stats
 
                                             // Don't keep too many choked connections open
-                                            if ( !peer.stageYou.unchoked )
+                                            if (!peer.stageYou.unchoked)
                                             {
-                                                if ( Stats.PeersChoked > Options.MaxConnections / 2 && Stats.PeersInQueue > Options.MaxConnections / 4 )
+                                                if (Stats.PeersChoked > Options.MaxConnections / 2 && Stats.PeersInQueue > Options.MaxConnections / 4)
                                                 {
                                                     Log($"[DROP] Choked Peer | Case1 0x02 {peer.host}");
                                                     Stats.PeersChoked--;
                                                     peer.status = Peer.Status.FAILED2;
                                                     peer.Disconnect();
                                                 }
-                                                else if ( curSecondTicks - peer.chokedAt > 30 * 1000 * 10000 )
+                                                else if (curSecondTicks - peer.chokedAt > 30 * 1000 * 10000)
                                                 {
                                                     Log($"[DROP] Choked Peer | Case1 0x03 {peer.host}");
                                                     Stats.PeersChoked--;
@@ -707,7 +717,7 @@ namespace SuRGeoNix.TorSwarm
                                             }
 
                                             // Peers without our pieces (3 seconds after connected to ensure we have the info from peer)
-                                            if ( peer.status == Peer.Status.READY && Stats.PeersDownloading < Options.MaxConnections / 2 && curSecondTicks - peer.connectedAt > 3 * 1000 * 10000 && (peer.stageYou.haveNone || (!peer.stageYou.haveAll && peer.stageYou.bitfield == null) || torrent.data.requests.GetFirst01(peer.stageYou.bitfield) == -1 ) )
+                                            if (peer.status == Peer.Status.READY && Stats.PeersDownloading < Options.MaxConnections / 2 && curSecondTicks - peer.connectedAt > 3 * 1000 * 10000 && (peer.stageYou.haveNone || (!peer.stageYou.haveAll && peer.stageYou.bitfield == null) || torrent.data.requests.GetFirst01(peer.stageYou.bitfield) == -1 ))
                                             {
                                                 Log($"[DROP] No Pieces Peer | Case1 0x01 {peer.host}");
                                                 peer.status = Peer.Status.FAILED2;
@@ -715,7 +725,7 @@ namespace SuRGeoNix.TorSwarm
                                             }
 
                                             // Peers MSG Intrested (and still Ready)
-                                            if ( !peer.stageYou.unchoked && peer.status == Peer.Status.READY )
+                                            if (!peer.stageYou.unchoked && peer.status == Peer.Status.READY)
                                             {
                                                 peer.SendMessage(Peer.Messages.INTRESTED, false, null);
                                             }
@@ -726,12 +736,12 @@ namespace SuRGeoNix.TorSwarm
                             }
 
                             // Scheduler Every 40 Seconds   [DHT Clear Cache Peers]
-                            if ( curSeconds % 40 == 0 && Stats.PeersInQueue < Options.MaxConnections )
+                            if (curSeconds % 40 == 0 && Stats.PeersInQueue < Options.MaxConnections)
                             {
                                 // Client -> Trackers [Announce]
                                 PeerBeggar();
 
-                                if ( Options.EnableDHT && Stats.PeersInQueue < (Options.MaxConnections / 2) )
+                                if (Options.EnableDHT && Stats.PeersInQueue < (Options.MaxConnections / 2))
                                     dht.ClearCachedPeers();
                             }
 
@@ -743,14 +753,14 @@ namespace SuRGeoNix.TorSwarm
 
                 } // While
 
-                if ( Options.EnableDHT ) dht.Stop();
+                if (Options.EnableDHT) dht.Stop();
                 Log("[BEGGAR  ] " + status);
 
                 // Clean Up
                 foreach (Peer peer in peers)
                     peer.Disconnect();
 
-                if ( torrent.metadata.isDone ) FillStats();
+                if (torrent.metadata.isDone) FillStats();
 
                 //torrent.Dispose();
                 //log.Dispose();
@@ -763,29 +773,29 @@ namespace SuRGeoNix.TorSwarm
 
         private void CheckRequestTimeouts()
         {
-            lock ( lockerTorrent )
+            lock (lockerTorrent)
             {
                 for (int i=torrent.data.pieceRequests.Count-1; i>=0; i--)
                 {
-                    if ( curSecondTicks - torrent.data.pieceRequests[i].timestamp > Options.PieceTimeout * 10000 )
+                    if (curSecondTicks - torrent.data.pieceRequests[i].timestamp > Options.PieceTimeout * 10000)
                     {
                         // !(Piece Done | Block Done)
                         bool containsKey = torrent.data.pieceProgress.ContainsKey(torrent.data.pieceRequests[i].piece);
-                        if ( !(( !containsKey && torrent.data.progress.GetBit(torrent.data.pieceRequests[i].piece) ) 
+                        if ( !(( !containsKey && torrent.data.progress.GetBit(torrent.data.pieceRequests[i].piece)) 
                              ||(  containsKey && torrent.data.pieceProgress[torrent.data.pieceRequests[i].piece].progress.GetBit(torrent.data.pieceRequests[i].block))) )
                         { 
                             torrent.data.pieceRequests[i].peer.PiecesTimeout++;
                             Log($"[{torrent.data.pieceRequests[i].peer.host.PadRight(15, ' ')}] [REQT][P]\tPiece: {torrent.data.pieceRequests[i].piece} Block: {torrent.data.pieceRequests[i].block} Offset: {torrent.data.pieceRequests[i].block * torrent.data.blockSize} Size: {torrent.data.pieceRequests[i].size} Requests: {torrent.data.pieceRequests[i].peer.PiecesRequested} Timeouts: {torrent.data.pieceRequests[i].peer.PiecesTimeout} Piece timeout");
 
-                            if ( torrent.data.pieceRequests[i].peer.status != Peer.Status.READY && torrent.data.pieceRequests[i].peer.PiecesTimeout >= Options.RequestBlocksPerPeer )
+                            if (torrent.data.pieceRequests[i].peer.status != Peer.Status.READY && torrent.data.pieceRequests[i].peer.PiecesTimeout >= Options.RequestBlocksPerPeer)
                             {
                                 Log($"[DROP] [{torrent.data.pieceRequests[i].peer.host.PadRight(15, ' ')}] [REQT][P]\tRequests: {torrent.data.pieceRequests[i].peer.PiecesRequested} Timeouts: {torrent.data.pieceRequests[i].peer.PiecesTimeout} Piece timeout");
                                 torrent.data.pieceRequests[i].peer.status  = Peer.Status.FAILED2; torrent.data.pieceRequests[i].peer.Disconnect(); 
                             }
-                            else if ( torrent.data.pieceRequests[i].peer.status == Peer.Status.DOWNLOADING )
+                            else if (torrent.data.pieceRequests[i].peer.status == Peer.Status.DOWNLOADING)
                                  torrent.data.pieceRequests[i].peer.status  = Peer.Status.READY;
 
-                            if ( containsKey && !torrent.data.pieceRequests[i].aggressive) torrent.data.pieceProgress[torrent.data.pieceRequests[i].piece].requests.UnSetBit(torrent.data.pieceRequests[i].block);
+                            if (containsKey && !torrent.data.pieceRequests[i].aggressive) torrent.data.pieceProgress[torrent.data.pieceRequests[i].piece].requests.UnSetBit(torrent.data.pieceRequests[i].block);
 
                             if (!torrent.data.pieceRequests[i].aggressive) { torrent.data.requests.UnSetBit(torrent.data.pieceRequests[i].piece); torrent.data.requestsPrev.UnSetBit(torrent.data.pieceRequests[i].piece); }
                             pieceTimeouts++;
@@ -803,12 +813,12 @@ namespace SuRGeoNix.TorSwarm
             int piece, block, blockSize;
 
             // Metadata Requests (Until Done)
-            if ( !torrent.metadata.isDone )
+            if (!torrent.metadata.isDone)
             {
-                if ( peer.stageYou.metadataRequested || peer.stageYou.extensions.ut_metadata == 0 ) return;
-                if ( torrent.metadata.parallelRequests < 1 ) return;
+                if (peer.stageYou.metadataRequested || peer.stageYou.extensions.ut_metadata == 0) return;
+                if (torrent.metadata.parallelRequests < 1) return;
 
-                if ( torrent.metadata.totalSize == 0 )
+                if (torrent.metadata.totalSize == 0)
                 {   
                     torrent.metadata.parallelRequests -= 2;
                     peer.RequestMetadata(0, 1);
@@ -817,13 +827,13 @@ namespace SuRGeoNix.TorSwarm
                 else
                 {
                     piece = torrent.metadata.progress.GetFirst0();
-                    if ( piece < 0 ) return;
+                    if (piece < 0) return;
 
                     int piece2 = torrent.metadata.progress.GetFirst0(piece + 1);
 
-                    if ( piece > torrent.metadata.pieces - 1 || piece2 > torrent.metadata.pieces - 1 ) return;
+                    if (piece > torrent.metadata.pieces - 1 || piece2 > torrent.metadata.pieces - 1) return;
 
-                    if ( piece2 >= 0 )
+                    if (piece2 >= 0)
                     {
                         torrent.metadata.parallelRequests -= 2;
                         peer.RequestMetadata(piece, piece2);
@@ -849,22 +859,22 @@ namespace SuRGeoNix.TorSwarm
 
             if ( mode == Mode.ENDGAME )
             {
-                if ( !peer.stageYou.unchoked) return; // Give it Some Time
+                if (!peer.stageYou.unchoked) return; // Give it Some Time
 
-                if ( peer.stageYou.haveNone || (!peer.stageYou.haveAll && peer.stageYou.bitfield == null) ) { peer.Disconnect(); return; }
+                if (peer.stageYou.haveNone || (!peer.stageYou.haveAll && peer.stageYou.bitfield == null)) { peer.Disconnect(); return; }
 
                 // Find [piece, block] combination of the last pieces
                 List<int> piecesLeft;
-                if ( peer.stageYou.haveAll )
+                if (peer.stageYou.haveAll)
                     lock ( lockerTorrent ) piecesLeft = torrent.data.progress.GetAll0();
                 else
                     lock ( lockerTorrent ) piecesLeft = torrent.data.progress.GetAll0(peer.stageYou.bitfield);
 
-                if ( piecesLeft.Count == 0 ) { peer.Disconnect(); return; }
+                if (piecesLeft.Count == 0) { peer.Disconnect(); return; }
 
                 List<Tuple<int, int>> piecesBlocksLeft = new List<Tuple<int, int>>();
 
-                foreach ( int pieceLeft in piecesLeft )
+                foreach (int pieceLeft in piecesLeft)
                 {
                     CreatePieceProgress(pieceLeft);
                     List<int> pieceBlocksLeft = torrent.data.pieceProgress[pieceLeft].progress.GetAll0();
@@ -882,7 +892,7 @@ namespace SuRGeoNix.TorSwarm
                     block = piecesBlocksLeft[curPieceBlock].Item2;
                     blockSize = GetBlockSize(piece, block);
 
-                    if ( Options.Verbosity > 1) Log($"[{peer.host.PadRight(15, ' ')}] [REQE][P]\tPiece: {piece} Block: {block} Offset: {block * torrent.data.blockSize} Size: {blockSize} Requests: {peer.PiecesRequested} Timeouts: {peer.PiecesTimeout}");
+                    if (Options.Verbosity > 1) Log($"[{peer.host.PadRight(15, ' ')}] [REQE][P]\tPiece: {piece} Block: {block} Offset: {block * torrent.data.blockSize} Size: {blockSize} Requests: {peer.PiecesRequested} Timeouts: {peer.PiecesTimeout}");
 
                     requests.Add(new Tuple<int, int, int>(piece, block * torrent.data.blockSize, blockSize));
                     lock ( lockerTorrent ) torrent.data.pieceRequests.Add( new PieceRequest(DateTime.UtcNow.Ticks, peer, piece, block, blockSize) );
@@ -890,15 +900,15 @@ namespace SuRGeoNix.TorSwarm
                     piecesBlocksLeft.RemoveAt(curPieceBlock);
                 }
 
-                if ( requests.Count > 0 ) { peer.RequestPiece(requests); Thread.Sleep(15); } // Avoid Reaching Upload Limits
+                if (requests.Count > 0) { peer.RequestPiece(requests); Thread.Sleep(15); } // Avoid Reaching Upload Limits
 
                 return;
             }
 
-            if ( !peer.stageYou.unchoked || peer.stageYou.haveNone || (!peer.stageYou.haveAll && peer.stageYou.bitfield == null) ) return;
+            if (!peer.stageYou.unchoked || peer.stageYou.haveNone || (!peer.stageYou.haveAll && peer.stageYou.bitfield == null)) return;
 
             // Focus points
-            lock ( lockerTorrent )
+            lock (lockerTorrent)
             { 
                 for (int i=0; i<Options.RequestBlocksPerPeer; i++)
                 {
@@ -906,9 +916,9 @@ namespace SuRGeoNix.TorSwarm
                     block           = -1;
                     FocusPoint fp   = null;
 
-                    lock ( FocusPoints )
+                    lock (FocusPoints)
                     {
-                        if ( FocusPoints.Count > 0 )
+                        if (FocusPoints.Count > 0)
                         {
                             // Choose Random FP
                             fp = FocusPoints.ElementAt(rnd.Next(0, FocusPoints.Count)).Value;
@@ -919,23 +929,18 @@ namespace SuRGeoNix.TorSwarm
 
                             if (peer.stageYou.haveAll)
                             {
-                                //piecesLeft = torrent.data.progress.GetAll0(fp.fromPiece, fp.toPiece);
                                 firstPiece = torrent.data.progress.GetFirst0(fp.fromPiece, fp.toPiece);
 
                             }
                             else
                             {
-                                //piecesLeft = torrent.data.progress.GetAll0(peer.stageYou.bitfield, fp.fromPiece, fp.toPiece);
                                 firstPiece =  torrent.data.progress.GetFirst01(peer.stageYou.bitfield, fp.fromPiece, fp.toPiece);
                                 if (firstPiece < 0 && torrent.data.progress.GetFirst0(fp.fromPiece, fp.toPiece) > -1) { peer.Disconnect(); return; }
-                                //if (piecesLeft.Count == 0 && torrent.data.progress.GetAll0(fp.fromPiece, fp.toPiece).Count > 0) { peer.Disconnect(); return; }
                             }
 
-                            if ( firstPiece < 0 ) { DeleteFocusPoint(fp.id); Options.FocusPointCompleted?.BeginInvoke(fp.id, null, null); return; }
+                            if (firstPiece < 0) { DeleteFocusPoint(fp.id); Options.FocusPointCompleted?.BeginInvoke(fp.id, null, null); return; }
 
                             piecesLeft.Add(firstPiece);
-
-                            //if ( piecesLeft.Count == 0 ) { DeleteFocusPoint(fp.id); Options.FocusPointCompleted?.BeginInvoke(fp.id, null, null); return; }
 
                             List<Tuple<int, int>> piecesBlocksLeft = new List<Tuple<int, int>>();
                             foreach (int pieceLeft in piecesLeft)
@@ -998,11 +1003,11 @@ namespace SuRGeoNix.TorSwarm
                 }
             }
                 
-            if ( requests.Count > 0 ) peer.RequestPiece(requests);
+            if (requests.Count > 0) peer.RequestPiece(requests);
         }
         private void SavePiece(byte[] data, int piece, int size)
         {
-            if ( size > torrent.file.pieceLength ) { Log("[SAVE] pieceSize > chunkSize"); return; }
+            if (size > torrent.file.pieceLength) { Log("[SAVE] pieceSize > chunkSize"); return; }
 
             long firstByte  = (long)piece * torrent.file.pieceLength;
             long ends       = firstByte + size;
@@ -1017,19 +1022,19 @@ namespace SuRGeoNix.TorSwarm
 		            int writeSize 	= (int) Math.Min(sizeLeft, curSize - firstByte);
                     int chunkId     = (int) (((firstByte + torrent.file.pieceLength - 1) - (curSize - torrent.file.lengths[i]))/torrent.file.pieceLength);
 
-		            if ( firstByte == curSize - torrent.file.lengths[i] )
+		            if (firstByte == curSize - torrent.file.lengths[i])
                     {
-                        if ( Options.Verbosity > 2) Log("[SAVE] F file:\t\t" + (i + 1) + ", chunkId:\t\t" +     0 +     ", pos:\t\t" + writePos + ", len:\t\t" + writeSize);
+                        if (Options.Verbosity > 2) Log("[SAVE] F file:\t\t" + (i + 1) + ", chunkId:\t\t" +     0 +     ", pos:\t\t" + writePos + ", len:\t\t" + writeSize);
                         torrent.data.files[i].WriteFirst(data, writePos, writeSize);
-                    } else if ( ends < curSize  ) {
-                        if ( Options.Verbosity > 2) Log("[SAVE] M file:\t\t" + (i + 1) + ", chunkId:\t\t" + chunkId +   ", pos:\t\t" + writePos + ", len:\t\t" + torrent.file.pieceLength + " | " + writeSize);
+                    } else if (ends < curSize) {
+                        if (Options.Verbosity > 2) Log("[SAVE] M file:\t\t" + (i + 1) + ", chunkId:\t\t" + chunkId +   ", pos:\t\t" + writePos + ", len:\t\t" + torrent.file.pieceLength + " | " + writeSize);
                         torrent.data.files[i].Write(chunkId,data);
-                    } else if ( ends >= curSize ) {
-                        if ( Options.Verbosity > 2) Log("[SAVE] L file:\t\t" + (i + 1) + ", chunkId:\t\t" + chunkId +   ", pos:\t\t" + writePos + ", len:\t\t" + writeSize);
+                    } else if (ends >= curSize) {
+                        if (Options.Verbosity > 2) Log("[SAVE] L file:\t\t" + (i + 1) + ", chunkId:\t\t" + chunkId +   ", pos:\t\t" + writePos + ", len:\t\t" + writeSize);
                         torrent.data.files[i].WriteLast(chunkId, data, writePos, writeSize);
                     }
 
-                    if ( ends - 1 < curSize ) break;
+                    if (ends - 1 < curSize) break;
 
 		            firstByte = curSize;
                     sizeLeft -= writeSize;
@@ -1043,7 +1048,7 @@ namespace SuRGeoNix.TorSwarm
         {
             Log($"[{peer.host.PadRight(15, ' ')}] [RECV][M]\tPiece: {piece} Offset: {offset} Size: {totalSize}");
 
-            lock ( lockerMetadata )
+            lock (lockerMetadata)
             {
                 torrent.metadata.parallelRequests  += 2;
                 peer.stageYou.metadataRequested     = false;
@@ -1059,9 +1064,9 @@ namespace SuRGeoNix.TorSwarm
                         torrent.metadata.file       = new PartFile(Utils.FindNextAvailablePartFile(Path.Combine(Options.DownloadPath, "metadata" + rnd.Next(10000) + ".torrent")), Peer.MAX_DATA_SIZE, totalSize, false);
                 }
 
-                if ( torrent.metadata.progress.GetBit(piece) ) { Log($"[{peer.host.PadRight(15, ' ')}] [RECV][M]\tPiece: {piece} Already received"); return; }
+                if (torrent.metadata.progress.GetBit(piece)) { Log($"[{peer.host.PadRight(15, ' ')}] [RECV][M]\tPiece: {piece} Already received"); return; }
 
-                if ( piece == torrent.metadata.pieces - 1 ) 
+                if (piece == torrent.metadata.pieces - 1)
                 {
                     torrent.metadata.file.WriteLast(piece, data, offset, data.Length - offset);
                 } else
@@ -1071,7 +1076,7 @@ namespace SuRGeoNix.TorSwarm
 
                 torrent.metadata.progress.SetBit(piece);
             
-                if ( torrent.metadata.progress.setsCounter == torrent.metadata.pieces )
+                if (torrent.metadata.progress.setsCounter == torrent.metadata.pieces)
                 {
                     // TODO: Validate Torrent's SHA-1 Hash with Metadata Info
                     torrent.metadata.parallelRequests = -1000;
@@ -1104,7 +1109,7 @@ namespace SuRGeoNix.TorSwarm
             bool pieceProgress;
             bool blockProgress = false;
 
-            lock ( lockerTorrent )
+            lock (lockerTorrent)
             {   
                 containsKey                     = torrent.data.pieceProgress.ContainsKey(piece);
                 pieceProgress                   = torrent.data.progress.GetBit(piece);
@@ -1135,7 +1140,7 @@ namespace SuRGeoNix.TorSwarm
                 // SHA-1 Validation for Piece Data | Failed? -> Re-request whole Piece! | Lock, No thread-safe!
                 byte[] pieceHash;
                 pieceHash = sha1.ComputeHash(torrent.data.pieceProgress[piece].data);
-                if ( !Utils.ArrayComp(torrent.file.pieces[piece], pieceHash) )
+                if (!Utils.ArrayComp(torrent.file.pieces[piece], pieceHash))
                 {
                     Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P]\tPiece: {piece} Block: {block} Offset: {offset} Size: {data.Length} Size2: {torrent.data.pieceProgress[piece].data.Length} SHA-1 validation failed");
 
@@ -1176,7 +1181,7 @@ namespace SuRGeoNix.TorSwarm
             int block = offset / torrent.data.blockSize;
             Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P][REJECTED]\tPiece: {piece} Size: {size} Block: {block} Offset: {offset}");
             
-            lock ( lockerTorrent )
+            lock (lockerTorrent)
             {
                 bool containsKey = torrent.data.pieceProgress.ContainsKey(piece);
 
@@ -1191,14 +1196,14 @@ namespace SuRGeoNix.TorSwarm
 
             pieceRejected++;
         }
-        
+
         // Misc
         private void CreatePieceProgress(int piece)
         {
             bool containsKey;
-            lock ( lockerTorrent ) containsKey = torrent.data.pieceProgress.ContainsKey(piece);
+            lock (lockerTorrent) containsKey = torrent.data.pieceProgress.ContainsKey(piece);
 
-            if ( !containsKey )
+            if (!containsKey)
             {
                 PieceProgress pp = new PieceProgress(torrent.data, piece);
                 torrent.data.pieceProgress.Add(piece, pp);
@@ -1208,12 +1213,12 @@ namespace SuRGeoNix.TorSwarm
         {
             int blockSize = -1;
 
-            if ( block != torrent.data.blocks - 1 )
+            if (block != torrent.data.blocks - 1)
                 blockSize = torrent.data.blockSize;
             else
                 blockSize = torrent.data.blockLastSize;
 
-            if ( piece == torrent.data.pieces - 1 ) // Last Piece (need to check also in case of last block size?)
+            if (piece == torrent.data.pieces - 1) // Last Piece (need to check also in case of last block size?)
             {
                 int pieceSize = torrent.data.totalSize % torrent.data.pieceSize != 0 ?  (int) (torrent.data.totalSize % torrent.data.pieceSize) : torrent.data.pieceSize;
 
@@ -1223,6 +1228,6 @@ namespace SuRGeoNix.TorSwarm
 
             return blockSize;
         }
-        private void Log(string msg) { if (Options.Verbosity > 0) log.Write($"[TorSwarm] {msg}"); }
+        private void Log(string msg) { if (Options.Verbosity > 0) log.Write($"[BitSwarm] {msg}"); }
     }
 }

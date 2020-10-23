@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace SuRGeoNix.TorSwarm
+namespace SuRGeoNix
 {
     public class BitField
     {
@@ -9,7 +9,7 @@ namespace SuRGeoNix.TorSwarm
         public int      size        { get; private set; }
         public int      setsCounter { get; private set; }
 
-        private static readonly object locker = new object();
+        readonly object locker = new object();
 
         public BitField(int size)
         {
