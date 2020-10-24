@@ -411,7 +411,7 @@ namespace SuRGeoNix.BEP
                         if ( piecesRequested == 0 ) status = Status.READY;
                     }
 
-                    options.PieceReceivedClbk.BeginInvoke(recvBuff, piece, offset, this, null, null);
+                    options.PieceReceivedClbk.Invoke(recvBuff, piece, offset, this);
 
                     return;
                                         // DHT Extension        | http://bittorrent.org/beps/bep_0005.html | reserved[7] |= 0x01 | UDP Port for DHT 
@@ -436,7 +436,7 @@ namespace SuRGeoNix.BEP
                         if ( piecesRequested == 0 ) status = Status.READY;
                     }
                     
-                    options.PieceRejectedClbk.BeginInvoke(piece, offset, len, this, null, null);
+                    options.PieceRejectedClbk.Invoke(piece, offset, len, this);
 
                     return;
                 case Messages.HAVE_NONE:
@@ -508,12 +508,14 @@ namespace SuRGeoNix.BEP
 
                             case Messages.METADATA_RESPONSE: // (Expecting 0x4000 | 16384 bytes - except if last piece)
                                 Log(2, "[MSG ] Extended Metadata Data");
-                                options.MetadataReceivedClbk.BeginInvoke(recvBuff, (int) mdHeadersDic.Get<BNumber>("piece").Value, mdHeadersDic.EncodeAsString().Length, (int) mdHeadersDic.Get<BNumber>("total_size").Value, this, null, null);
+                                options.MetadataReceivedClbk.Invoke(recvBuff, (int) mdHeadersDic.Get<BNumber>("piece").Value, mdHeadersDic.EncodeAsString().Length, (int) mdHeadersDic.Get<BNumber>("total_size").Value, this);
+                                
                                 break;
 
                             case Messages.METADATA_REJECT:
                                 Log(2, "[MSG ] Extended Metadata Reject");
-                                options.MetadataRejectedClbk.BeginInvoke((int) mdHeadersDic.Get<BNumber>("piece").Value, host, null, null);
+                                options.MetadataRejectedClbk.Invoke((int) mdHeadersDic.Get<BNumber>("piece").Value, host);
+                                
                                 break;
 
                             default:

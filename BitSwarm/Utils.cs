@@ -14,6 +14,8 @@ namespace SuRGeoNix
 {
     public partial class Utils
     {
+        public static bool IsWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+
         // Dir / File Next Available
         public static string FindNextAvailablePartFile(string fileName)
         {

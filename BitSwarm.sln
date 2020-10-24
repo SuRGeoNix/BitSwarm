@@ -12,6 +12,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		README.md = README.md
 	EndProjectSection
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BitSwarm (Console Core Demo)", "BitSwarm (Console Core Demo)\BitSwarm (Console Core Demo).csproj", "{273CC3F2-7767-42D4-9275-C1A75307002D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -41,6 +43,18 @@ Global
 		{54478B08-BB57-4B2A-A2E4-0A9598EB8635}.Release|Any CPU.Build.0 = Release|Any CPU
 		{54478B08-BB57-4B2A-A2E4-0A9598EB8635}.Release|x64.ActiveCfg = Release|Any CPU
 		{54478B08-BB57-4B2A-A2E4-0A9598EB8635}.Release|x86.ActiveCfg = Release|Any CPU
+		{273CC3F2-7767-42D4-9275-C1A75307002D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{273CC3F2-7767-42D4-9275-C1A75307002D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{273CC3F2-7767-42D4-9275-C1A75307002D}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{273CC3F2-7767-42D4-9275-C1A75307002D}.Debug|x64.Build.0 = Debug|Any CPU
+		{273CC3F2-7767-42D4-9275-C1A75307002D}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{273CC3F2-7767-42D4-9275-C1A75307002D}.Debug|x86.Build.0 = Debug|Any CPU
+		{273CC3F2-7767-42D4-9275-C1A75307002D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{273CC3F2-7767-42D4-9275-C1A75307002D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{273CC3F2-7767-42D4-9275-C1A75307002D}.Release|x64.ActiveCfg = Release|Any CPU
+		{273CC3F2-7767-42D4-9275-C1A75307002D}.Release|x64.Build.0 = Release|Any CPU
+		{273CC3F2-7767-42D4-9275-C1A75307002D}.Release|x86.ActiveCfg = Release|Any CPU
+		{273CC3F2-7767-42D4-9275-C1A75307002D}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

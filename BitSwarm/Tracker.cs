@@ -100,6 +100,7 @@ namespace SuRGeoNix.BEP
                 // Socket Connection
                 udpClient = new UdpClient();
                 udpClient.Connect(host, port);
+                if (Utils.IsWindows)
                 udpClient.AllowNatTraversal(true);
                 udpClient.DontFragment = true;
             

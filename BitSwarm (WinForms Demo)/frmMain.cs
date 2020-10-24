@@ -10,9 +10,9 @@ namespace SuRGeoNix.BitSwarmClient
 {
     public partial class frmMain : Form
     {
-        Torrent                 torrent;
-        BitSwarm                tr;
-        BitSwarm.OptionsStruct  opt;
+        static Torrent                 torrent;
+        static BitSwarm                bitSwarm;
+        static BitSwarm.OptionsStruct  opt;
 
         long requestedBytes = 0;
 
@@ -56,10 +56,6 @@ namespace SuRGeoNix.BitSwarmClient
                     opt.PieceTimeout        = int.Parse(pieceTimeout.Text);
                     opt.MetadataTimeout     = int.Parse(metaTimeout.Text);
 
-                    opt.StatsCallback       = Stats;
-                    opt.TorrentCallback     = TorrentInfo;
-                    opt.StatusCallback      = StatusUpdate;
-
                     opt.EnableDHT           = true;
 
                     opt.Verbosity           = 0;
@@ -72,10 +68,15 @@ namespace SuRGeoNix.BitSwarmClient
                     button1.Text    = "Stop";
 
                     if (File.Exists(input.Text.Trim())) 
-                        tr = new BitSwarm(input.Text.Trim(), opt);
+                        bitSwarm = new BitSwarm(input.Text.Trim(), opt);
                     else
-                        tr = new BitSwarm(new Uri(input.Text.Trim()), opt);
-                    tr.Start();
+                        bitSwarm = new BitSwarm(new Uri(input.Text.Trim()), opt);
+
+                    bitSwarm.StatsUpdated       += BitSwarm_StatsUpdated;
+                    bitSwarm.MetadataReceived   += BitSwarm_MetadataReceived;
+                    bitSwarm.StatusChanged      += BitSwarm_StatusChanged;
+
+                    bitSwarm.Start();
                 }
                 catch (Exception e1)
                 {
@@ -86,21 +87,36 @@ namespace SuRGeoNix.BitSwarmClient
 
             } else
             {
-                tr.Dispose();
+                bitSwarm.Dispose();
                 button1.Text = "Start";
             }
         }
 
-        private void TorrentInfo(Torrent torrent)
+        private void BitSwarm_StatusChanged2(object source, BitSwarm.StatusChangedArgs e)
+        {
+            throw new NotImplementedException();
+        }
+
+        private void BitSwarm_StatsUpdated2(object source, BitSwarm.StatsUpdatedArgs e)
+        {
+            throw new NotImplementedException();
+        }
+
+        private void BitSwarm_MetadataReceived2(object source, BitSwarm.MetadataReceivedArgs e)
+        {
+            throw new NotImplementedException();
+        }
+
+        private void BitSwarm_MetadataReceived(object source, BitSwarm.MetadataReceivedArgs e)
         {
             if ( InvokeRequired )
             {
-                BeginInvoke(new Action(() => TorrentInfo(torrent)));
+                BeginInvoke(new Action(() => BitSwarm_MetadataReceived(source, e)));
                 return;
             }
             else
             {
-                this.torrent = torrent;
+                torrent = e.Torrent;
                 string str = "Name ->\t\t" + torrent.file.name + "\r\nSize ->\t\t" + Utils.BytesToReadableString(torrent.data.totalSize) + "\r\n\r\nFiles\r\n==============================\r\n";
 
                 for (int i=0; i<torrent.data.files.Count; i++)
@@ -118,17 +134,17 @@ namespace SuRGeoNix.BitSwarmClient
                 button2.Enabled = true;
             }
         }
-        private void StatusUpdate(int status, string errMsg)
+        private void BitSwarm_StatusChanged(object source, BitSwarm.StatusChangedArgs e)
         {
             if ( InvokeRequired )
             {
-                BeginInvoke(new Action(() => StatusUpdate(status, errMsg)));
+                BeginInvoke(new Action(() => BitSwarm_StatusChanged(this, e)));
                 return;
             }
 
             button1.Text = "Start";
 
-            if ( status == 0 )
+            if (e.Status == 0)
             {
                 output.Text += "\r\n\r\nFinished at "   + DateTime.Now.ToString("G", DateTimeFormatInfo.InvariantInfo);
                 if ( torrent.file.name != null ) MessageBox.Show("Downloaded successfully!\r\n" + torrent.file.name);
@@ -137,43 +153,43 @@ namespace SuRGeoNix.BitSwarmClient
             {
                 output.Text += "\r\n\r\nStopped at "    + DateTime.Now.ToString("G", DateTimeFormatInfo.InvariantInfo);
 
-                if ( status == 2 ) 
+                if (e.Status == 0)
                 {
-                    output.Text += "\r\n\r\n" + "An error occurred :(\r\n\t" + errMsg;
-                    MessageBox.Show("An error occured :( " + errMsg);
+                    output.Text += "\r\n\r\n" + "An error occurred :(\r\n\t" + e.ErrorMsg;
+                    MessageBox.Show("An error occured :( " + e.ErrorMsg);
                 }
             }
 
             if (torrent != null) torrent.Dispose();
         }
-        private void Stats(BitSwarm.StatsStructure stats)
+        private void BitSwarm_StatsUpdated(object source, BitSwarm.StatsUpdatedArgs e)
         {
             if ( InvokeRequired )
             {
-                BeginInvoke(new Action(() => Stats(stats)));
+                BeginInvoke(new Action(() => BitSwarm_StatsUpdated(source, e)));
                 return;
             } 
             else
             {
-                downRate.Text       = String.Format("{0:n0}", (stats.DownRate / 1024)) + " KB/s";
-                downRateAvg.Text    = String.Format("{0:n0}", (stats.AvgRate  / 1024)) + " KB/s";
-                maxRate.Text        = String.Format("{0:n0}", (stats.MaxRate  / 1024)) + " KB/s";
-                eta.Text            = TimeSpan.FromSeconds((stats.ETA + stats.AvgETA)/2).ToString(@"hh\:mm\:ss");
-                etaAvg.Text         = TimeSpan.FromSeconds(stats.AvgETA).ToString(@"hh\:mm\:ss");
-                etaCur.Text         = TimeSpan.FromSeconds(stats.ETA).ToString(@"hh\:mm\:ss");
+                downRate.Text       = String.Format("{0:n0}", (e.Stats.DownRate / 1024)) + " KB/s";
+                downRateAvg.Text    = String.Format("{0:n0}", (e.Stats.AvgRate  / 1024)) + " KB/s";
+                maxRate.Text        = String.Format("{0:n0}", (e.Stats.MaxRate  / 1024)) + " KB/s";
+                eta.Text            = TimeSpan.FromSeconds((e.Stats.ETA + e.Stats.AvgETA)/2).ToString(@"hh\:mm\:ss");
+                etaAvg.Text         = TimeSpan.FromSeconds(e.Stats.AvgETA).ToString(@"hh\:mm\:ss");
+                etaCur.Text         = TimeSpan.FromSeconds(e.Stats.ETA).ToString(@"hh\:mm\:ss");
 
-                bDownloaded.Text    = Utils.BytesToReadableString(stats.BytesDownloaded);
-                bDropped.Text       = Utils.BytesToReadableString(stats.BytesDropped);
-                pPeers.Text         = stats.PeersTotal.ToString();
-                pInqueue.Text       = stats.PeersInQueue.ToString();
-                pConnected.Text     = stats.PeersConnected.ToString();
-                pFailed.Text        = (stats.PeersFailed1 + stats.PeersFailed2).ToString();
-                pFailed1.Text       = stats.PeersFailed1.ToString();
-                pFailed2.Text       = stats.PeersFailed2.ToString();
-                pChoked.Text        = stats.PeersChoked.ToString();
-                pUnchocked.Text     = stats.PeersUnChoked.ToString();
-                pDownloading.Text   = stats.PeersDownloading.ToString();
-                pDropped.Text       = stats.PeersDropped.ToString();
+                bDownloaded.Text    = Utils.BytesToReadableString(e.Stats.BytesDownloaded);
+                bDropped.Text       = Utils.BytesToReadableString(e.Stats.BytesDropped);
+                pPeers.Text         = e.Stats.PeersTotal.ToString();
+                pInqueue.Text       = e.Stats.PeersInQueue.ToString();
+                pConnected.Text     = e.Stats.PeersConnected.ToString();
+                pFailed.Text        = (e.Stats.PeersFailed1 + e.Stats.PeersFailed2).ToString();
+                pFailed1.Text       = e.Stats.PeersFailed1.ToString();
+                pFailed2.Text       = e.Stats.PeersFailed2.ToString();
+                pChoked.Text        = e.Stats.PeersChoked.ToString();
+                pUnchocked.Text     = e.Stats.PeersUnChoked.ToString();
+                pDownloading.Text   = e.Stats.PeersDownloading.ToString();
+                pDropped.Text       = e.Stats.PeersDropped.ToString();
 
                 if ( torrent != null && torrent.data.totalSize != 0) 
                     progress.Value  = (int) (torrent.data.progress.setsCounter * 100.0 / torrent.data.progress.size);
@@ -200,7 +216,7 @@ namespace SuRGeoNix.BitSwarmClient
         }
         private void frmMain_FormClosing(object sender, FormClosingEventArgs e)
         {
-            if ( tr != null) tr.Dispose();
+            if ( bitSwarm != null) bitSwarm.Dispose();
         }
 
         
@@ -213,7 +229,7 @@ namespace SuRGeoNix.BitSwarmClient
             foreach (var o in listBox1.SelectedItems)
                 fileNames.Add(o.ToString());
             
-            tr.IncludeFiles(fileNames);
+            bitSwarm.IncludeFiles(fileNames);
 
             requestedBytes = 0;
             for (int i=0; i<torrent.file.paths.Count; i++)

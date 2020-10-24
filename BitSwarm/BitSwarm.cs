@@ -47,11 +47,52 @@ namespace SuRGeoNix
             public bool     LogPeer             { get; set; }
             public bool     LogDHT              { get; set; }
             public bool     LogStats            { get; set; }
+        }
 
-            public Action<StatsStructure>       StatsCallback       { get; set; }
-            public Action<Torrent>              TorrentCallback     { get; set; }
-            public Action<int, string>          StatusCallback      { get; set; }
-            public Action<long>                 FocusPointCompleted { get; set; }
+        public event FocusPointCompletedHandler FocusPointCompleted;
+        public delegate void FocusPointCompletedHandler(object source, FocusPointCompletedArgs e);
+        public class FocusPointCompletedArgs
+        {
+            public FocusPoint FocusPoint { get; set; }
+            public FocusPointCompletedArgs(FocusPoint focusPoint)
+            {
+                FocusPoint = focusPoint;
+            }
+        }
+
+        public event MetadataReceivedHandler MetadataReceived;
+        public delegate void MetadataReceivedHandler(object source, MetadataReceivedArgs e);
+        public class MetadataReceivedArgs
+        {
+            public Torrent Torrent { get; set; }
+            public MetadataReceivedArgs(Torrent torrent)
+            {
+                Torrent = torrent;
+            }
+        }
+
+        public event StatusChangedHandler StatusChanged;
+        public delegate void StatusChangedHandler(object source, StatusChangedArgs e);
+        public class StatusChangedArgs : EventArgs
+        {
+            public int      Status      { get; set; } // 0: Stopped, 1: Finished, 2: Error + Msg
+            public string   ErrorMsg    { get; set; }
+            public StatusChangedArgs(int status, string errorMsg = "")
+            {
+                Status     = status;
+                ErrorMsg   = errorMsg;
+            }
+        }
+
+        public event StatsUpdatedHandler StatsUpdated;
+        public delegate void StatsUpdatedHandler(object source, StatsUpdatedArgs e);
+        public class StatsUpdatedArgs : EventArgs
+        {
+            public StatsStructure Stats { get; set; }
+            public StatsUpdatedArgs(StatsStructure stats)
+            {
+                Stats = stats;
+            }
         }
         public struct StatsStructure
         {
@@ -89,7 +130,7 @@ namespace SuRGeoNix
             public int toPiece;
             public bool isDone;
         }
-        public Dictionary<long, FocusPoint> FocusPoints                 { get; private set; } = new Dictionary<long, FocusPoint>();
+        public Dictionary<long, FocusPoint> FocusPoints { get; private set; } = new Dictionary<long, FocusPoint>();
         public void CreateFocusPoint(FocusPoint fp) { Log($"[DEBUG001] Creating Focus Point from {fp.fromPiece} to {fp.toPiece}"); lock ( FocusPoints ) if ( !FocusPoints.ContainsKey(fp.id) ) FocusPoints.Add(fp.id, fp); else FocusPoints[fp.id].toPiece = Math.Max(FocusPoints[fp.id].toPiece, fp.toPiece); }
         public void DeleteFocusPoint(long id)       { Log($"[DEBUG001] Deleting Focus Point from {id}");    lock ( FocusPoints ) FocusPoints.Remove(id); }
         public void DeleteFocusPoints()             { Log($"[DEBUG001] Deleting Focus Points");             lock ( FocusPoints ) FocusPoints.Clear(); }
@@ -217,8 +258,8 @@ namespace SuRGeoNix
             peerOpt.LogFile                 = log;
             peerOpt.Verbosity               = Options.LogPeer ? Options.Verbosity : 0;
 
-            peerOpt.MetadataReceivedClbk    = MetadataReceived;
-            peerOpt.MetadataRejectedClbk    = MetadataRejected;
+            peerOpt.MetadataReceivedClbk    = MetadataPieceReceived;
+            peerOpt.MetadataRejectedClbk    = MetadataPieceRejected;
             peerOpt.PieceReceivedClbk       = PieceReceived;
             peerOpt.PieceRejectedClbk       = PieceRejected;
 
@@ -229,7 +270,7 @@ namespace SuRGeoNix
 
             if (  (torrent.file.length > 0      || (torrent.file.lengths != null && torrent.file.lengths.Count > 0))  
                 && torrent.file.pieceLength > 0 && (torrent.file.pieces  != null && torrent.file.pieces.Count  > 0))
-                { torrent.metadata.isDone = true;  Options.TorrentCallback?.BeginInvoke(torrent, null, null); }
+                { torrent.metadata.isDone = true; MetadataReceived?.Invoke(this, new MetadataReceivedArgs(torrent)); }
 
             // TODO: 
             // 1. Default Trackers List
@@ -334,11 +375,12 @@ namespace SuRGeoNix
                 Beggar();
 
                 if (torrent.data.isDone)
-                    Options.StatusCallback?.BeginInvoke(0, "", null, null);
+                    StatusChanged?.Invoke(this, new StatusChangedArgs(0));
                 else
-                    Options.StatusCallback?.BeginInvoke(1, "", null, null);
+                    StatusChanged?.Invoke(this, new StatusChangedArgs(1));
             });
-
+            
+            if (Utils.IsWindows)
             beggar.SetApartmentState(ApartmentState.STA);
             beggar.Start();
         }
@@ -505,7 +547,7 @@ namespace SuRGeoNix
             Stats.PeersTotal            = peers.Count;
 
             // Stats -> UI
-            Options.StatsCallback?.BeginInvoke(Stats, null, null);
+            StatsUpdated?.Invoke(this, new StatsUpdatedArgs(Stats));
 
             // Stats -> Log
             if (Options.LogStats)
@@ -537,6 +579,7 @@ namespace SuRGeoNix
         {
             try
             {
+                if (Utils.IsWindows)
                 Utils.TimeBeginPeriod(1);
                 
                 Stats.MaxRate           = 0;
@@ -766,8 +809,9 @@ namespace SuRGeoNix
                 //log.Dispose();
 
             } catch (ThreadAbortException) {
-            } catch (Exception e) { Log($"[BEGGAR] Beggar(), Msg: {e.Message}\r\n{e.StackTrace}"); Options.StatusCallback?.BeginInvoke(2, e.Message, null, null); }
+            } catch (Exception e) { Log($"[BEGGAR] Beggar(), Msg: {e.Message}\r\n{e.StackTrace}"); StatusChanged?.Invoke(this, new StatusChangedArgs(0, e.Message)); }
 
+            if (Utils.IsWindows)
             Utils.TimeEndPeriod(1);
         }
 
@@ -938,7 +982,7 @@ namespace SuRGeoNix
                                 if (firstPiece < 0 && torrent.data.progress.GetFirst0(fp.fromPiece, fp.toPiece) > -1) { peer.Disconnect(); return; }
                             }
 
-                            if (firstPiece < 0) { DeleteFocusPoint(fp.id); Options.FocusPointCompleted?.BeginInvoke(fp.id, null, null); return; }
+                            if (firstPiece < 0) { DeleteFocusPoint(fp.id); FocusPointCompleted?.Invoke(this, new FocusPointCompletedArgs(fp)); return; }
 
                             piecesLeft.Add(firstPiece);
 
@@ -1044,7 +1088,7 @@ namespace SuRGeoNix
         }
 
         // Peer Callbacks       [Meta Data]
-        private void MetadataReceived(byte[] data, int piece, int offset, int totalSize, Peer peer)
+        private void MetadataPieceReceived(byte[] data, int piece, int offset, int totalSize, Peer peer)
         {
             Log($"[{peer.host.PadRight(15, ' ')}] [RECV][M]\tPiece: {piece} Offset: {offset} Size: {totalSize}");
 
@@ -1085,7 +1129,7 @@ namespace SuRGeoNix
                     torrent.metadata.file.CloseFile();
                     torrent.FillFromMetadata();
                     peerOpt.Pieces = torrent.data.pieces;
-                    Options.TorrentCallback?.BeginInvoke(torrent, null, null);
+                    MetadataReceived?.Invoke(this, new MetadataReceivedArgs(torrent));
 
                     if ( Options.EnableDHT ) logDHT.RestartTime();
                     log.RestartTime();
@@ -1094,7 +1138,7 @@ namespace SuRGeoNix
                 }
             }
         }
-        private void MetadataRejected(int piece, string src)
+        private void MetadataPieceRejected(int piece, string src)
         {
             torrent.metadata.parallelRequests += 2;
             Log($"[{src.PadRight(15, ' ')}] [RECV][M]\tPiece: {piece} Rejected");

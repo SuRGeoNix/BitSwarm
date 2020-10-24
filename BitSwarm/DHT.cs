@@ -169,6 +169,7 @@ namespace SuRGeoNix.BEP
             {
                 // Connect
                 node.udpClient = new UdpClient();
+                if (Utils.IsWindows)
                 node.udpClient.AllowNatTraversal(true);
                 node.udpClient.DontFragment = true;
                 node.udpClient.Connect(node.host, node.port);
@@ -349,7 +350,7 @@ namespace SuRGeoNix.BEP
                     }
 
                     if ( curPeers.Count > 0 )
-                        options.NewPeersClbk?.BeginInvoke(curPeers, null, null);
+                        options.NewPeersClbk?.Invoke(curPeers);
                 }
 
                 node.status = Node.Status.REQUESTED;
@@ -478,6 +479,7 @@ namespace SuRGeoNix.BEP
                 status = Status.STOPPED;
             });
 
+            if (Utils.IsWindows)
             beggar.SetApartmentState(ApartmentState.STA);
             beggar.Start();
         }
