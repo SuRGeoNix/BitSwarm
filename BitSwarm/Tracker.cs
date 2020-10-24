@@ -101,9 +101,11 @@ namespace SuRGeoNix.BEP
                 udpClient = new UdpClient();
                 udpClient.Connect(host, port);
                 if (Utils.IsWindows)
-                udpClient.AllowNatTraversal(true);
-                udpClient.DontFragment = true;
-            
+                {
+                    udpClient.AllowNatTraversal(true);
+                    udpClient.DontFragment = true;
+                }
+
                 // Connect Request
                 action = Utils.ToBigEndian((Int32) Action.CONNECT);
                 tranID = Utils.ToBigEndian((Int32) new Random().Next(1,Int32.MaxValue));

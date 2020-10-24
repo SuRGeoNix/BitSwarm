@@ -23,14 +23,20 @@ namespace BitSwarmConsole
                 return;
             }
 
+            // Prepare Options
             opt = BitSwarm.GetDefaultsOptions();
-            if (args.Length == 2) opt.DownloadPath = args[1];
-            // opt.Verbosity = 3;
-            // opt.LogStats = true;
-            // opt.LogPeer = true;
-            // opt.LogTracker = true;
-            // opt.LogDHT = true;
+            if (args.Length == 2)
+            {
+                if (!Directory.Exists(args[1])) Directory.CreateDirectory(args[1]);
+                opt.DownloadPath = args[1];
+            }
+            //opt.Verbosity = 3;
+            //opt.LogStats = true;
+            //opt.LogPeer = true;
+            //opt.LogTracker = true;
+            //opt.LogDHT = true;
             
+            // Initialize BitSwarm
             if (File.Exists(args[0])) 
                 bitSwarm = new BitSwarm(args[0], opt);
             else
@@ -40,11 +46,18 @@ namespace BitSwarmConsole
             bitSwarm.MetadataReceived   += BitSwarm_MetadataReceived;
             bitSwarm.StatusChanged      += BitSwarm_StatusChanged;
 
+            // Start BitSwarm Until Something Good or Bad happens
             Console.WriteLine("Started at " + DateTime.Now.ToString("G", DateTimeFormatInfo.InvariantInfo));
             bitSwarm.Start();
 
             while (!sessionFinished)
                 Thread.Sleep(500);
+
+            // Clean Up 0 Size Files
+            Thread.Sleep(100);
+            DirectoryInfo downDir = new DirectoryInfo(opt.DownloadPath);
+            foreach (var file in downDir.GetFiles())
+                if (file.Length == 0) file.Delete();
         }
 
         private static void BitSwarm_StatusChanged(object source, BitSwarm.StatusChangedArgs e)
@@ -64,7 +77,6 @@ namespace BitSwarmConsole
 
             sessionFinished = true;
         }
-
         private static void BitSwarm_MetadataReceived(object source, BitSwarm.MetadataReceivedArgs e)
         {
             torrent = e.Torrent;
@@ -75,7 +87,6 @@ namespace BitSwarmConsole
 
             Console.WriteLine(str);
         }
-
         private static void BitSwarm_StatsUpdated(object source, BitSwarm.StatsUpdatedArgs e)
         {
             string str = "";

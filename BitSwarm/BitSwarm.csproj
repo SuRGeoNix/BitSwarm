@@ -14,14 +14,14 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>bitswarm torrent client streaming dht</PackageTags>
     <Copyright>© SuRGeoNix 2020</Copyright>
-    <Version>2.0.1</Version>
+    <Version>2.0.2</Version>
     <PackageReleaseNotes>Required changes for unix platforms (tested successfully on Ubuntu 20.04.1 LTS)
 
 1. Removed Com Interops (for TimeBeginPeriod)
-2. Removed AllowNatTraversal on Sockets
+2. Removed DontFragment &amp; AllowNatTraversal on Sockets
 3. Changed Callback functions from Async to Sync (BeginInvoke -&gt; Invoke)
 4. Replaced most of Callbacks (BeginInvoke) with Events</PackageReleaseNotes>
-    <FileVersion>2.0.1.0</FileVersion>
+    <FileVersion>2.0.2.0</FileVersion>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">

@@ -170,8 +170,11 @@ namespace SuRGeoNix.BEP
                 // Connect
                 node.udpClient = new UdpClient();
                 if (Utils.IsWindows)
-                node.udpClient.AllowNatTraversal(true);
-                node.udpClient.DontFragment = true;
+                {
+                    node.udpClient.AllowNatTraversal(true);
+                    node.udpClient.DontFragment = true;
+                }
+                
                 node.udpClient.Connect(node.host, node.port);
 
                 // Send
