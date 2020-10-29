@@ -3,12 +3,14 @@ using System.IO;
 using System.Text;
 using System.Collections.Generic;
 using System.Net.Sockets;
+using System.Threading;
 
 using BencodeNET.Parsing;
 using BencodeNET.Objects;
 
 namespace SuRGeoNix.BEP
 {
+
     public class Peer
     {
         /* [HANDSHAKE]              | http://bittorrent.org/beps/bep_0003.html
@@ -125,23 +127,21 @@ namespace SuRGeoNix.BEP
             FAILED1         = 4,
             FAILED2         = 5,
             DOWNLOADING     = 7
-         }
-        public struct Options
+        }
+
+        public static class Options
         {
-            public string       InfoHash;
-            public byte[]       PeerID;
-            public int          Pieces;
+            public static BitSwarm     Beggar;
 
-            public int          Verbosity;
-            public Logger       LogFile;
+            public static string       InfoHash;
+            public static byte[]       PeerID;
+            public static int          Pieces;
 
-            public int          ConnectionTimeout;
-            public int          HandshakeTimeout;
+            public static int          Verbosity;
+            public static Logger       LogFile;
 
-            public Action<byte[], int, int, int, Peer>      MetadataReceivedClbk;
-            public Action<int, string>                      MetadataRejectedClbk;
-            public Action<byte[], int, int, Peer>           PieceReceivedClbk;
-            public Action<int, int, int, Peer>              PieceRejectedClbk;
+            public static int          ConnectionTimeout;
+            public static int          HandshakeTimeout;
         }
         public struct Stage
         {
@@ -172,7 +172,6 @@ namespace SuRGeoNix.BEP
 
         public Status           status;
         public Stage            stageYou;
-        public Options          options;
 
         private static readonly BencodeParser   bParser         = new BencodeParser();
         private readonly object lockerRequests  = new object();
@@ -190,20 +189,23 @@ namespace SuRGeoNix.BEP
         public  int             PiecesTimeout   { get { return piecesTimeout; } set { lock (lockerRequests) piecesTimeout = value; } }
         private int             piecesTimeout;
 
-        public Peer(string host, int port, Options options) 
+        private Thread          runThread;
+
+        public Peer(string host, int port) 
         {  
             this.host           = host;
             this.port           = port;
-            this.options        = options;
 
             stageYou            = new Stage();
             stageYou.extensions = new Extensions();
 
-            if ( options.Pieces != 0 )
-            stageYou.bitfield   = new BitField(options.Pieces);
+            if ( Options.Pieces != 0 )
+            stageYou.bitfield   = new BitField(Options.Pieces);
 
             connectedAt         = long.MaxValue;
             chokedAt            = long.MaxValue;
+
+            status              = Status.NEW;
         }
 
         // Connection | Handshake | LTEP Handshake
@@ -216,7 +218,22 @@ namespace SuRGeoNix.BEP
             try
             {
                 Log(3, "[CONNECTING] ... ");
-                connected = tcpClient.ConnectAsync(host, port).Wait(options.ConnectionTimeout);
+                connected = tcpClient.ConnectAsync(host, port).Wait(Options.ConnectionTimeout);
+
+                // Is Spin Worse?
+
+                //var done = tcpClient.ConnectAsync(host, port);
+
+                //int sleptMs = 0;
+                //int stepMs = Options.ConnectionTimeout / 10;
+
+                //while (!done.IsCompleted && sleptMs < Options.ConnectionTimeout)
+                //{
+                //    Thread.Sleep(stepMs);
+                //    sleptMs += stepMs;
+                //}
+
+                //connected = done.IsCompleted && tcpClient.Connected;
             }
             catch (AggregateException e1)
             {
@@ -240,7 +257,7 @@ namespace SuRGeoNix.BEP
             Log(3, "[CONNECT] Success");
             tcpStream                   = tcpClient.GetStream();
             tcpClient.SendBufferSize    = 1024;
-            tcpClient.ReceiveBufferSize = 1500;
+            tcpClient.ReceiveBufferSize = MAX_DATA_SIZE;
             status                      = Status.CONNECTED;
 
             return true;
@@ -251,7 +268,7 @@ namespace SuRGeoNix.BEP
             {
                 Log(3, "[HANDSHAKE] Handshake Sending ...");
 
-                sendBuff = Utils.ArrayMerge(BIT_PROTO, EXT_PROTO, Utils.StringHexToArray(options.InfoHash), options.PeerID);
+                sendBuff = Utils.ArrayMerge(BIT_PROTO, EXT_PROTO, Utils.StringHexToArray(Options.InfoHash), Options.PeerID);
                 tcpStream.Write(sendBuff, 0, sendBuff.Length);
 
                 lastAction  = DateTime.UtcNow.Ticks;
@@ -260,7 +277,6 @@ namespace SuRGeoNix.BEP
             } catch (Exception e)
             {
                 Log(1, "[HANDSHAKE] Handshake Sending Error " + e.Message);
-                status = Status.FAILED2;
                 Disconnect();
             }
             
@@ -287,13 +303,16 @@ namespace SuRGeoNix.BEP
         {
             try
             {
+                status      = Status.FAILED2;
+
                 recvBuff    = new byte[0];
                 sendBuff    = new byte[0];
                 tmpBuff     = new byte[0];
                 stageYou    = new Stage();
 
-                if ( tcpClient != null ) tcpClient.Close();
-            } catch ( Exception ) { /*Log($"[Disconnect] {e.Message}");*/ }
+                if (tcpClient != null) tcpClient.Close();
+
+            } catch (Exception) { }
         }
         
         // Main Loop | Listening for Messages
@@ -304,44 +323,50 @@ namespace SuRGeoNix.BEP
 
             // HANDSHAKE
             SendHandshake();
-            tcpStream.ReadTimeout = options.HandshakeTimeout;
+            tcpStream.ReadTimeout = Options.HandshakeTimeout;
             try
             {
                 Receive(BIT_PROTO.Length + EXT_PROTO.Length + 20 + 20);
             }
             catch (Exception e)
             {
-                if ( !(status == Status.FAILED1 || status == Status.FAILED2) ) status = Status.FAILED2;
-
                 if ( e.Message == "CUSTOM Connection closed" )
                     Log(1, "[ERROR][Handshake] " + e.Message);
                 else
                     Log(1, "[ERROR][Handshake] " + e.Message + "\n" + e.StackTrace);
+
                 Disconnect();
+
                 return;
             }
 
             // RECV MESSAGES [LOOP Until Failed or Done]
-            tcpStream.ReadTimeout = System.Threading.Timeout.Infinite;
+            tcpStream.ReadTimeout = Timeout.Infinite;
 
-            while ( status != Status.FAILED2 )
+            // Thread Transfer from Short-Run to Long-Run (Dedicated)
+            runThread = new Thread(() =>
             {
-                try
+                while (status != Status.FAILED2)
                 {
-                    ProcessMessage();
-                }
-                catch (Exception e)
-                {
-                    if ( !(status == Status.FAILED1 || status == Status.FAILED2) ) status = Status.FAILED2;
-                    if ( e.Message == "CUSTOM Connection closed" )
-                        Log(1, "[ERROR][Handshake] " + e.Message);
-                    else
-                        Log(1, "[ERROR][Handshake] " + e.Message + "\n" + e.StackTrace);
+                    try
+                    {
+                        ProcessMessage();
+                    }
+                    catch (Exception e)
+                    {
+                        if (e.Message == "CUSTOM Connection closed")
+                            Log(1, "[ERROR][Handshake] " + e.Message);
+                        else
+                            Log(1, "[ERROR][Handshake] " + e.Message + "\n" + e.StackTrace);
                     
-                    Disconnect();
-                    return;
+                        Disconnect();
+
+                        return;
+                    }
                 }
-            }
+            });
+            runThread.IsBackground = true;
+            runThread.Start();
         }
         private void ProcessMessage()
         {
@@ -408,10 +433,14 @@ namespace SuRGeoNix.BEP
                     lock ( lockerRequests )
                     {
                         piecesRequested--;
-                        if ( piecesRequested == 0 ) status = Status.READY;
+                        if ( piecesRequested == 0 ) 
+                        {
+                            status = Status.READY;
+                            if (Options.Beggar.isRunning) Options.Beggar.RequestPiece(this); 
+                        }
                     }
 
-                    options.PieceReceivedClbk.Invoke(recvBuff, piece, offset, this);
+                    Options.Beggar.PieceReceived(recvBuff, piece, offset, this);
 
                     return;
                                         // DHT Extension        | http://bittorrent.org/beps/bep_0005.html | reserved[7] |= 0x01 | UDP Port for DHT 
@@ -436,7 +465,7 @@ namespace SuRGeoNix.BEP
                         if ( piecesRequested == 0 ) status = Status.READY;
                     }
                     
-                    options.PieceRejectedClbk.Invoke(piece, offset, len, this);
+                    Options.Beggar.PieceRejected(piece, offset, len, this);
 
                     return;
                 case Messages.HAVE_NONE:
@@ -464,7 +493,7 @@ namespace SuRGeoNix.BEP
                 case Messages.EXTENDED:
                     Receive(1); // MSG Extension Id
 
-                    if ( recvBuff[0] == Messages.EXTENDED_HANDSHAKE ) {
+                    if (recvBuff[0] == Messages.EXTENDED_HANDSHAKE) {
                         Log(3, "[MSG ] Extended Handshake");
 
                         Receive(msgLen - 2);
@@ -485,7 +514,7 @@ namespace SuRGeoNix.BEP
                     // TODO: recvBuff[0] == extensions.ut_pex   | PEX http://bittorrent.org/beps/bep_0011.html
 
                     // Extension for Peers to Send Metadata Files | info-dictionary part of the .torrent file | http://bittorrent.org/beps/bep_0009.html
-                    else if ( recvBuff[0] == stageYou.extensions.ut_metadata && stageYou.extensions.ut_metadata != 0 ) 
+                    else if (recvBuff[0] == stageYou.extensions.ut_metadata && stageYou.extensions.ut_metadata != 0) 
                     {
                         // MSG Extended Metadata
                         Log(3, "[MSG ] Extended Metadata");
@@ -500,7 +529,7 @@ namespace SuRGeoNix.BEP
                         byte[] mdheadersBytes   = Utils.ArraySub(ref recvBuff, 0, tmp1);
                         BDictionary mdHeadersDic= bParser.Parse<BDictionary>(mdheadersBytes);
 
-                        switch ( mdHeadersDic.Get<BNumber>("msg_type").Value )
+                        switch (mdHeadersDic.Get<BNumber>("msg_type").Value)
                         {
                             case Messages.METADATA_REQUEST:
                                 Log(3, "[MSG ] Extended Metadata Request");
@@ -508,13 +537,13 @@ namespace SuRGeoNix.BEP
 
                             case Messages.METADATA_RESPONSE: // (Expecting 0x4000 | 16384 bytes - except if last piece)
                                 Log(2, "[MSG ] Extended Metadata Data");
-                                options.MetadataReceivedClbk.Invoke(recvBuff, (int) mdHeadersDic.Get<BNumber>("piece").Value, mdHeadersDic.EncodeAsString().Length, (int) mdHeadersDic.Get<BNumber>("total_size").Value, this);
+                                Options.Beggar.MetadataPieceReceived(recvBuff, (int) mdHeadersDic.Get<BNumber>("piece").Value, mdHeadersDic.EncodeAsString().Length, (int) mdHeadersDic.Get<BNumber>("total_size").Value, this);
                                 
                                 break;
 
                             case Messages.METADATA_REJECT:
                                 Log(2, "[MSG ] Extended Metadata Reject");
-                                options.MetadataRejectedClbk.Invoke((int) mdHeadersDic.Get<BNumber>("piece").Value, host);
+                                Options.Beggar.MetadataPieceRejected((int) mdHeadersDic.Get<BNumber>("piece").Value, host);
                                 
                                 break;
 
@@ -524,7 +553,7 @@ namespace SuRGeoNix.BEP
 
                         } // Switch Metadata (msg_type)
 
-                        if ( !wasDownloading || piecesRequested < 1) // In case of late response of Metadata when Metadata already done and we already requested pieces
+                        if (!wasDownloading || piecesRequested < 1) // In case of late response of Metadata when Metadata already done and we already requested pieces
                             status = Status.READY;
                         return; 
                     }
@@ -576,7 +605,7 @@ namespace SuRGeoNix.BEP
                     {
                         ms.Write(tmpBuff, 0, curRead);
                         totalRead += curRead;
-                    } 
+                    }
                 }
                 recvBuff = ms.ToArray();
             }
@@ -606,7 +635,6 @@ namespace SuRGeoNix.BEP
             } catch (Exception e)
             {
                 Log(1, $"[REQ][METADATA] {piece},{piece2} {e.Message}");
-                status = Status.FAILED2;
                 Disconnect();
             }
         }
@@ -659,7 +687,6 @@ namespace SuRGeoNix.BEP
             } catch (Exception e)
             {
                 Log(1, $"[REQ ] Send Failed - {e.Message}\r\n{e.StackTrace}");
-                status = Status.FAILED2;
                 Disconnect();
             }
         }
@@ -675,7 +702,6 @@ namespace SuRGeoNix.BEP
             } catch (Exception e)
             {
                 Log(1, $"[REQ ][PIECE][BLOCK] {piece}\t{offset}\t{len} {e.Message}\r\n{e.StackTrace}");
-                status = Status.FAILED2;
                 Disconnect();
             }
         }
@@ -739,6 +765,6 @@ namespace SuRGeoNix.BEP
                 return tmp;
             }
         }
-        private void Log(int level, string msg) { if (options.Verbosity > 0 && level <= options.Verbosity) options.LogFile.Write($"[Peer    ] [{host.PadRight(15, ' ')}] {msg}"); }
+        private void Log(int level, string msg) { if (Options.Verbosity > 0 && level <= Options.Verbosity) Options.LogFile.Write($"[Peer    ] [{host.PadRight(15, ' ')}] {msg}"); }
     }
 }

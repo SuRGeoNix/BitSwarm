@@ -41,6 +41,7 @@ namespace SuRGeoNix.BEP
             public int              pieceLength     { get; set; }
             public List<byte[]>     pieces          { get; set; }
         }
+
         public struct TorrentData
         {
             public bool             isDone          { get; set; }
@@ -52,10 +53,12 @@ namespace SuRGeoNix.BEP
 
             public int              pieces          { get; set; }
             public int              pieceSize       { get; set; }
+            public int              pieceLastSize   { get; set; }
 
             public int              blocks          { get; set; }
             public int              blockSize       { get; set; }
             public int              blockLastSize   { get; set; }
+            public int              blocksLastPiece { get; set; }
 
             public BitField         progress        { get; set; }
             public BitField         requests        { get; set; }
@@ -66,23 +69,23 @@ namespace SuRGeoNix.BEP
             public Dictionary<int, PieceProgress>   pieceProgress;
             public List<PieceRequest>               pieceRequests;
 
-            public struct PieceProgress
+            public class PieceProgress
             {
-                public PieceProgress(TorrentData data, int piece)
+                public PieceProgress(ref TorrentData data, int piece)
                 {
                     bool isLastPiece= piece == data.pieces - 1 && data.totalSize % data.pieceSize != 0;
 
                     this.piece      = piece;
-                    this.data       = !isLastPiece ? new byte[data.pieceSize] : new byte[data.totalSize % data.pieceSize];
-                    this.progress   = !isLastPiece ? new BitField(data.blocks): new BitField((int) ( ((data.totalSize % data.pieceSize) -1) / data.blockSize ) + 1);
-                    this.requests   = !isLastPiece ? new BitField(data.blocks): new BitField((int) ( ((data.totalSize % data.pieceSize) -1) / data.blockSize ) + 1);
+                    this.data       = !isLastPiece ? new byte[data.pieceSize] : new byte[data.pieceLastSize];
+                    this.progress   = !isLastPiece ? new BitField(data.blocks): new BitField(data.blocksLastPiece);
+                    this.requests   = !isLastPiece ? new BitField(data.blocks): new BitField(data.blocksLastPiece);
                 }
                 public int          piece;
                 public byte[]       data;
                 public BitField     progress;
                 public BitField     requests;
             }
-            public struct PieceRequest
+            public class PieceRequest
             {
                 public PieceRequest(long timestamp, Peer peer, int piece, int block, int size, bool aggressive = false)
                 {
@@ -101,6 +104,7 @@ namespace SuRGeoNix.BEP
                 public bool         aggressive;
             }
         }
+
         public struct MetaData
         {
             public bool             isDone          { get; set; }
@@ -226,6 +230,7 @@ namespace SuRGeoNix.BEP
 
             data.pieces         = file.pieces.Count;
             data.pieceSize      = file.pieceLength;
+            data.pieceLastSize  = (int) (data.totalSize % data.pieceSize);
             
             data.progress       = new BitField(data.pieces);
             data.requests       = new BitField(data.pieces);
@@ -234,7 +239,8 @@ namespace SuRGeoNix.BEP
 
             data.blockSize      = Math.Min(Peer.MAX_DATA_SIZE, data.pieceSize);
             data.blocks         = ( (data.pieceSize -1) / data.blockSize ) + 1;
-            data.blockLastSize  = data.pieceSize % data.blockSize == 0 ? data.blockSize : data.pieceSize % data.blockSize;
+            data.blockLastSize  = data.pieceLastSize % data.blockSize == 0 ? data.blockSize : data.pieceLastSize % data.blockSize;
+            data.blocksLastPiece= ( (data.pieceLastSize -1) / data.blockSize ) + 1;
 
             data.pieceProgress  = new Dictionary<int, TorrentData.PieceProgress>();
             data.pieceRequests  = new List<TorrentData.PieceRequest>();

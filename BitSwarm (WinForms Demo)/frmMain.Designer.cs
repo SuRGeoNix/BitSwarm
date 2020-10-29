@@ -41,7 +41,7 @@
             this.label7 = new System.Windows.Forms.Label();
             this.label8 = new System.Windows.Forms.Label();
             this.label9 = new System.Windows.Forms.Label();
-            this.minThreads = new System.Windows.Forms.TextBox();
+            this.maxThreads = new System.Windows.Forms.TextBox();
             this.peersFromTrackers = new System.Windows.Forms.TextBox();
             this.conTimeout = new System.Windows.Forms.TextBox();
             this.handTimeout = new System.Windows.Forms.TextBox();
@@ -140,9 +140,9 @@
             this.label3.AutoSize = true;
             this.label3.Location = new System.Drawing.Point(264, 68);
             this.label3.Name = "label3";
-            this.label3.Size = new System.Drawing.Size(66, 13);
+            this.label3.Size = new System.Drawing.Size(69, 13);
             this.label3.TabIndex = 7;
-            this.label3.Text = "Min Threads";
+            this.label3.Text = "Max Threads";
             // 
             // label4
             // 
@@ -198,12 +198,12 @@
             this.label9.TabIndex = 13;
             this.label9.Text = "Metadata Piece Timeout";
             // 
-            // minThreads
+            // maxThreads
             // 
-            this.minThreads.Location = new System.Drawing.Point(336, 65);
-            this.minThreads.Name = "minThreads";
-            this.minThreads.Size = new System.Drawing.Size(78, 20);
-            this.minThreads.TabIndex = 14;
+            this.maxThreads.Location = new System.Drawing.Point(336, 65);
+            this.maxThreads.Name = "maxThreads";
+            this.maxThreads.Size = new System.Drawing.Size(78, 20);
+            this.maxThreads.TabIndex = 14;
             // 
             // peersFromTrackers
             // 
@@ -624,7 +624,7 @@
             this.Controls.Add(this.handTimeout);
             this.Controls.Add(this.conTimeout);
             this.Controls.Add(this.peersFromTrackers);
-            this.Controls.Add(this.minThreads);
+            this.Controls.Add(this.maxThreads);
             this.Controls.Add(this.label9);
             this.Controls.Add(this.label8);
             this.Controls.Add(this.label7);
@@ -666,7 +666,7 @@
         private System.Windows.Forms.Label label7;
         private System.Windows.Forms.Label label8;
         private System.Windows.Forms.Label label9;
-        private System.Windows.Forms.TextBox minThreads;
+        private System.Windows.Forms.TextBox maxThreads;
         private System.Windows.Forms.TextBox peersFromTrackers;
         private System.Windows.Forms.TextBox conTimeout;
         private System.Windows.Forms.TextBox handTimeout;

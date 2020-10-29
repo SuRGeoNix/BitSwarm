@@ -14,14 +14,19 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>bitswarm torrent client streaming dht</PackageTags>
     <Copyright>© SuRGeoNix 2020</Copyright>
-    <Version>2.0.2</Version>
-    <PackageReleaseNotes>Required changes for unix platforms (tested successfully on Ubuntu 20.04.1 LTS)
+    <Version>2.1.0</Version>
+    <PackageReleaseNotes>Beggar (Scheduler) &amp; DHT Algorithms Improvements
 
-1. Removed Com Interops (for TimeBeginPeriod)
-2. Removed DontFragment &amp; AllowNatTraversal on Sockets
-3. Changed Callback functions from Async to Sync (BeginInvoke -&gt; Invoke)
-4. Replaced most of Callbacks (BeginInvoke) with Events</PackageReleaseNotes>
-    <FileVersion>2.0.2.0</FileVersion>
+1. Re-design of DHT for faster bootstrap &amp; more peers from same nodes (2nd recursion) - Reducing also connect timeout on nodes
+2. Re-design of BitSwarm's Beggar (Scheduler) - More speed &amp; less resources
+3. Creating a Custom Threadpool (.NET's was causing issues - couldn't use different Threadpool on Parent UI Project - even if was imported in diffrent AppDomain with Proxy)
+4. Peers will re-request pieces/blocks directly after finishing the previous ones
+5. Adding Max Threads (Custom Threadpool) functionality to control the parallel new connection requests (more accurate)
+6. Adding Sleep Mode functionality to reduce resources even more (It will not re-request DHT/Trackers, possible will auto-reduce MaxThreads in future)
+7. Adding Download Limit functionality (not very accurate yet)
+8. Fixing Issues with Peer's Receive Buffer Size, Torrent's Block Sizes etc.</PackageReleaseNotes>
+    <FileVersion>2.1.0.0</FileVersion>
+    <AssemblyVersion>2.1.0.0</AssemblyVersion>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">

@@ -27,7 +27,7 @@ namespace SuRGeoNix.BitSwarmClient
 
             downPath.Text           = opt.DownloadPath;
             maxCon.Text             = opt.MaxConnections.ToString();
-            minThreads.Text         = opt.MinThreads.ToString();
+            maxThreads.Text         = opt.MaxThreads.ToString();
             peersFromTrackers.Text  = opt.PeersFromTracker.ToString();
             conTimeout.Text         = opt.ConnectionTimeout.ToString();
             handTimeout.Text        = opt.HandshakeTimeout.ToString();
@@ -49,7 +49,7 @@ namespace SuRGeoNix.BitSwarmClient
                     opt.DownloadPath        = downPath.Text;
 
                     opt.MaxConnections      = int.Parse(maxCon.Text);
-                    opt.MinThreads          = int.Parse(minThreads.Text);
+                    opt.MaxThreads          = int.Parse(maxThreads.Text);
                     opt.PeersFromTracker    = int.Parse(peersFromTrackers.Text);
                     opt.ConnectionTimeout   = int.Parse(conTimeout.Text);
                     opt.HandshakeTimeout    = int.Parse(handTimeout.Text);
@@ -67,14 +67,16 @@ namespace SuRGeoNix.BitSwarmClient
                     output.Text     = "Started at " + DateTime.Now.ToString("G", DateTimeFormatInfo.InvariantInfo) + "\r\n";
                     button1.Text    = "Stop";
 
-                    if (File.Exists(input.Text.Trim())) 
-                        bitSwarm = new BitSwarm(input.Text.Trim(), opt);
-                    else
-                        bitSwarm = new BitSwarm(new Uri(input.Text.Trim()), opt);
+                    bitSwarm = new BitSwarm(opt);
 
                     bitSwarm.StatsUpdated       += BitSwarm_StatsUpdated;
                     bitSwarm.MetadataReceived   += BitSwarm_MetadataReceived;
                     bitSwarm.StatusChanged      += BitSwarm_StatusChanged;
+
+                    if (File.Exists(input.Text.Trim())) 
+                        bitSwarm.Initiliaze(input.Text.Trim());
+                    else
+                        bitSwarm.Initiliaze(new Uri(input.Text.Trim()));
 
                     bitSwarm.Start();
                 }
@@ -90,21 +92,6 @@ namespace SuRGeoNix.BitSwarmClient
                 bitSwarm.Dispose();
                 button1.Text = "Start";
             }
-        }
-
-        private void BitSwarm_StatusChanged2(object source, BitSwarm.StatusChangedArgs e)
-        {
-            throw new NotImplementedException();
-        }
-
-        private void BitSwarm_StatsUpdated2(object source, BitSwarm.StatsUpdatedArgs e)
-        {
-            throw new NotImplementedException();
-        }
-
-        private void BitSwarm_MetadataReceived2(object source, BitSwarm.MetadataReceivedArgs e)
-        {
-            throw new NotImplementedException();
         }
 
         private void BitSwarm_MetadataReceived(object source, BitSwarm.MetadataReceivedArgs e)
@@ -182,7 +169,8 @@ namespace SuRGeoNix.BitSwarmClient
                 bDropped.Text       = Utils.BytesToReadableString(e.Stats.BytesDropped);
                 pPeers.Text         = e.Stats.PeersTotal.ToString();
                 pInqueue.Text       = e.Stats.PeersInQueue.ToString();
-                pConnected.Text     = e.Stats.PeersConnected.ToString();
+                pConnecting.Text    = e.Stats.PeersConnecting.ToString();
+                pConnected.Text     = (e.Stats.PeersConnecting + e.Stats.PeersConnected + e.Stats.PeersDownloading).ToString();
                 pFailed.Text        = (e.Stats.PeersFailed1 + e.Stats.PeersFailed2).ToString();
                 pFailed1.Text       = e.Stats.PeersFailed1.ToString();
                 pFailed2.Text       = e.Stats.PeersFailed2.ToString();
@@ -191,8 +179,8 @@ namespace SuRGeoNix.BitSwarmClient
                 pDownloading.Text   = e.Stats.PeersDownloading.ToString();
                 pDropped.Text       = e.Stats.PeersDropped.ToString();
 
-                if ( torrent != null && torrent.data.totalSize != 0) 
-                    progress.Value  = (int) (torrent.data.progress.setsCounter * 100.0 / torrent.data.progress.size);
+                if (torrent != null && torrent.data.totalSize != 0) 
+                    progress.Value = (int) (torrent.data.progress.setsCounter * 100.0 / torrent.data.progress.size);
                     //progress.Value  = (int) (stats.BytesDownloaded * 100.0 / torrent.data.totalSize);
             }
 

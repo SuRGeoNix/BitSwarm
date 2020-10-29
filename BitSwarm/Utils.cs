@@ -209,7 +209,6 @@ namespace SuRGeoNix
             return hex2;
         }
 
-
         // Misc
         public static List<Tuple<long, int>> MergeByteRanges(List<Tuple<long, int>> byteRanges, int allowSpaceBytes = 0)
         {
@@ -305,7 +304,7 @@ namespace SuRGeoNix
             return n - (int)((uint)(i << 1) >> 31);
         }
 
-        public static void EnsureThreadDone(Thread t, long maxMS = 250, int minMS = 10)
+        public static void EnsureThreadDoneNoAbort(Thread t, long maxMS = 500, int minMS = 10)
         {
             if (t != null && !t.IsAlive) return;
 
@@ -318,15 +317,7 @@ namespace SuRGeoNix
             }
 
             if (t != null && t.IsAlive)
-            {
-                t.Abort();
-                escapeInfinity = maxMS / minMS;
-                while (t != null && t.IsAlive && escapeInfinity > 0)
-                {
-                    Thread.Sleep(minMS);
-                    escapeInfinity--;
-                }
-            }
+                Console.WriteLine("Thread X didn't finish properly!");
         }
         
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Interoperability", "CA1401:PInvokesShouldNotBeVisible"), System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Security", "CA2118:ReviewSuppressUnmanagedCodeSecurityUsage"), SuppressUnmanagedCodeSecurity]
