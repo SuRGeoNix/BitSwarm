@@ -12,21 +12,29 @@
     <PackageIcon>BitSwarm.png</PackageIcon>
     <RepositoryUrl>https://github.com/SuRGeoNix/BitSwarm</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageTags>bitswarm torrent client streaming dht</PackageTags>
+    <PackageTags>bitswarm bittorrent torrent client streaming dht</PackageTags>
     <Copyright>© SuRGeoNix 2020</Copyright>
-    <Version>2.1.0</Version>
-    <PackageReleaseNotes>Beggar (Scheduler) &amp; DHT Algorithms Improvements
+    <Version>2.2.0</Version>
+    <PackageReleaseNotes>Alpha Testing &amp; Deep Analysis (Bugs &amp; Performance Issues / Improvements)
 
-1. Re-design of DHT for faster bootstrap &amp; more peers from same nodes (2nd recursion) - Reducing also connect timeout on nodes
-2. Re-design of BitSwarm's Beggar (Scheduler) - More speed &amp; less resources
-3. Creating a Custom Threadpool (.NET's was causing issues - couldn't use different Threadpool on Parent UI Project - even if was imported in diffrent AppDomain with Proxy)
-4. Peers will re-request pieces/blocks directly after finishing the previous ones
-5. Adding Max Threads (Custom Threadpool) functionality to control the parallel new connection requests (more accurate)
-6. Adding Sleep Mode functionality to reduce resources even more (It will not re-request DHT/Trackers, possible will auto-reduce MaxThreads in future)
-7. Adding Download Limit functionality (not very accurate yet)
-8. Fixing Issues with Peer's Receive Buffer Size, Torrent's Block Sizes etc.</PackageReleaseNotes>
-    <FileVersion>2.1.0.0</FileVersion>
-    <AssemblyVersion>2.1.0.0</AssemblyVersion>
+Additions/Improvements:-
+
+1. Finishing up BitSwarm's Threadpool (BSTP) with Min/Max Threads
+2. Finishing up new SleepMode functionality
+3. Synchronizing socket buffer sizes with receiving network stream
+4. Adding support for Allow Fast (Fast Extension)
+5. Adding support for external Trackers list
+6. Direct requests after each piece receive
+
+Critical Issues:-
+
+1. Dropping peers that it shouldn't drop
+2. Synchronizing socket buffer sizes with receiving network stream
+3. CPU performance issues (improvements especially with bitfields hotpaths)
+4. Scheduler re-design and transfer jobs direct in Peers (will do the same for timeouts)
+5. DHT issues (still udpclient will not perform stable)</PackageReleaseNotes>
+    <FileVersion>2.2.0.0</FileVersion>
+    <AssemblyVersion>2.2.0.0</AssemblyVersion>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">

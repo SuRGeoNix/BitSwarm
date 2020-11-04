@@ -3,6 +3,12 @@ using System.Collections.Generic;
 
 namespace SuRGeoNix
 {
+    /* TODO: 
+     * 
+     * 1. locker will be removed for speed (let Beggar do the lock)
+     * 2. replace GetBit/SetBit directly within the methods for better performance
+     */
+    
     public class BitField
     {
         public byte[]   bitfield    { get; private set; }
@@ -19,7 +25,7 @@ namespace SuRGeoNix
         }
         public BitField(byte[] bitfield, int size)
         {
-            if ( size > (bitfield.Length * 8) || size <= ((bitfield.Length-1) * 8) ) throw new Exception("Out of range");
+            if (size > (bitfield.Length * 8) || size <= ((bitfield.Length-1) * 8)) throw new Exception("Out of range");
 
             this.size       = size;
             this.bitfield   = bitfield;
@@ -28,56 +34,52 @@ namespace SuRGeoNix
 
         public void SetBit(int input)
         {
-            if ( input >= size || input < 0 ) throw new Exception($"Out of range input: {input} size: {size}");
+            if (input >= size || input < 0) 
+                throw new Exception($"Out of range input: {input} size: {size}");
 
             int bytePos = input / 8;
             int bitPos  = input % 8;
 
-            lock ( locker )
-            {
-                if ( !GetBit(input) ) setsCounter++;
-                bitfield[bytePos] |= (byte) (1 << (7-bitPos));
-            }
+            if ((bitfield[bytePos] & (1 << (7-bitPos))) == 0) setsCounter++;
+            bitfield[bytePos] |= (byte) (1 << (7-bitPos));
         }
         public void UnSetBit(int input)
         {
-            if ( input >= size || input < 0 ) throw new Exception($"Out of range input: {input} size: {size}");
+            if (input >= size || input < 0) 
+                throw new Exception($"Out of range input: {input} size: {size}");
 
             int bytePos = input / 8;
             int bitPos  = input % 8;
 
-            lock ( locker )
-            {
-                if ( GetBit(input) ) setsCounter--;
-                bitfield[bytePos] &= (byte) ~(1 << (7-bitPos));
-            }
+            if ((bitfield[bytePos] & (1 << (7-bitPos))) != 0) setsCounter--;
+            bitfield[bytePos] &= (byte) ~(1 << (7-bitPos));
         }
         public bool GetBit(int input)
         {
-            if ( input >= size || input < 0 ) throw new Exception($"Out of range input: {input} size: {size}");
+            if (input >= size || input < 0) 
+                throw new Exception($"Out of range input: {input} size: {size}");
 
             int bytePos = input / 8;
             int bitPos  = input % 8;
 
-            lock ( locker ) 
-                if ( (bitfield[bytePos] & (1 << (7-bitPos))) > 0 ) return true;
+            if ((bitfield[bytePos] & (1 << (7-bitPos))) == 0) return false;
 
-            return false;
+            return true;
         }
 
         // TODO: Review locking
         public int GetFirst0()
         {
             int bytePos = 0;
+            
+            for (;bytePos<bitfield.Length; bytePos++)
+                    if (bitfield[bytePos] != 0xff) break;
 
-            lock ( locker )
-            {
-                for (;bytePos<bitfield.Length; bytePos++)
-                    if ( bitfield[bytePos] != 0xff ) break;
+            if (bytePos == bitfield.Length) return -1;
 
-                for (int i=bytePos*8; i<(bytePos*8) + 8; i++)
-                    if ( i<size && !GetBit(i) ) return i;
-            }
+            for (int i=bytePos*8; i<(bytePos*8) + 8; i++)
+                if ((bitfield[bytePos] & (1 << (7-(i%8)))) == 0 && i < size) return i;
+            
 
             return -1;
         }
@@ -85,34 +87,40 @@ namespace SuRGeoNix
         {
             to = to == -1 ? size - 1 : to;
 
-            if ( from >= size || to >= size || from < 0 || to < 0 ) return -2;
+            if (from < 0 || to >= size || from > to)
+                return -2;
 
             int bytePos = from / 8;
-            
-            for (int i=(bytePos*8)+(from % 8); i<(bytePos*8) + 8; i++)
-                    if ( i<=to && !GetBit(i) ) return i;
+
+            for (int i = (bytePos * 8) + (from % 8); i < (bytePos * 8) + 8; i++)
+                if ((bitfield[bytePos] & (1 << (7-(i%8)))) == 0 && i <= to) return i;
 
             bytePos++;
 
-            for (;bytePos<to/8; bytePos++)
-                    if ( bitfield[bytePos] != 0xff ) break;
+            for (;bytePos<to / 8; bytePos++)
+                if (bitfield[bytePos] != 0xff) break;
 
-            for (int i=(bytePos*8); i<(bytePos*8) + 8; i++)
-                if ( i<=to && !GetBit(i) ) return i;
+            if (bytePos == bitfield.Length) return -1;
+
+            for (int i=bytePos * 8; i < (bytePos * 8) + 8; i++)
+                if ((bitfield[bytePos] & (1 << (7-(i%8)))) == 0 && i <= to) return i;
 
             return -1;
         }
         public int GetFirst01(BitField bitfield)
         {
-            if ( bitfield == null ) return -2;
+            if (bitfield == null) 
+                return -2;
 
             int bytePos = 0;
 
             for (;bytePos<this.bitfield.Length;bytePos++)
-                if ( this.bitfield[bytePos] != 0xff && bitfield.bitfield[bytePos] != 0x00 && ((this.bitfield[bytePos] ^ bitfield.bitfield[bytePos]) & bitfield.bitfield[bytePos] ) != 0 ) break;
+                if (this.bitfield[bytePos] != 0xff && bitfield.bitfield[bytePos] != 0x00 && ((this.bitfield[bytePos] ^ bitfield.bitfield[bytePos]) & bitfield.bitfield[bytePos]) != 0) break;
+
+            if (bytePos == this.bitfield.Length) return -1;
 
             for (int i=(bytePos*8); i<(bytePos*8) + 8; i++)
-                if ( i < size && !GetBit(i) && bitfield.GetBit(i) ) return i;
+                if (i < size && (this.bitfield[bytePos] & (1 << (7-(i%8)))) == 0 && (bitfield.bitfield[bytePos] & (1 << (7-(i%8)))) != 0) return i;
             
             return -1;
         }
@@ -120,22 +128,25 @@ namespace SuRGeoNix
         {
             to = to == -1 ? size - 1 : to;
 
-            if ( from >= size || to >= size || from < 0 || to < 0 || bitfield == null ) return -2;
+            if (from < 0 || to >= size || from > to || bitfield == null) 
+                return -2;
 
             int bytePos = from / 8;
 
-            if ( this.bitfield[bytePos] != 0xff && bitfield.bitfield[bytePos] != 0x00 && ((this.bitfield[bytePos] ^ bitfield.bitfield[bytePos]) & bitfield.bitfield[bytePos] ) != 0 )
+            if (this.bitfield[bytePos] != 0xff && bitfield.bitfield[bytePos] != 0x00 && ((this.bitfield[bytePos] ^ bitfield.bitfield[bytePos]) & bitfield.bitfield[bytePos]) != 0)
                 for (int i=(bytePos*8)+(from % 8); i<(bytePos*8) + 8; i++)
-                    if ( i<=to && !GetBit(i) && bitfield.GetBit(i) ) return i;
+                    if (i<=to && (this.bitfield[bytePos] & (1 << (7-(i%8)))) == 0 && (bitfield.bitfield[bytePos] & (1 << (7-(i%8)))) != 0) return i;
 
             bytePos++;
 
             for (;bytePos<to/8;bytePos++)
-                if ( this.bitfield[bytePos] != 0xff && bitfield.bitfield[bytePos] != 0x00 && ((this.bitfield[bytePos] ^ bitfield.bitfield[bytePos]) & bitfield.bitfield[bytePos] ) != 0 ) 
+                if (this.bitfield[bytePos] != 0xff && bitfield.bitfield[bytePos] != 0x00 && ((this.bitfield[bytePos] ^ bitfield.bitfield[bytePos]) & bitfield.bitfield[bytePos]) != 0) 
                     break;
 
+            if (bytePos == this.bitfield.Length) return -1;
+
             for (int i=(bytePos*8); i<(bytePos*8) + 8; i++)
-                if ( i<=to && !GetBit(i) && bitfield.GetBit(i) ) return i;
+                if (i<=to && (this.bitfield[bytePos] & (1 << (7-(i%8)))) == 0 && (bitfield.bitfield[bytePos] & (1 << (7-(i%8)))) != 0) return i;
             
             return -1;
         }
@@ -144,20 +155,21 @@ namespace SuRGeoNix
         {
             to = to == -1 ? size - 1 : to;
 
-            if ( from >= size || from < 0 || to >=size || to < 0 || to < from ) return -2;
+            if (from < 0 || to >= size || from > to) 
+                return -2;
 
             int bytePos = to / 8;
 
             for (int i=(bytePos*8) + to%8; i>=bytePos*8; i--)
-                if ( i>=from && !GetBit(i) ) return i;
+                if (i>=from && (bitfield[bytePos] & (1 << (7-(i%8)))) == 0) return i;
 
             bytePos--;
 
             for (;bytePos>=from/8; bytePos--)
-                if ( bitfield[bytePos] != 0xff ) break;
+                if (bitfield[bytePos] != 0xff) break;
 
             for (int i=(bytePos*8) + 7; i>=bytePos*8; i--)
-                if ( i>=from && !GetBit(i) ) return i;
+                if (i>=from && (bitfield[bytePos] & (1 << (7-(i%8)))) == 0) return i;
 
             return -1;
         }
@@ -165,22 +177,24 @@ namespace SuRGeoNix
         {
             to = to == -1 ? size - 1 : to;
 
-            if ( from >= size || from < 0 || to >=size || to < 0 || to < from || bitfield == null ) return -2;
+            if (from < 0 || to >= size || from > to || bitfield == null) 
+                return -2;
 
             int bytePos = to / 8;
 
-            if ( this.bitfield[bytePos] != 0xff && bitfield.bitfield[bytePos] != 0x00 && ((this.bitfield[bytePos] ^ bitfield.bitfield[bytePos]) & bitfield.bitfield[bytePos] ) != 0 )
+            if (this.bitfield[bytePos] != 0xff && bitfield.bitfield[bytePos] != 0x00 && ((this.bitfield[bytePos] ^ bitfield.bitfield[bytePos]) & bitfield.bitfield[bytePos])
+                != 0)
                 for (int i=(bytePos*8) + to%8; i>=bytePos*8; i--)
-                    if ( i>=from && !GetBit(i) && bitfield.GetBit(i) ) return i;
+                    if (i>=from && (this.bitfield[bytePos] & (1 << (7-(i%8)))) == 0 && (bitfield.bitfield[bytePos] & (1 << (7-(i%8)))) != 0) return i;
 
             bytePos--;
 
             for (;bytePos>=from/8; bytePos--)
-                if ( this.bitfield[bytePos] != 0xff && bitfield.bitfield[bytePos] != 0x00 && ((this.bitfield[bytePos] ^ bitfield.bitfield[bytePos]) & bitfield.bitfield[bytePos] ) != 0 ) 
+                if (this.bitfield[bytePos] != 0xff && bitfield.bitfield[bytePos] != 0x00 && ((this.bitfield[bytePos] ^ bitfield.bitfield[bytePos]) & bitfield.bitfield[bytePos]) != 0) 
                     break;
 
             for (int i=(bytePos*8) + 7; i>=bytePos*8; i--)
-                if ( i>=from && !GetBit(i) && bitfield.GetBit(i) ) return i;
+                if (i>=from && (this.bitfield[bytePos] & (1 << (7-(i%8)))) == 0 && (bitfield.bitfield[bytePos] & (1 << (7-(i%8)))) != 0) return i;
             
             return -1;
         }
@@ -189,13 +203,14 @@ namespace SuRGeoNix
         {
             to = to == -1 ? size - 1 : to;
 
-            if (from >= size || to >= size || from < 0 || to < 0 ) return new List<int>();
+            if (from < 0 || to >= size || from > to) 
+                return new List<int>();
 
             List<int> ret = new List<int>();
             int cur = -1;
             //int from = 0;
 
-            while ( from <= to && (cur = GetFirst0(from, to)) >= 0 )
+            while (from <= to && (cur = GetFirst0(from, to)) >= 0)
             {
                 ret.Add(cur);
                 from = cur + 1;
@@ -207,14 +222,15 @@ namespace SuRGeoNix
         {
             to = to == -1 ? size - 1 : to;
 
-            if (from >= size || to >= size || from < 0 || to < 0) return new List<int>();
+            if (from < 0 || to >= size || from > to) 
+                return new List<int>();
 
-            if ( bitfield == null ) return new List<int>();
+            if (bitfield == null) return new List<int>();
 
             List<int> ret = new List<int>();
             int cur = -1;
 
-            while ( from <= to && (cur = GetFirst01(bitfield, from, to)) >= 0 )
+            while (from <= to && (cur = GetFirst01(bitfield, from, to)) >= 0)
             {
                 ret.Add(cur);
                 from = cur + 1;
@@ -227,20 +243,21 @@ namespace SuRGeoNix
         {
             to = to == -1 ? size - 1 : to;
 
-            if ( from >= size || from < 0 || to >=size || to < 0 || to < from ) return false;
+            if (from < 0 || to >= size || from > to) 
+                return false;
 
             int bytePos = from / 8;
             
             for (int i=(bytePos*8)+(from % 8); i<(bytePos*8) + 8; i++)
-                if ( i<=to ) SetBit(i);
+                if (i<=to) SetBit(i);
 
             bytePos++;
             int endBytePos = (to/8);
-            lock ( locker )
+            lock (locker)
             {
                 for (;bytePos<=endBytePos; bytePos++)
                 {
-                    if ( bitfield[bytePos] == 0x00 && bytePos != endBytePos)
+                    if (bitfield[bytePos] == 0x00 && bytePos != endBytePos)
                     {
                         bitfield[bytePos] = 0xff;
                         setsCounter += 8;
@@ -248,7 +265,7 @@ namespace SuRGeoNix
                     else
                     {
                         for (int i=(bytePos*8); i<(bytePos*8) + 8; i++)
-                            if ( i<=to ) SetBit(i);
+                            if (i<=to) SetBit(i);
                     }
                 }
             }
@@ -259,20 +276,21 @@ namespace SuRGeoNix
         {
             to = to == -1 ? size - 1 : to;
 
-            if ( from >= size || from < 0 || to >=size || to < 0 || to < from ) return false;
+            if (from < 0 || to >= size || from > to) 
+                return false;
 
             int bytePos = from / 8;
             
             for (int i=(bytePos*8)+(from % 8); i<(bytePos*8) + 8; i++)
-                if ( i<=to ) UnSetBit(i);
+                if (i<=to) UnSetBit(i);
 
             bytePos++;
             int endBytePos = (to/8);
-            lock ( locker )
+            lock (locker)
             {
                 for (;bytePos<=endBytePos; bytePos++)
                 {
-                    if ( bitfield[bytePos] == 0xff && bytePos != endBytePos)
+                    if (bitfield[bytePos] == 0xff && bytePos != endBytePos)
                     {
                         bitfield[bytePos] = 0x00;
                         setsCounter -= 8;
@@ -280,7 +298,7 @@ namespace SuRGeoNix
                     else
                     {
                         for (int i=(bytePos*8); i<(bytePos*8) + 8; i++)
-                            if ( i<=to ) UnSetBit(i);
+                            if (i<=to) UnSetBit(i);
                     }
                 }
             }
@@ -289,7 +307,7 @@ namespace SuRGeoNix
         }
         public void UnSetAll()
         {
-            lock ( locker )
+            lock (locker)
             {
                 for (int i=0; i<bitfield.Length; i++)
                     bitfield[i] = 0x00;
@@ -299,7 +317,7 @@ namespace SuRGeoNix
         }
         public void SetAll()
         {
-            lock ( locker )
+            lock (locker)
             {
                 for (int i=0; i<bitfield.Length; i++)
                     bitfield[i] = 0xff;
@@ -310,12 +328,13 @@ namespace SuRGeoNix
 
         public bool CopyFrom(BitField bitfield)
         {
-            lock ( locker )
+            lock (locker)
             {
-                if ( bitfield.size != size ) return false;
+                if (bitfield.size != size) 
+                    return false;
 
                 Buffer.BlockCopy(bitfield.bitfield, 0, this.bitfield, 0, this.bitfield.Length);
-                size = bitfield.size;
+                size        = bitfield.size;
                 setsCounter = bitfield.setsCounter;
             }
 
@@ -325,10 +344,11 @@ namespace SuRGeoNix
         {
             to = to == -1 ? size - 1 : to;
 
-            if ( from >= size || from < 0 || to >=size || to < 0 || to < from ) return false;
+            if (from < 0 || to >= size || from > to) 
+                return false;
 
             for (int i=from; i<=to; i++)
-                if ( bitfield.GetBit(i) ) SetBit(i); else UnSetBit(i);
+                if (bitfield.GetBit(i)) SetBit(i); else UnSetBit(i);
 
             return true;
         }

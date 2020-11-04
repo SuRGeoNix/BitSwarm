@@ -93,6 +93,8 @@
             this.listBox1 = new System.Windows.Forms.ListBox();
             this.button2 = new System.Windows.Forms.Button();
             this.label17 = new System.Windows.Forms.Label();
+            this.label18 = new System.Windows.Forms.Label();
+            this.sleepLimit = new System.Windows.Forms.TextBox();
             this.statusStrip1.SuspendLayout();
             this.SuspendLayout();
             // 
@@ -140,23 +142,23 @@
             this.label3.AutoSize = true;
             this.label3.Location = new System.Drawing.Point(264, 68);
             this.label3.Name = "label3";
-            this.label3.Size = new System.Drawing.Size(69, 13);
+            this.label3.Size = new System.Drawing.Size(66, 13);
             this.label3.TabIndex = 7;
-            this.label3.Text = "Max Threads";
+            this.label3.Text = "Min Threads";
             // 
             // label4
             // 
             this.label4.AutoSize = true;
-            this.label4.Location = new System.Drawing.Point(48, 68);
+            this.label4.Location = new System.Drawing.Point(68, 68);
             this.label4.Name = "label4";
-            this.label4.Size = new System.Drawing.Size(89, 13);
+            this.label4.Size = new System.Drawing.Size(69, 13);
             this.label4.TabIndex = 8;
-            this.label4.Text = "Max Connections";
+            this.label4.Text = "Max Threads";
             // 
             // label5
             // 
             this.label5.AutoSize = true;
-            this.label5.Location = new System.Drawing.Point(420, 68);
+            this.label5.Location = new System.Drawing.Point(633, 68);
             this.label5.Name = "label5";
             this.label5.Size = new System.Drawing.Size(100, 13);
             this.label5.TabIndex = 9;
@@ -207,7 +209,7 @@
             // 
             // peersFromTrackers
             // 
-            this.peersFromTrackers.Location = new System.Drawing.Point(526, 65);
+            this.peersFromTrackers.Location = new System.Drawing.Point(739, 65);
             this.peersFromTrackers.Name = "peersFromTrackers";
             this.peersFromTrackers.Size = new System.Drawing.Size(78, 20);
             this.peersFromTrackers.TabIndex = 15;
@@ -595,12 +597,30 @@
             this.label17.TabIndex = 38;
             this.label17.Text = "Files";
             // 
+            // label18
+            // 
+            this.label18.AutoSize = true;
+            this.label18.Location = new System.Drawing.Point(420, 68);
+            this.label18.Name = "label18";
+            this.label18.Size = new System.Drawing.Size(91, 13);
+            this.label18.TabIndex = 39;
+            this.label18.Text = "Sleep Limit (KB/s)";
+            // 
+            // sleepLimit
+            // 
+            this.sleepLimit.Location = new System.Drawing.Point(526, 65);
+            this.sleepLimit.Name = "sleepLimit";
+            this.sleepLimit.Size = new System.Drawing.Size(78, 20);
+            this.sleepLimit.TabIndex = 40;
+            // 
             // frmMain
             // 
             this.AllowDrop = true;
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(1126, 549);
+            this.Controls.Add(this.sleepLimit);
+            this.Controls.Add(this.label18);
             this.Controls.Add(this.label17);
             this.Controls.Add(this.button2);
             this.Controls.Add(this.eta);
@@ -718,5 +738,7 @@
         private System.Windows.Forms.ListBox listBox1;
         private System.Windows.Forms.Button button2;
         private System.Windows.Forms.Label label17;
+        private System.Windows.Forms.Label label18;
+        private System.Windows.Forms.TextBox sleepLimit;
     }
 }

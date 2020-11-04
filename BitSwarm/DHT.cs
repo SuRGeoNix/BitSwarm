@@ -19,17 +19,21 @@ namespace SuRGeoNix.BEP
     {
         public struct Options
         {
-            public int ConnectionTimeout    { get; set; }
-            public int MaxBucketNodes       { get; set; }
-            public int MinBucketDistance    { get; set; }
-            public int MinBucketDistance2   { get; set; }
-            public int NodesPerLevel        { get; set; }
+            public int ConnectionTimeout        { get; set; }
+            public int BoostConnectionTimeout   { get; set; }
+            public int MaxBucketNodes           { get; set; }
+            public int MinBucketDistance        { get; set; }
+            public int MinBucketDistance2       { get; set; }
+            public int NodesPerLevel            { get; set; }
 
-            public int      Verbosity       { get; set; }
-            public Logger   LogFile         { get; set; }
+            public int      Verbosity           { get; set; }
+            public Logger   LogFile             { get; set; }
 
 
             public Action<ConcurrentDictionary<string, int>, bool>  NewPeersClbk;
+
+            internal BitSwarm Beggar            { get; set; }
+
         }
         public enum Status
         {
@@ -40,21 +44,19 @@ namespace SuRGeoNix.BEP
         }
 
         public Status                           status      { get; private set; }
-        public  ConcurrentDictionary<string, int>CachedPeers { get; private set; }
+        public ConcurrentDictionary<string, int>CachedPeers { get; private set; }
         public long                             StartedAt   { get; private set; }
         public long                             StoppedAt   { get; private set; }
 
-
-        private List<Node>                      bootStrapNodes;
         private Dictionary<string, Node>        bucketNodesPointer;
         private Dictionary<string, Node>        bucketNodes;        // Weird
         private Dictionary<string, Node>        bucketNodes2;       // Normal
+        private HashSet<string>                 rememberBadNodes;   // Bad / Timed-out
         private Thread                          beggar;
         
         static readonly BencodeParser           bParser     = new BencodeParser();
         readonly Random                         rnd         = new Random();
         readonly object                         lockerNodes = new object();
-        readonly object                         lockerPeers = new object();
 
         private Options                         options;
         private string                          infoHash;
@@ -91,10 +93,9 @@ namespace SuRGeoNix.BEP
             public string   host;
             public int      port;
             public short    distance;
-            public bool     hasPeers;
+            //public bool     hasPeers;
 
             public Status   status;
-            public long     lastRequestedAt;
 
             public UdpClient udpClient;
 
@@ -105,102 +106,53 @@ namespace SuRGeoNix.BEP
             options         = (opt == null) ? GetDefaultOptions() : (Options) opt;
             bucketNodes     = new Dictionary<string, Node>();
             bucketNodes2    = new Dictionary<string, Node>();
-            bootStrapNodes  = new List<Node>();
+            rememberBadNodes= new HashSet<string>();
             CachedPeers     = new ConcurrentDictionary<string, int>();
             ipEP            = new IPEndPoint(IPAddress.Any, 0);
             infoHashBytes   = Utils.StringHexToArray(infoHash);
             this.infoHash   = infoHash;
 
             status          = Status.STOPPED;
+            isWeirdStrategy = true;
 
-            // Start with Weird Strategy
-            isWeirdStrategy = false;
             FlipStrategy();
+            AddBootstrapNodes();
+            FlipStrategy();
+            AddBootstrapNodes();
 
             PrepareRequest();
         }
         public static Options GetDefaultOptions()
         {
             Options options = new Options();
-            options.ConnectionTimeout   = 180;
-            options.MaxBucketNodes      = 200;
-            options.MinBucketDistance   = 145;
-            options.MinBucketDistance2  = 67;
-            options.NodesPerLevel       = 4;
+            options.ConnectionTimeout       = 800;
+            options.BoostConnectionTimeout  = 200;
+            options.MaxBucketNodes          = 200;
+            options.MinBucketDistance       = 145;
+            options.MinBucketDistance2      = 67;
+            options.NodesPerLevel           = 4;
             
             return options;
         }
         
-        private void AddNewNode(string host, int port, short distance = 160) 
-        {  
-            bucketNodesPointer.Add(host, new Node(host, port, distance)); 
-        }
+        private void AddNewNode(string host, int port, short distance = 160) { bucketNodesPointer.Add(host, new Node(host, port, distance)); }
         private void AddBootstrapNodes()
         {
-            List<Node> randomNodes;
+            bucketNodesPointer.Clear();
+            bucketNodesPointer.Add("router.utorrent.com",   new Node("router.utorrent.com",     6881));
+            bucketNodesPointer.Add("dht.libtorrent.org",    new Node("dht.libtorrent.org",     25401));
+            bucketNodesPointer.Add("router.bittorrent.com", new Node("router.bittorrent.com",   6881));
+            bucketNodesPointer.Add("dht.transmissionbt.com",new Node("dht.transmissionbt.com",  6881));
 
-            if (bucketNodesPointer.Count > 0) 
-                Log("[ERROR] AddBootstrapNodes() call with bucketNodesPointer.Count > 0");
-
-            if (bootStrapNodes.Count == 0 || DateTime.UtcNow.Ticks - lastRootsAskedAt > 8 * 1000 * 10000)
+            lock (rememberBadNodes)
             {
-                bootStrapNodes.Clear();
-                lastRootsAskedAt = DateTime.UtcNow.Ticks;
-
-                bootStrapNodes.Add(new Node("router.utorrent.com", 6881));
-                bootStrapNodes.Add(new Node("dht.libtorrent.org", 25401));
-                bootStrapNodes.Add(new Node("router.bittorrent.com", 6881));
-                //bootStrapNodes.Add(new Node("dht.transmissionbt.com", 6881));
-                //bootStrapNodes.Add(new Node("dht.aelitis.com", 6881));
-
-                randomNodes = new List<Node>();
-                foreach (var node in bootStrapNodes)
-                    randomNodes.Add(node);
-
-                while (status == Status.RUNNING && randomNodes.Count != 0)
-                {
-                    int cur = rnd.Next(0, randomNodes.Count);
-
-                    GetPeers(randomNodes[cur]);
-                    if (bucketNodesPointer.Count > 15)
-                    {
-                        bootStrapNodes.Clear();
-                        foreach (var nodes in bucketNodesPointer)
-                            bootStrapNodes.Add(new Node(nodes.Value.host, nodes.Value.port));
-
-                        break;
-                    }
-
-                    randomNodes.RemoveAt(cur);
-                }
-            }
-            else
-            {
-                randomNodes = new List<Node>();
-                foreach (var node in bootStrapNodes)
-                    randomNodes.Add(node);
-
-                while (status == Status.RUNNING && randomNodes.Count != 0)
-                {
-                    int cur = rnd.Next(0, randomNodes.Count);
-
-                    bucketNodesPointer.Add(randomNodes[cur].host, new Node(randomNodes[cur].host, randomNodes[cur].port));
-                    if (bucketNodesPointer.Count == 8) break;
-
-                    randomNodes.RemoveAt(cur);
-                }
+                rememberBadNodes.Remove("router.utorrent.com");
+                rememberBadNodes.Remove("dht.libtorrent.org");
+                rememberBadNodes.Remove("router.bittorrent.com");
+                rememberBadNodes.Remove("dht.transmissionbt.com");
             }
 
-            if (status != Status.RUNNING) return;
-
-            if (bucketNodesPointer.Count == 0)
-            {
-                Log("[ERROR] Bootstrap Nodes Failed (Retrying)");
-                Thread.Sleep(150);
-                bootStrapNodes.Clear();
-                AddBootstrapNodes();
-                return;
-            }
+            Thread.Sleep(20);
         }
 
         private void FlipStrategy()
@@ -209,7 +161,8 @@ namespace SuRGeoNix.BEP
             minBucketDistance   = isWeirdStrategy ? options.MinBucketDistance : options.MinBucketDistance2;
             bucketNodesPointer  = isWeirdStrategy ? bucketNodes : bucketNodes2;
 
-            Log($"[STRATEGY] Flip to {isWeirdStrategy}");
+            if (options.Verbosity > 0) Log($"[STRATEGY] Flip to {isWeirdStrategy}");
+            Thread.Sleep(20);
         }
         private string GetMinDistanceNode()
         {
@@ -299,43 +252,27 @@ namespace SuRGeoNix.BEP
         {
             try
             {
-                // Connect
+                byte[] recvBuff = null;
+
                 node.udpClient = new UdpClient();
-                if (Utils.IsWindows)
-                {
-                    node.udpClient.AllowNatTraversal(true);
-                    node.udpClient.DontFragment = true;
-                }
-                node.udpClient.Connect(node.host, node.port);
+                node.udpClient.Client.ReceiveTimeout = !options.Beggar.Stats.BoostMode ? options.ConnectionTimeout : options.BoostConnectionTimeout;
+                node.udpClient.Client.Ttl = 255;
 
-                // Send
-                node.udpClient.Send(getPeersBytes, getPeersBytes.Length);
-                node.udpClient.Send(getPeersBytes, getPeersBytes.Length);
+                // NOTE: Possible bug here (have been noticed a strange delay ~11 seconds few times, use IPEndPoint instead?) | It will also freeze in case of Max Down Rate Limit (normal)
+                node.udpClient.Send(getPeersBytes, getPeersBytes.Length, node.host, node.port);
 
-                // Receive
-                IAsyncResult asyncResult = node.udpClient.BeginReceive(null, null);
-                asyncResult.AsyncWaitHandle.WaitOne(options.ConnectionTimeout);
+                recvBuff = node.udpClient.Receive(ref ipEP);
 
-                if ( !asyncResult.IsCompleted )
-                {
-                    node.udpClient.Close();
-                    asyncResult = null;
-                    return null;
-                }
-
-                byte[] recvBuff = node.udpClient.EndReceive(asyncResult, ref ipEP);
                 node.udpClient.Close();
-                asyncResult = null;
+
+                if (recvBuff == null || recvBuff.Length == 0) return null;
 
                 return bParser.Parse<BDictionary>(recvBuff);
 
-            } catch ( Exception ) { node.udpClient.Close(); return null;}
+            } catch (Exception) { node.udpClient?.Close(); return null;}
         }
         private void GetPeers(Node node, int selfRecursionLevel = 0)
         {
-            Log($"[{node.distance}] [{node.host}] [REQ ]");
-            requested++;
-
             try
             {
                 /* BEndode get_peers Response
@@ -346,12 +283,24 @@ namespace SuRGeoNix.BEP
                  * 
                  */
 
+                if (options.Verbosity > 0) Log($"[{node.distance}] [{node.host}] [REQ ]");
+
+                requested++;
+
                 BDictionary bResponse = GetResponse(node);
 
-                if (bResponse == null || !bResponse.ContainsKey("y") || ((BString) bResponse["y"]).ToString() != "r") 
-                    { node.status = Node.Status.FAILED; if ( bResponse != null ) bResponse.Clear(); return; }
+                if (bResponse == null || !bResponse.ContainsKey("y") || ((BString) bResponse["y"]).ToString() != "r")
+                {
+                    node.status = Node.Status.FAILED;
+                    if (!options.Beggar.Stats.BoostMode) { lock(rememberBadNodes) rememberBadNodes.Add(node.host); }
+                    if (bResponse != null) bResponse.Clear();
 
-                Log($"[{node.distance}] [{node.host}] [RESP]");
+                    if (options.Verbosity > 0) Log($"[{node.distance}] [{node.host}] [RESP] Failed");
+
+                    return;
+                }
+
+                if (options.Verbosity > 0) Log($"[{node.distance}] [{node.host}] [RESP]");
 
                 bResponse = (BDictionary) bResponse["r"];
 
@@ -360,18 +309,22 @@ namespace SuRGeoNix.BEP
                 {
                     byte[] curNodes = ((BString) bResponse["nodes"]).Value.ToArray();
 
-                    for (int i=0; i<curNodes.Length; i += 26)
+                    for (int i=0; i<curNodes.Length; i+=26)
                     {
                         byte[]  curNodeId   = Utils.ArraySub(ref curNodes, (uint) i, 20, false);
                         short   curDistance = isWeirdStrategy ? CalculateDistance(curNodeId) : CalculateDistance2(curNodeId);
                         string  curIP       = (new IPAddress(Utils.ArraySub(ref curNodes, (uint) i + 20, 4))).ToString();
                         UInt16  curPort     = (UInt16) BitConverter.ToInt16(Utils.ArraySub(ref curNodes, (uint) i + 24, 2, true), 0);
                     
-                        if ( curPort < 100) continue; // Drop fake
+                        if (curPort < 100) continue; // Drop fake
 
-                        Log($"[{node.distance}] [{node.host}] [NODE] [{curDistance}] {curIP}:{curPort}");
+                        if (options.Verbosity > 0) Log($"[{node.distance}] [{node.host}] [NODE] [{curDistance}] {curIP}:{curPort}");
 
-                        lock (lockerNodes) if ( !bucketNodesPointer.ContainsKey(curIP) ) AddNewNode(curIP, curPort, curDistance);
+                        lock (lockerNodes)
+                        {
+                            if (!bucketNodesPointer.ContainsKey(curIP) && !rememberBadNodes.Contains(curIP))
+                                AddNewNode(curIP, curPort, curDistance);
+                        }
                     }
                 }
 
@@ -382,19 +335,24 @@ namespace SuRGeoNix.BEP
 
                     BList values = (BList) bResponse["values"];
 
+                    if (values.Count == 0)
+                    { 
+                        node.status = Node.Status.REQUESTED;
+                        responded++;
+                        bResponse.Clear();
+
+                        return;
+                    }
+
                     ConcurrentDictionary<string, int> curPeers = new ConcurrentDictionary<string, int>();
 
-                    if (values.Count > 0)
-                    {
+                    if (isWeirdStrategy)
+                        weirdPeers += values.Count;
+                    else
+                        normalPeers += values.Count;
 
-                        if (isWeirdStrategy)
-                            weirdPeers += values.Count;
-                        else
-                            normalPeers += values.Count;
-
-                        node.hasPeers = true;
-                        havePeers++;
-                    }
+                    //node.hasPeers = true;
+                    havePeers++;
 
                     foreach (IBObject cur in values)
                     {
@@ -404,37 +362,31 @@ namespace SuRGeoNix.BEP
 
                         if (curPort < 100) continue; // Drop fake
 
-                        Log($"[{node.distance}] [{node.host}] [PEER] {curIP}:{curPort}");
+                        //if (options.Verbosity > 0) Log($"[{node.distance}] [{node.host}] [PEER] {curIP}:{curPort}");
 
-                        lock (lockerPeers)
-                        {
-                            if (CachedPeers.ContainsKey(curIP)) continue;
-                            CachedPeers.TryAdd(curIP, curPort);
-                            newPeers++;
-                        }
-
-                        curPeers.TryAdd(curIP, curPort);
+                        curPeers[curIP] = curPort;
+                        CachedPeers[curIP] = curPort;
                     }
 
-                    if (curPeers.Count > 0) options.NewPeersClbk?.Invoke(curPeers, true);
+                    options.Beggar.FillPeersFromDHT(curPeers); // options.NewPeersClbk?.Invoke(curPeers, true);
 
-                    Log($"[{node.distance}] [{node.host}] [NEW PEERS] {newPeers}");
+                    //if (options.Verbosity > 0) Log($"[{node.distance}] [{node.host}] [NEW PEERS] {newPeers}");
 
                     // Re-requesting same Node with Peers > 99 (max returned peers are 100?)
-                    // Possible fake/random peers (escape recursion? 50 loops?)
-                    if (status == Status.RUNNING && newPeers > 2 && values.Count > 99)
+                    // Possible fake/random peers (escape recursion? 30 loops?) | NOTE: we loosing sync with scheduler because of that
+                    if (status == Status.RUNNING && values.Count > 99)
                     {
                         if (selfRecursionLevel > 30)
                         {
-                            Log($"[{node.distance}] [{node.host}] [RE-REQUEST LIMIT EXCEEDED]");
+                            if (options.Verbosity > 0) Log($"[{node.distance}] [{node.host}] [RE-REQUEST LIMIT EXCEEDED]");
                         }
                         else
                         {
-                            Log($"[{node.distance}] [{node.host}] [RE-REQUEST {selfRecursionLevel}] {newPeers}");
+                            selfRecursionLevel++;
+                            if (options.Verbosity > 0) Log($"[{node.distance}] [{node.host}] [RE-REQUEST {selfRecursionLevel}] {newPeers}");
                             Thread.Sleep(10);
-                            GetPeers(node, selfRecursionLevel++); 
-                        }
-                        
+                            GetPeers(node, selfRecursionLevel); 
+                        }   
                     }
                 }
 
@@ -445,32 +397,29 @@ namespace SuRGeoNix.BEP
             catch (Exception e)
             {
                 node.status = Node.Status.FAILED;
-                Log($"[{node.distance}] [{node.host}] [ERROR] {e.Message}\r\n{e.StackTrace}");
+                if (options.Verbosity > 0) Log($"[{node.distance}] [{node.host}] [ERROR] {e.Message}\r\n{e.StackTrace}");
             }
         }
 
         private void Beggar()
         {
-            Log($"[BEGGAR] STARTED {infoHash}");
+            if (options.Verbosity > 0) Log($"[BEGGAR] STARTED {infoHash}");
 
             long lastTicks      = DateTime.UtcNow.Ticks;
-            int curThreads      = 0;
-            int curSeconds      = 0;
+            int  curThreads     = 0;
+            int  curSeconds     = 0;
             bool clearBucket    = false;
             List<string> curNodeKeys;
-
-            if (bucketNodesPointer.Count == 0) AddBootstrapNodes();
 
             while (status == Status.RUNNING)
             {
                 // Prepare <NodesPerLevel> Nodes for Requesting
                 curNodeKeys = new List<string>();
-                for ( int i=0; i<options.NodesPerLevel; i++ )
+                for (int i=0; i<options.NodesPerLevel; i++)
                 {
                     string newNodeHost = GetMinDistanceNode(); // Node.Status.New && Min(distance)
-                    if ( newNodeHost == null) break;
-                    bucketNodesPointer[newNodeHost].status             = Node.Status.REQUESTING;
-                    bucketNodesPointer[newNodeHost].lastRequestedAt    = DateTime.UtcNow.Ticks;
+                    if (newNodeHost == null) break;
+                    bucketNodesPointer[newNodeHost].status = Node.Status.REQUESTING;
                     curNodeKeys.Add(newNodeHost);
                 }
 
@@ -481,8 +430,7 @@ namespace SuRGeoNix.BEP
                 { 
                     if (status != Status.RUNNING) break;
 
-                    Log($"[BEGGAR] Recursion Ended (curThreads=0)... Flippping");
-                    bucketNodesPointer.Clear();
+                    if (options.Verbosity > 0) Log($"[BEGGAR] Recursion Ended (curThreads=0)... Flippping");
                     AddBootstrapNodes();
                     FlipStrategy();
 
@@ -494,8 +442,9 @@ namespace SuRGeoNix.BEP
                 {
                     Node node = bucketNodesPointer[curNodeKey];
 
-                    ThreadPool.QueueUserWorkItem(new WaitCallback(x => { 
-                        GetPeers(node); 
+                    ThreadPool.QueueUserWorkItem(new WaitCallback(x =>
+                    {
+                        GetPeers(node);
                         Interlocked.Decrement(ref curThreads);
                     }), null);
                 }
@@ -530,19 +479,20 @@ namespace SuRGeoNix.BEP
 
                 if (status != Status.RUNNING) break;
 
-                // Scheduler | NOTE: Currently not exact second & curSeconds will be reset with BitSwarm Stop/Start | Calculate 'Wait for Nodes' Time
-                // Also with addition for GetPeers Recursion this is not accurate at all (TBR)
+                // TODO: Review Scheduler seconds/levels messed up | with addition for GetPeers Recursion this is not accurate at all (TBR)
                 if (DateTime.UtcNow.Ticks - lastTicks > 9000000)
                 {
                     lastTicks = DateTime.UtcNow.Ticks;
                     curSeconds++;
 
                     // Stats
-                    Log($"[STATS] [REQs: {requested}]\t[RESPs: {responded}]\t[BUCKETSIZE: {bucketNodesPointer.Count}]\t[INBUCKET: {inBucket}]\t[PEERNODES: {havePeers}]\t[PEERS: {CachedPeers.Count}] | [WEIRD]: {weirdPeers} | [NORMAL] {normalPeers}");
+                    if (options.Verbosity > 0) Log($"[STATS] [REQs: {requested}]\t[RESPs: {responded}]\t[BUCKETSIZE: {bucketNodesPointer.Count}]\t[INBUCKET: {inBucket}]\t[PEERNODES: {havePeers}]\t[PEERS: {CachedPeers.Count}] | [WEIRD]: {weirdPeers} | [NORMAL] {normalPeers}");
 
                     // Flip Strategy
-                    if (curSeconds % 6 == 0)
-                        FlipStrategy();
+                    if (curSeconds % 6 == 0) FlipStrategy();
+
+                    // Clear Bad Nodes
+                    if (curSeconds % 50 == 0) rememberBadNodes.Clear();
 
                     // TODO: Re-request existing Peer Nodes for new Peers
                 }
@@ -550,7 +500,7 @@ namespace SuRGeoNix.BEP
                 Thread.Sleep(20);
             }
 
-            Log($"[BEGGAR] STOPPED {infoHash}");
+            if (options.Verbosity > 0) Log($"[BEGGAR] STOPPED {infoHash}");
         }
 
         // Public
@@ -559,10 +509,10 @@ namespace SuRGeoNix.BEP
             if (status == Status.RUNNING || (beggar != null && beggar.IsAlive)) return;
 
             status = Status.RUNNING;
+            StartedAt = DateTime.UtcNow.Ticks;
 
             beggar = new Thread(() =>
             {
-                StartedAt = DateTime.UtcNow.Ticks;
                 Beggar();
                 status = Status.STOPPED;
                 StoppedAt = DateTime.UtcNow.Ticks;
@@ -578,7 +528,7 @@ namespace SuRGeoNix.BEP
         }
         public void ClearCachedPeers()
         {
-            lock (lockerPeers) CachedPeers.Clear();
+            CachedPeers.Clear();
             Log($"Cached Peers cleaned");
         }
 

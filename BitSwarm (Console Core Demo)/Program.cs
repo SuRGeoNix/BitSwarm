@@ -11,54 +11,59 @@ namespace BitSwarmConsole
     class Program
     {
         static BitSwarm                 bitSwarm;
-        static BitSwarm.OptionsStruct   opt;
+        static BitSwarm.DefaultOptions  opt;
         static Torrent                  torrent;
         static bool                     sessionFinished;
 
         static void Main(string[] args)
         {
-            // For IDE Testing
+            // ----------- For IDE Testing -----------
 
-            //args = new string[7];
+            //args = new string[6];
+
             //args[0] = "magnet:?xt=...";   // Magnet Link
             //args[0] = @"file.torrent";    // Torrent File
+
             //args[1] = @"folder";          // SavePath   [Default:   %temp%]
             //args[2] = "20";               // MaxThreads [Default:       20]
             //args[3] = "200";              // MaxConns   [Default:      200]
-            //args[4] = "0";                // DownLimit  [Default: No Limit]
-            //args[5] = "2048";             // SleepLimit [Default: No Limit]
-            //args[6] = "false";            // Logs       [Default: Disabled]
+            //args[4] = "2048";             // SleepLimit [Default: No Limit]
+            //args[5] = "false";            // Logs       [Default: Disabled]
 
-            if (args.Length < 1 || args.Length > 7)
+            // ---------------------------------------
+
+            if (args.Length < 1 || args.Length > 6)
             {
-                Console.WriteLine("./bitswarm TorrentFile|MagnetUrl [SaveDirectory=%temp%] [MaxThreads=20] [MaxConnections=200] [DownLimit=0] [SleepLimit=0] [Logs=false]");
+                Console.WriteLine("./bitswarm TorrentFile|MagnetUrl [SaveDirectory=%temp%] [MinThreads=30] [MaxThreads=200] [SleepLimit=-1 Auto, 0 Disabled, >0 Custom KB/s] [Logs=false]");
                 return;
             }
 
             // Prepare Options
-            opt = BitSwarm.GetDefaultsOptions();
+            opt = new BitSwarm.DefaultOptions();
             if (args.Length >= 2)
             {
                 if (!Directory.Exists(args[1])) Directory.CreateDirectory(args[1]);
                 opt.DownloadPath = args[1];
             }
 
-            if (args.Length >= 3) opt.MaxThreads            = int.Parse(args[2]);
-            if (args.Length >= 4) opt.MaxConnections        = int.Parse(args[3]);
-            if (args.Length >= 5) opt.DownloadLimit         = int.Parse(args[4]);
-            if (args.Length >= 6) opt.SleepDownloadLimit    = int.Parse(args[5]);
+            if (args.Length >= 3) opt.MinThreads            = int.Parse(args[2]);
+            if (args.Length >= 4) opt.MaxThreads            = int.Parse(args[3]);
+            if (args.Length >= 5) opt.SleepModeLimit    = int.Parse(args[4]);
 
-            if (args.Length >= 7 && !(args[6] == "0" || args[6] == "false"))
+            if (args.Length >= 6 && !(args[5] == "0" || args[5] == "false"))
             {
-                opt.Verbosity = 1;
-                opt.LogStats = true;
-                //opt.LogPeer = true;
-                opt.LogTracker = true;
-                opt.LogDHT = true;
+                opt.Verbosity   = 4;
+                opt.LogStats    = true;
+                opt.LogPeer     = true;
+                opt.LogTracker  = true;
+                opt.LogDHT      = true;
             }
 
             // More Options
-            //opt.EnableDHT = false;
+            //opt.EnableDHT     = false;
+            //opt.EnableTrackers= false;
+            //opt.TrackersPath  = @"c:\root\trackers.txt";
+
             //opt.ConnectionTimeout   = 1200;
             //opt.HandshakeTimeout    = 2400;
             //opt.MetadataTimeout     = 1600;
@@ -91,7 +96,6 @@ namespace BitSwarmConsole
             DirectoryInfo downDir = new DirectoryInfo(opt.DownloadPath);
             foreach (var file in downDir.GetFiles())
                 try { if (file.Length == 0) file.Delete(); } catch (Exception) { }
-                
         }
 
         protected static void CtrlC(object sender, ConsoleCancelEventArgs args)
@@ -121,12 +125,9 @@ namespace BitSwarmConsole
         {
             torrent = e.Torrent;
             string str = "\n";
-
-            //str += "Torrent Details\r\n=================\r\nName ->\t\t" + torrent.file.name + "\r\nSize ->\t\t" + Utils.BytesToReadableString(torrent.data.totalSize) + "\r\n\r\nFiles\r\n==============================\r\n";
-
             str += "===============\n";
             str += "Torrent Details\n";
-            str += "===============\n";
+            str += "===============\n\n";
             str += torrent.file.name + " (" + Utils.BytesToReadableString(torrent.data.totalSize) + ")\n";
             str += "-----\n";
             str += "Files\n";

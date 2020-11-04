@@ -41,7 +41,6 @@ namespace SuRGeoNix.BEP
             public int              pieceLength     { get; set; }
             public List<byte[]>     pieces          { get; set; }
         }
-
         public struct TorrentData
         {
             public bool             isDone          { get; set; }
@@ -104,7 +103,6 @@ namespace SuRGeoNix.BEP
                 public bool         aggressive;
             }
         }
-
         public struct MetaData
         {
             public bool             isDone          { get; set; }
@@ -123,16 +121,29 @@ namespace SuRGeoNix.BEP
 
         public Torrent (string downloadPath) 
         {
-            DownloadPath                = downloadPath;
+            DownloadPath        = downloadPath;
 
-            file                        = new TorrentFile();
-            data                        = new TorrentData();
-            metadata                    = new MetaData();
+            file                = new TorrentFile();
+            data                = new TorrentData();
+            metadata            = new MetaData();
 
-            file.trackers               = new List<Uri>();
-            data.pieceRequests          = new List<TorrentData.PieceRequest>();
+            file.trackers       = new List<Uri>();
+            data.pieceRequests  = new List<TorrentData.PieceRequest>();
         }
 
+        public void FillTrackersFromTrackersPath(string fileName)
+        {
+            try
+            {
+                if (fileName == null || fileName.Trim() == "" || !File.Exists(fileName)) return;
+
+                string[] trackers = File.ReadAllLines(fileName);
+
+                foreach (var tracker in trackers)
+                    if (!file.trackers.Contains(new Uri(tracker))) file.trackers.Add(new Uri(tracker));
+
+            } catch (Exception) { }
+        }
         public void FillFromMagnetLink(Uri magnetLink)
         {
             // TODO: Check v2 Magnet Link
@@ -140,7 +151,7 @@ namespace SuRGeoNix.BEP
 
             NameValueCollection nvc = HttpUtility.ParseQueryString(magnetLink.Query);
             string[] xt     = nvc.Get("xt") == null ? null  : nvc.GetValues("xt")[0].Split(Char.Parse(":"));
-            if ( xt == null || xt.Length != 3 || xt[1].ToLower() != "btih" || xt[2].Length < 20 ) throw new Exception("[Magnet][xt] No hash found " + magnetLink);
+            if (xt == null || xt.Length != 3 || xt[1].ToLower() != "btih" || xt[2].Length < 20) throw new Exception("[Magnet][xt] No hash found " + magnetLink);
 
             file.name       = nvc.Get("dn") == null ? null  : nvc.GetValues("dn")[0] ;
             file.length     = nvc.Get("xl") == null ? 0     : (int) UInt32.Parse(nvc.GetValues("xl")[0]);
@@ -154,16 +165,16 @@ namespace SuRGeoNix.BEP
                     try
                     {
                         file.infoHash = Utils.ArrayToStringHex(Utils.FromBase32String(file.infoHash));
-                        if ( file.infoHash.Length != 40 ) throw new Exception("[Magnet][xt] No valid hash found " + magnetLink);
+                        if (file.infoHash.Length != 40) throw new Exception("[Magnet][xt] No valid hash found " + magnetLink);
                     } catch (Exception) { throw new Exception("[Magnet][xt] No valid hash found " + magnetLink); }   
                 } else { throw new Exception("[Magnet][xt] No valid hash found " + magnetLink); }
             }
 
-            string[] tr     = nvc.Get("tr") == null ? null  : nvc.GetValues("tr");
-            if (tr == null ) return;
+            string[] tr = nvc.Get("tr") == null ? null  : nvc.GetValues("tr");
+            if (tr == null) return;
 
             for (int i=0; i<tr.Length; i++)
-                file.trackers.Add(new Uri(tr[i]));
+                if (!file.trackers.Contains(new Uri(tr[i]))) file.trackers.Add(new Uri(tr[i]));
         }
         public void FillFromTorrentFile(string fileName)
         {
@@ -185,9 +196,9 @@ namespace SuRGeoNix.BEP
         }
         public void FillFromMetadata()
         {
-            if (metadata.file  == null) throw new Exception("No metadata found");
+            if (metadata.file == null) throw new Exception("No metadata found");
 
-            BDictionary bInfo   = (BDictionary) bParser.Parse(metadata.file.FileName);
+            BDictionary bInfo = (BDictionary) bParser.Parse(metadata.file.FileName);
             FillFromInfo(bInfo);
         }
         public void FillFromInfo(BDictionary bInfo)
@@ -238,9 +249,9 @@ namespace SuRGeoNix.BEP
             data.requestsPrev   = new BitField(data.pieces);
 
             data.blockSize      = Math.Min(Peer.MAX_DATA_SIZE, data.pieceSize);
-            data.blocks         = ( (data.pieceSize -1) / data.blockSize ) + 1;
+            data.blocks         = ((data.pieceSize -1)      / data.blockSize) + 1;
             data.blockLastSize  = data.pieceLastSize % data.blockSize == 0 ? data.blockSize : data.pieceLastSize % data.blockSize;
-            data.blocksLastPiece= ( (data.pieceLastSize -1) / data.blockSize ) + 1;
+            data.blocksLastPiece= ((data.pieceLastSize -1)  / data.blockSize) + 1;
 
             data.pieceProgress  = new Dictionary<int, TorrentData.PieceProgress>();
             data.pieceRequests  = new List<TorrentData.PieceRequest>();
@@ -251,30 +262,28 @@ namespace SuRGeoNix.BEP
             string tracker = null;
             BList trackersBList = null;
 
-            if ( torrent["announce"] != null )
+            if (torrent["announce"] != null)
                 tracker = ((BString) torrent["announce"]).ToString();
 
-            if ( torrent["announce-list"] != null )
+            if (torrent["announce-list"] != null)
                 trackersBList = (BList) torrent["announce-list"];
 
-            if ( trackersBList == null && tracker == null ) return new List<Uri>();
-            //trackersBList = (BList) trackersBList[0];
-            if ( trackersBList == null ) return new List<Uri>() { new Uri(tracker) };
+            if (trackersBList == null && tracker == null) return new List<Uri>();
+            if (trackersBList == null) return new List<Uri>() { new Uri(tracker) };
 
             List<Uri> trackers = new List<Uri>();
 
             for (int i=0; i<trackersBList.Count; i++)
-                trackers.Add( new Uri( ((BString)((BList)trackersBList[i])[0]).ToString() ) );
-                //trackers.Add( new Uri( ((BString)trackersBList[i]).ToString() ) );
+                trackers.Add(new Uri(((BString)((BList)trackersBList[i])[0]).ToString()));
 
-            if ( tracker != null && !trackers.Contains(new Uri(tracker)) ) trackers.Add(new Uri(tracker));
+            if (tracker != null && !trackers.Contains(new Uri(tracker))) trackers.Add(new Uri(tracker));
 
             return trackers;
         }
         public static List<string> GetPathsFromInfo(BDictionary info)
         {
             BList files = (BList) info["files"];
-            if ( files == null ) return null;
+            if (files == null) return null;
 
             List<string> fileNames = new List<string>();
 
@@ -295,7 +304,7 @@ namespace SuRGeoNix.BEP
             totalSize = 0;
 
             BList files = (BList) info["files"];
-            if ( files == null ) return null;
+            if (files == null) return null;
             List<long> lens = new List<long>();
             
             for (int i=0; i<files.Count; i++)
@@ -319,7 +328,6 @@ namespace SuRGeoNix.BEP
             return hashes;
         }
 
-
         #region IDisposable Support
         private bool disposedValue = false; // To detect redundant calls
         protected virtual void Dispose(bool disposing)
@@ -334,25 +342,16 @@ namespace SuRGeoNix.BEP
                         foreach (PartFile file in data.files)
                             file.Dispose();
 
-                    if    ( isMultiFile && data.folder != null
+                    if (isMultiFile && data.folder != null
                         &&  Directory.Exists(data.folder)
-                        &&  Directory.GetFileSystemEntries(data.folder).Length == 0 )
+                        &&  Directory.GetFileSystemEntries(data.folder).Length == 0)
                         Directory.Delete(data.folder);
-
-                    // TODO: dispose managed state (managed objects).
                 }
-
-                // TODO: free unmanaged resources (unmanaged objects) and override a finalizer below.
-                // TODO: set large fields to null.
 
                 disposedValue = true;
             }
         }
-        public void Dispose()
-        {
-            Dispose(true);
-        }
+        public void Dispose() { Dispose(true); }
         #endregion
-
     }
 }

@@ -11,10 +11,10 @@ namespace SuRGeoNix
         public int          ChunkSize       { get; private set; }
         public int          chunksCounter   { get; private set; }
         public bool         FileCreated     { get; private set; }
-        public bool         AutoCreate      { get { return autoCreate; } set { autoCreate = value; if ( value && fileStream.Length == Size ) CreateFile(); } }
+        public bool         AutoCreate      { get { return autoCreate; } set { autoCreate = value; if (value && fileStream.Length == Size) CreateFile(); } }
         private bool        autoCreate;
 
-        private FileStream  fileStream;
+        private FileStream           fileStream;
         private Dictionary<int, int> mapIdToChunkId;
 
         private int         firstPos;
@@ -22,21 +22,21 @@ namespace SuRGeoNix
         private int         lastPos;
         private int         lastChunkSize;
 
-        readonly object locker = new object();
+        readonly object locker       = new object();
         readonly object fileCreating = new object();
 
         public PartFile(string fileName, int chunkSize, long size = -1, bool autoCreate = true)
         {
-            if ( File.Exists(fileName) || File.Exists(fileName + ".part") ) throw new IOException("File " + fileName + " already exists");
-            if ( chunkSize < 1 ) throw new Exception("Chunk size must be > 0");
+            if (File.Exists(fileName) || File.Exists(fileName + ".part")) throw new IOException("File " + fileName + " already exists");
+            if (chunkSize < 1) throw new Exception("Chunk size must be > 0");
 
             Directory.CreateDirectory(Path.GetDirectoryName(fileName));
-            fileStream = File.Open(fileName + ".part", FileMode.CreateNew);
+            fileStream      = File.Open(fileName + ".part", FileMode.CreateNew);
 
-            FileName   = fileName;
-            Size       = size;
-            ChunkSize  = chunkSize;
-            AutoCreate = autoCreate;
+            FileName        = fileName;
+            Size            = size;
+            ChunkSize       = chunkSize;
+            AutoCreate      = autoCreate;
 
             mapIdToChunkId  = new Dictionary<int, int>();
             chunksCounter   = -1;
@@ -47,8 +47,10 @@ namespace SuRGeoNix
         }
         public PartFile(string fileName, Dictionary<int, int> mapIdToChunkId, int chunkSize, int firstPos, int firstChunkSize, int lastPos, int lastChunkSize, int chunksCounter)
         {
-            if ( !File.Exists(fileName + ".part") ) throw new IOException("File " + fileName + " not exists");
-            if ( chunkSize < 1 ) throw new Exception("Chunk size must be > 0");
+            // Currently not used | TODO for loading a session
+
+            if (!File.Exists(fileName + ".part")) throw new IOException("File " + fileName + " not exists");
+            if (chunkSize < 1) throw new Exception("Chunk size must be > 0");
 
             fileStream = File.Open(fileName + ".part", FileMode.Open, FileAccess.Read);
 
@@ -66,53 +68,53 @@ namespace SuRGeoNix
         {
             lock (locker)
             {
-                if ( FileCreated ) return;
-                if ( mapIdToChunkId.ContainsKey(chunkId) ) { Console.WriteLine($"ChunkId {chunkId} already written!"); return; }
+                if (FileCreated) return;
+                if (mapIdToChunkId.ContainsKey(chunkId)) { Console.WriteLine($"ChunkId {chunkId} already written!"); return; }
 
                 fileStream.Write(chunk, offset, (int) ChunkSize);
                 fileStream.Flush();
                 chunksCounter++;
                 mapIdToChunkId.Add(chunkId, chunksCounter);
 
-                if ( AutoCreate && fileStream.Length == Size ) CreateFile();
+                if (AutoCreate && fileStream.Length == Size) CreateFile();
             }
         }
         public void WriteFirst(byte[] chunk, int offset, int len)
         {
             lock (locker)
             {
-                if ( FileCreated ) return;
-                if ( mapIdToChunkId.ContainsKey(0) ) { Console.WriteLine($"ChunkId 0 already written!"); return; }
-                if ( firstChunkSize != 0 ) throw new Exception("First chunk already exists");
+                if (FileCreated) return;
+                if (mapIdToChunkId.ContainsKey(0)) { Console.WriteLine($"ChunkId 0 already written!"); return; }
+                if (firstChunkSize != 0) throw new Exception("First chunk already exists");
 
                 fileStream.Write(chunk, offset, (int) len);
                 fileStream.Flush();
                 chunksCounter++;
                 mapIdToChunkId.Add(0, chunksCounter);
-                firstChunkSize = len;
-                firstPos = chunksCounter;
+                firstChunkSize  = len;
+                firstPos        = chunksCounter;
 
-                if ( AutoCreate && fileStream.Length == Size ) CreateFile();
+                if (AutoCreate && fileStream.Length == Size) CreateFile();
             }
         }
         public void WriteLast(int chunkId, byte[] chunk, int offset, int len)
         {
             lock (locker)
             {
-                if ( FileCreated ) return;
-                if ( chunksCounter == -1 && chunkId == 0) { WriteFirst(chunk, offset, len); return; } // WriteLast as WriteFirst
-                if ( mapIdToChunkId.ContainsKey(chunkId) ) { Console.WriteLine($"ChunkId {chunkId} already written!"); return; }
+                if (FileCreated) return;
+                if (chunksCounter == -1 && chunkId == 0) { WriteFirst(chunk, offset, len); return; } // WriteLast as WriteFirst
+                if (mapIdToChunkId.ContainsKey(chunkId)) { Console.WriteLine($"ChunkId {chunkId} already written!"); return; }
 
-                if ( lastChunkSize != 0 ) throw new Exception("Last chunk already exists");
+                if (lastChunkSize != 0) throw new Exception("Last chunk already exists");
                 
                 fileStream.Write(chunk, offset, (int) len);
                 fileStream.Flush();
                 chunksCounter++;
                 mapIdToChunkId.Add(chunkId, chunksCounter);
-                lastChunkSize = len;
-                lastPos = chunksCounter;
+                lastChunkSize   = len;
+                lastPos         = chunksCounter;
 
-                if ( AutoCreate && fileStream.Length == Size ) CreateFile();
+                if (AutoCreate && fileStream.Length == Size) CreateFile();
             }
         }
 
@@ -197,7 +199,7 @@ namespace SuRGeoNix
                 if (lastChunkSize  != 0 && chunkPos > lastPos ) { pos += lastChunkSize;  chunkPos2--; }
                 pos += (long)ChunkSize * chunkPos2;
 
-                if ( pos < fileStream.Length )
+                if (pos < fileStream.Length)
                 {
                     byte[] data = new byte[len];
                     long savePos = fileStream.Position;
@@ -240,20 +242,18 @@ namespace SuRGeoNix
                     fileStream.Close();
                     fileStream = File.Open(FileName, FileMode.Open, FileAccess.Read);
                     File.Delete(FileName + ".part");
-                    
                 }
             }
         }
-        public void CloseFile()
-        {
-            if (fileStream != null)  fileStream.Close(); 
-        }
         public void Dispose()
         {
-            bool deleteFile = false;
-            if ( fileStream != null && fileStream.Length == 0 ) deleteFile = true;
-            if ( fileStream != null ) ((IDisposable)fileStream).Dispose();
-            if ( deleteFile ) File.Delete(FileName + ".part");
+            if (fileStream != null)
+            {
+                bool deleteFile = fileStream.Length == 0;
+                fileStream.Flush();
+                fileStream.Close();
+                if (deleteFile) File.Delete(FileName + ".part");
+            }
         }
     }
 }

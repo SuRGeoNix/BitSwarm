@@ -12,7 +12,7 @@ namespace SuRGeoNix.BitSwarmClient
     {
         static Torrent                 torrent;
         static BitSwarm                bitSwarm;
-        static BitSwarm.OptionsStruct  opt;
+        static BitSwarm.DefaultOptions opt;
 
         long requestedBytes = 0;
 
@@ -23,11 +23,12 @@ namespace SuRGeoNix.BitSwarmClient
         
         private void frmMain_Load(object sender, EventArgs e)
         {
-            BitSwarm.OptionsStruct opt = BitSwarm.GetDefaultsOptions();
+            BitSwarm.DefaultOptions opt = new BitSwarm.DefaultOptions();
 
             downPath.Text           = opt.DownloadPath;
-            maxCon.Text             = opt.MaxConnections.ToString();
-            maxThreads.Text         = opt.MaxThreads.ToString();
+            maxCon.Text             = opt.MaxThreads.ToString();
+            maxThreads.Text         = opt.MinThreads.ToString();
+            sleepLimit.Text         = opt.SleepModeLimit.ToString();
             peersFromTrackers.Text  = opt.PeersFromTracker.ToString();
             conTimeout.Text         = opt.ConnectionTimeout.ToString();
             handTimeout.Text        = opt.HandshakeTimeout.ToString();
@@ -36,7 +37,7 @@ namespace SuRGeoNix.BitSwarmClient
         }
         private void button1_Click(object sender, EventArgs e)
         {
-            if ( button1.Text == "Start" )
+            if (button1.Text == "Start")
             {
                 output.Text = "";
                 listBox1.Items.Clear();
@@ -44,12 +45,15 @@ namespace SuRGeoNix.BitSwarmClient
 
                 try
                 {
-                    opt = BitSwarm.GetDefaultsOptions();
+                    opt = new BitSwarm.DefaultOptions();
+
+                    opt.SleepModeLimit  = 1600;
                     
                     opt.DownloadPath        = downPath.Text;
 
-                    opt.MaxConnections      = int.Parse(maxCon.Text);
-                    opt.MaxThreads          = int.Parse(maxThreads.Text);
+                    opt.MaxThreads          = int.Parse(maxCon.Text);
+                    opt.MinThreads          = int.Parse(maxThreads.Text);
+                    opt.SleepModeLimit      = int.Parse(sleepLimit.Text);
                     opt.PeersFromTracker    = int.Parse(peersFromTrackers.Text);
                     opt.ConnectionTimeout   = int.Parse(conTimeout.Text);
                     opt.HandshakeTimeout    = int.Parse(handTimeout.Text);
@@ -96,7 +100,7 @@ namespace SuRGeoNix.BitSwarmClient
 
         private void BitSwarm_MetadataReceived(object source, BitSwarm.MetadataReceivedArgs e)
         {
-            if ( InvokeRequired )
+            if (InvokeRequired)
             {
                 BeginInvoke(new Action(() => BitSwarm_MetadataReceived(source, e)));
                 return;
@@ -123,7 +127,7 @@ namespace SuRGeoNix.BitSwarmClient
         }
         private void BitSwarm_StatusChanged(object source, BitSwarm.StatusChangedArgs e)
         {
-            if ( InvokeRequired )
+            if (InvokeRequired)
             {
                 BeginInvoke(new Action(() => BitSwarm_StatusChanged(this, e)));
                 return;
@@ -134,7 +138,7 @@ namespace SuRGeoNix.BitSwarmClient
             if (e.Status == 0)
             {
                 output.Text += "\r\n\r\nFinished at "   + DateTime.Now.ToString("G", DateTimeFormatInfo.InvariantInfo);
-                if ( torrent.file.name != null ) MessageBox.Show("Downloaded successfully!\r\n" + torrent.file.name);
+                if (torrent.file.name != null) MessageBox.Show("Downloaded successfully!\r\n" + torrent.file.name);
             }
             else
             {
@@ -151,7 +155,7 @@ namespace SuRGeoNix.BitSwarmClient
         }
         private void BitSwarm_StatsUpdated(object source, BitSwarm.StatsUpdatedArgs e)
         {
-            if ( InvokeRequired )
+            if (InvokeRequired)
             {
                 BeginInvoke(new Action(() => BitSwarm_StatsUpdated(source, e)));
                 return;
@@ -204,13 +208,13 @@ namespace SuRGeoNix.BitSwarmClient
         }
         private void frmMain_FormClosing(object sender, FormClosingEventArgs e)
         {
-            if ( bitSwarm != null) bitSwarm.Dispose();
+            if (bitSwarm != null) bitSwarm.Dispose();
         }
 
         
         private void button2_Click(object sender, EventArgs e)
         {
-            if ( listBox1.SelectedItems.Count < 1 || torrent == null ) return;
+            if (listBox1.SelectedItems.Count < 1 || torrent == null) return;
 
             List<string> fileNames = new List<string>();
 
@@ -222,7 +226,7 @@ namespace SuRGeoNix.BitSwarmClient
             requestedBytes = 0;
             for (int i=0; i<torrent.file.paths.Count; i++)
                 foreach (string fileName in fileNames)
-                    if ( fileName == torrent.file.paths[i] ) {  requestedBytes += torrent.file.lengths[i]; break; }
+                    if (fileName == torrent.file.paths[i]) {  requestedBytes += torrent.file.lengths[i]; break; }
 
             output.Text += "\r\nNew Total Size Requested: " + Utils.BytesToReadableString(requestedBytes) + "\r\n";
         }

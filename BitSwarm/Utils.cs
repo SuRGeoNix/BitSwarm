@@ -22,7 +22,7 @@ namespace SuRGeoNix
             // Windows MAX_PATH = 260
             if (fileName.Length > 250) fileName = fileName.Substring(0, 250 - Path.GetExtension(fileName).Length) + Path.GetExtension(fileName);
 
-            if ( !File.Exists(fileName) && !File.Exists(fileName + ".part") ) return fileName;
+            if (!File.Exists(fileName) && !File.Exists(fileName + ".part")) return fileName;
 
             string tmp = Path.Combine(Path.GetDirectoryName(fileName),Regex.Replace(Path.GetFileNameWithoutExtension(fileName), @"(.*) (\([0-9]+)\)$", "$1"));
             string newName;
@@ -30,14 +30,14 @@ namespace SuRGeoNix
             for (int i=1; i<1000; i++)
             {
                 newName = tmp  + " (" + i + ")" + Path.GetExtension(fileName);
-                if ( !File.Exists(newName) && !File.Exists(newName + ".part") ) return newName;
+                if (!File.Exists(newName) && !File.Exists(newName + ".part")) return newName;
             }
 
             return null;
         }
         public static string FindNextAvailableDir(string dir)
         {
-            if ( !Directory.Exists(dir) ) return dir;
+            if (!Directory.Exists(dir)) return dir;
 
             string tmp = Regex.Replace(dir, @"(.*)\\+$", "$1");
             tmp = Path.Combine(Path.GetDirectoryName(tmp),Regex.Replace(Path.GetFileName(tmp), @"(.*) (\([0-9]+)\)$", "$1"));
@@ -46,14 +46,14 @@ namespace SuRGeoNix
             for (int i=1; i<101; i++)
             {
                 newName = tmp  + " (" + i + ")";
-                if ( !Directory.Exists(newName) ) return newName;
+                if (!Directory.Exists(newName)) return newName;
             }
 
             return null;
         }
         public static string FindNextAvailableFile(string fileName)
         {
-            if ( !File.Exists(fileName) ) return fileName;
+            if (!File.Exists(fileName)) return fileName;
 
             string tmp = Path.Combine(Path.GetDirectoryName(fileName),Regex.Replace(Path.GetFileNameWithoutExtension(fileName), @"(.*) (\([0-9]+)\)$", "$1"));
             string newName;
@@ -61,7 +61,7 @@ namespace SuRGeoNix
             for (int i=1; i<101; i++)
             {
                 newName = tmp  + " (" + i + ")" + Path.GetExtension(fileName);
-                if ( !File.Exists(newName) ) return newName;
+                if (!File.Exists(newName)) return newName;
             }
 
             return null;
@@ -102,13 +102,13 @@ namespace SuRGeoNix
         public static void printDicRec(BDictionary dic, int level = 0)
         {
             foreach (KeyValuePair<BString, IBObject> a in dic) {
-                if ( a.Value.GetType() == typeof(BDictionary) )
+                if (a.Value.GetType() == typeof(BDictionary))
                 {
                     Console.WriteLine(String.Concat(Enumerable.Repeat("\t", level)) + a.Key);
                     level++;
                     printDicRec((BDictionary) a.Value, level);
                     level--;
-                } else if ( a.Value.GetType() == typeof(BList) ) {
+                } else if (a.Value.GetType() == typeof(BList)) {
 
                 } else
                 {
@@ -120,7 +120,7 @@ namespace SuRGeoNix
         // To Big Endian
         public static int ToBigEndian(byte[] input)
         {
-            if ( BitConverter.IsLittleEndian ) Array.Reverse(input);
+            if (BitConverter.IsLittleEndian) Array.Reverse(input);
             return BitConverter.ToInt32(input, 0);
         }
         public static byte[] ToBigEndian(byte input)
@@ -130,7 +130,7 @@ namespace SuRGeoNix
         public static byte[] ToBigEndian(Int16 input)
         {
             byte[] output = BitConverter.GetBytes(input);
-            if ( !BitConverter.IsLittleEndian ) return output;
+            if (!BitConverter.IsLittleEndian) return output;
 
             Array.Reverse(output);
             return output;
@@ -138,7 +138,7 @@ namespace SuRGeoNix
         public static byte[] ToBigEndian(Int32 input)
         {
             byte[] output = BitConverter.GetBytes(input);
-            if ( !BitConverter.IsLittleEndian ) return output;
+            if (!BitConverter.IsLittleEndian) return output;
 
             Array.Reverse(output);
             return output;
@@ -146,7 +146,7 @@ namespace SuRGeoNix
         public static byte[] ToBigEndian(Int64 input)
         {
             byte[] output = BitConverter.GetBytes(input);
-            if ( !BitConverter.IsLittleEndian ) return output;
+            if (!BitConverter.IsLittleEndian) return output;
 
             Array.Reverse(output);
             return output;
@@ -157,7 +157,7 @@ namespace SuRGeoNix
         {
             T[] result = new T[length];
             Buffer.BlockCopy(data, (int)index, result, 0, (int)length);
-            if ( reverse ) Array.Reverse(result);
+            if (reverse) Array.Reverse(result);
             return result;
         }
         public static unsafe bool ArrayComp(byte[] a1, byte[] a2)
@@ -202,7 +202,7 @@ namespace SuRGeoNix
 
             for (int i=0; i<hex.Length; i++)
             {
-                if ( i % 2 == 0) hex2 += "%";
+                if (i % 2 == 0) hex2 += "%";
                 hex2 += hex[i];
             }
 
@@ -212,7 +212,7 @@ namespace SuRGeoNix
         // Misc
         public static List<Tuple<long, int>> MergeByteRanges(List<Tuple<long, int>> byteRanges, int allowSpaceBytes = 0)
         {
-            if ( byteRanges == null || byteRanges.Count < 1 ) return new List<Tuple<long, int>>();
+            if (byteRanges == null || byteRanges.Count < 1) return new List<Tuple<long, int>>();
 
             List<Tuple<long, int>> byteRangesCopy = new List<Tuple<long, int>>(byteRanges);
             
@@ -227,13 +227,13 @@ namespace SuRGeoNix
                 Tuple<long, int> curRange = byteRangesCopy[i];
 
                 // Same Start => End = Max(Len1/2)
-                if ( curRange.Item1 == prevRange.Item1 ) { prevRange = new Tuple<long, int>(prevRange.Item1, Math.Max(prevRange.Item2, curRange.Item2)); continue; }
+                if (curRange.Item1 == prevRange.Item1) { prevRange = new Tuple<long, int>(prevRange.Item1, Math.Max(prevRange.Item2, curRange.Item2)); continue; }
 
                 // Out of Allowed Bytes => Add new Range / Set prev to cur
-                if ( curRange.Item1 > prevRange.Item1 + prevRange.Item2 + allowSpaceBytes) { cByteRanges.Add(prevRange); prevRange = new Tuple<long, int>(curRange.Item1, curRange.Item2); continue; }
+                if (curRange.Item1 > prevRange.Item1 + prevRange.Item2 + allowSpaceBytes) { cByteRanges.Add(prevRange); prevRange = new Tuple<long, int>(curRange.Item1, curRange.Item2); continue; }
 
                 // It's inside prev ... skip
-                if ( curRange.Item1 + curRange.Item2 <= prevRange.Item1 + prevRange.Item2 ) continue;
+                if (curRange.Item1 + curRange.Item2 <= prevRange.Item1 + prevRange.Item2) continue;
 
                 // From prev Start to Max(End1/2) - Start
                 prevRange = new Tuple<long, int>(prevRange.Item1, (int) (Math.Max(curRange.Item1 + curRange.Item2, prevRange.Item1 + prevRange.Item2) - prevRange.Item1));
