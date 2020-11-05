@@ -64,6 +64,7 @@ namespace SuRGeoNix.BEP
 
         private byte[]                          getPeersBytes;
         private IPEndPoint                      ipEP;
+        private UdpClient                       udpClient;
 
         private int     havePeers, requested, responded, inBucket;
         private bool    isWeirdStrategy;
@@ -96,10 +97,6 @@ namespace SuRGeoNix.BEP
             //public bool     hasPeers;
 
             public Status   status;
-
-            public UdpClient udpClient;
-
-            public void Dispose() { udpClient?.Dispose(); }
         }
         public DHT(string infoHash, Options? opt = null)
         {
@@ -108,9 +105,13 @@ namespace SuRGeoNix.BEP
             bucketNodes2    = new Dictionary<string, Node>();
             rememberBadNodes= new HashSet<string>();
             CachedPeers     = new ConcurrentDictionary<string, int>();
-            ipEP            = new IPEndPoint(IPAddress.Any, 0);
             infoHashBytes   = Utils.StringHexToArray(infoHash);
             this.infoHash   = infoHash;
+
+            ipEP            = new IPEndPoint(IPAddress.Any, 0);
+            udpClient       = new UdpClient(0);
+            udpClient.Client.ReceiveTimeout = options.ConnectionTimeout;
+            udpClient.Client.Ttl            = 255;
 
             status          = Status.STOPPED;
             isWeirdStrategy = true;
@@ -125,11 +126,10 @@ namespace SuRGeoNix.BEP
         public static Options GetDefaultOptions()
         {
             Options options = new Options();
-            options.ConnectionTimeout       = 800;
-            options.BoostConnectionTimeout  = 200;
+            options.ConnectionTimeout       = 350;
             options.MaxBucketNodes          = 200;
             options.MinBucketDistance       = 145;
-            options.MinBucketDistance2      = 67;
+            options.MinBucketDistance2      = 130;
             options.NodesPerLevel           = 4;
             
             return options;
@@ -254,22 +254,14 @@ namespace SuRGeoNix.BEP
             {
                 byte[] recvBuff = null;
 
-                node.udpClient = new UdpClient();
-                node.udpClient.Client.ReceiveTimeout = !options.Beggar.Stats.BoostMode ? options.ConnectionTimeout : options.BoostConnectionTimeout;
-                node.udpClient.Client.Ttl = 255;
-
-                // NOTE: Possible bug here (have been noticed a strange delay ~11 seconds few times, use IPEndPoint instead?) | It will also freeze in case of Max Down Rate Limit (normal)
-                node.udpClient.Send(getPeersBytes, getPeersBytes.Length, node.host, node.port);
-
-                recvBuff = node.udpClient.Receive(ref ipEP);
-
-                node.udpClient.Close();
+                udpClient.Send(getPeersBytes, getPeersBytes.Length, node.host, node.port);
+                recvBuff = udpClient.Receive(ref ipEP);
 
                 if (recvBuff == null || recvBuff.Length == 0) return null;
 
                 return bParser.Parse<BDictionary>(recvBuff);
 
-            } catch (Exception) { node.udpClient?.Close(); return null;}
+            } catch (Exception) { return null; }
         }
         private void GetPeers(Node node, int selfRecursionLevel = 0)
         {
@@ -317,6 +309,8 @@ namespace SuRGeoNix.BEP
                         UInt16  curPort     = (UInt16) BitConverter.ToInt16(Utils.ArraySub(ref curNodes, (uint) i + 24, 2, true), 0);
                     
                         if (curPort < 100) continue; // Drop fake
+
+                        if (i > (5 * 26) && curDistance > minBucketDistance) break; // Avoid collecting too many nodes out of distance from a single node
 
                         if (options.Verbosity > 0) Log($"[{node.distance}] [{node.host}] [NODE] [{curDistance}] {curIP}:{curPort}");
 
@@ -473,7 +467,7 @@ namespace SuRGeoNix.BEP
                 }
 
                 foreach (string curNodeKey in curNodeKeys)
-                    { bucketNodesPointer[curNodeKey].Dispose(); bucketNodesPointer.Remove(curNodeKey); }
+                    bucketNodesPointer.Remove(curNodeKey);
 
                 clearBucket = false;
 

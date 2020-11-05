@@ -34,7 +34,7 @@ namespace BitSwarmConsole
 
             if (args.Length < 1 || args.Length > 6)
             {
-                Console.WriteLine("./bitswarm TorrentFile|MagnetUrl [SaveDirectory=%temp%] [MinThreads=30] [MaxThreads=200] [SleepLimit=-1 Auto, 0 Disabled, >0 Custom KB/s] [Logs=false]");
+                Console.WriteLine("./bitswarm TorrentFile|MagnetUrl [SaveDirectory=%temp%] [MinThreads=20] [MaxThreads=200] [SleepLimit=-1 Auto, 0 Disabled, >0 Custom KB/s] [Logs=false]");
                 return;
             }
 
@@ -46,8 +46,8 @@ namespace BitSwarmConsole
                 opt.DownloadPath = args[1];
             }
 
-            if (args.Length >= 3) opt.MinThreads            = int.Parse(args[2]);
-            if (args.Length >= 4) opt.MaxThreads            = int.Parse(args[3]);
+            if (args.Length >= 3) opt.MinThreads        = int.Parse(args[2]);
+            if (args.Length >= 4) opt.MaxThreads        = int.Parse(args[3]);
             if (args.Length >= 5) opt.SleepModeLimit    = int.Parse(args[4]);
 
             if (args.Length >= 6 && !(args[5] == "0" || args[5] == "false"))

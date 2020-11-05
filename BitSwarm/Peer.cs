@@ -217,6 +217,7 @@ namespace SuRGeoNix.BEP
             {
                 if (Options.Verbosity > 0) Log(3, "[CONNECTING] ... ");
                 connected = tcpClient.ConnectAsync(host, port).Wait(Options.ConnectionTimeout);
+                if (!connected) tcpClient.Close();
 
                 // Is Spin Worse?
 
@@ -498,7 +499,7 @@ namespace SuRGeoNix.BEP
 
                     Options.Beggar.PieceRejected(piece, offset, len, this);
 
-                    if (piecesRequested == 0) 
+                    if (piecesRequested == 0)
                     {
                         status = Status.READY;
                         if (Options.Beggar.isRunning)
@@ -534,7 +535,6 @@ namespace SuRGeoNix.BEP
                     allowFastPieces.Add(allowFastPiece);
 
                     if (Options.Verbosity > 0) Log(3, $"[MSG ] Allowed Fast [Piece: {allowFastPiece}]");
-
 
                     if (Options.Beggar.isRunning && status == Status.READY)
                     {

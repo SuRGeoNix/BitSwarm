@@ -200,13 +200,13 @@ namespace SuRGeoNix
 
 
             // -1: Auto | 0: Disabled | Auto will figure out SleepModeLimit from MaxRate
-            public int      SleepModeLimit      { get; set; } = -1;     // Activates Sleep Mode (Low Resources) at the specify DownRate | DHT Stop, Re-Fills Stop (DHT/Trackers) & MinThreads Drop to MinThreads / 2
+            public int      SleepModeLimit      { get; set; } =   0;     // Activates Sleep Mode (Low Resources) at the specify DownRate | DHT Stop, Re-Fills Stop (DHT/Trackers) & MinThreads Drop to MinThreads / 2
 
             //public int      DownloadLimit       { get; set; } = -1;
             //public int      UploadLimit         { get; set; }
 
-            public int      ConnectionTimeout   { get; set; } = 1200;
-            public int      HandshakeTimeout    { get; set; } = 2200;
+            public int      ConnectionTimeout   { get; set; } = 400;
+            public int      HandshakeTimeout    { get; set; } = 800;
             public int      MetadataTimeout     { get; set; } = 1600;
             public int      PieceTimeout        { get; set; } = 6666;
 
