@@ -14,7 +14,7 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>bitswarm bittorrent torrent client streaming dht</PackageTags>
     <Copyright>© SuRGeoNix 2020</Copyright>
-    <Version>2.2.1</Version>
+    <Version>2.2.2</Version>
     <PackageReleaseNotes>Alpha Testing &amp; Deep Analysis (Bugs &amp; Performance Issues / Improvements)
 
 Additions/Improvements:-
@@ -25,6 +25,7 @@ Additions/Improvements:-
 4. Adding support for Allow Fast (Fast Extension)
 5. Adding support for external Trackers list
 6. Direct requests after each piece receive
+7. Trackers announce re-requesting (recursively) for more peers (added on 2.2.2)
 
 Critical Issues:-
 
@@ -32,9 +33,10 @@ Critical Issues:-
 2. Synchronizing socket buffer sizes with receiving network stream
 3. CPU performance issues (improvements especially with bitfields hotpaths)
 4. Scheduler re-design and transfer jobs direct in Peers (will do the same for timeouts)
-5. DHT issues (Fixed on 2.2.1 - issue with Local EndPoint on Receive)</PackageReleaseNotes>
-    <FileVersion>2.2.1.0</FileVersion>
-    <AssemblyVersion>2.2.1.0</AssemblyVersion>
+5. DHT issues (Fixed on 2.2.1 - issue with Local EndPoint on Receive)
+6. Trackers UDP sockets stability (Fixed on 2.2.2)</PackageReleaseNotes>
+    <FileVersion>2.2.2.0</FileVersion>
+    <AssemblyVersion>2.2.2.0</AssemblyVersion>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">

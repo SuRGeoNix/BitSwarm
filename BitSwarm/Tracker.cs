@@ -1,5 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Net.Security;
@@ -13,8 +13,8 @@ namespace SuRGeoNix.BEP
 {
     /* TODO
      * 
-     * 1. Review connID expiration
-     * 2. Review TCP trackers
+     * 1. UDP: Review connID expiration (use interval from announce response)
+     * 2. TCP: Not tested yet
      */
 
     public class Tracker
@@ -44,19 +44,21 @@ namespace SuRGeoNix.BEP
             HTTPS   = 3
         }
 
-        public Dictionary<string, int>  peers       { get; private set; }
-        public UInt32                   seeders     { get; private set; }
-        public UInt32                   leechers    { get; private set; }
-        public UInt32                   completed   { get; private set; }
-        public UInt32                   interval    { get; private set; }
+        public ConcurrentDictionary<string, int>  peers { get; private set; }
+        public UInt32   seeders     { get; private set; }
+        public UInt32   leechers    { get; private set; }
+        public UInt32   completed   { get; private set; }
+        public UInt32   interval    { get; private set; }
         
         private const Int64 CONNECTION_ID = 0x41727101980;
+
+        private UdpClient  udpClient;
+        public  IPEndPoint rEP;
 
         private TcpClient       tcpClient;
         private NetworkStream   netStream;
         private SslStream       sslStream;
-        private UdpClient       udpClient;
-        private IPEndPoint      ipEP;
+        
         private byte[]          recvBuff;
 
         private byte[]          action;
@@ -64,12 +66,17 @@ namespace SuRGeoNix.BEP
         private byte[]          tranID;
         private byte[]          key;
         private byte[]          data;
+
+        private string          typeHostPort;
+
+        internal static BitSwarm Beggar;
         
         public static class Action
         {
             public const byte CONNECT   = 0x00;
             public const byte ANNOUNCE  = 0x01;
             public const byte SCRAPE    = 0x02;
+            public const byte ERROR     = 0x03;
         }
 
         public Tracker(Uri url, Options options)
@@ -78,7 +85,6 @@ namespace SuRGeoNix.BEP
             uri             = url;
             host            = url.DnsSafeHost;
             port            = url.Port;
-            ipEP            = new IPEndPoint(IPAddress.Any, 0);
             key             = Utils.ToBigEndian((Int32) new Random().Next(1, Int32.MaxValue));
 
             switch (url.Scheme.ToLower())
@@ -91,67 +97,69 @@ namespace SuRGeoNix.BEP
                     break;
                 case "udp":
                     type = Type.UDP;
+
+                    IPAddress[] ips = null;
+
+                    try { ips = Dns.GetHostAddresses(uri.DnsSafeHost); } catch (Exception) { }
+                    
+                    if (ips == null || ips.Length == 0) break;
+
+                    foreach (var ip in ips)
+                        if (ip.AddressFamily == AddressFamily.InterNetwork)
+                            rEP = new IPEndPoint(ip, port);
+                    
+                    if (rEP == null)
+                        foreach (var ip in ips)
+                            if (ip.AddressFamily == AddressFamily.InterNetworkV6)
+                            {  rEP = new IPEndPoint(ip, port); break; }
+
+                    if (rEP == null) { Log("DNS failed"); break; }
+
+                    udpClient   = new UdpClient(0);
+                    udpClient.Client.ReceiveTimeout = options.ReceiveTimeout;
+
                     break;
                 default:
 
                     break;
             }
+
+            typeHostPort = (type.ToString().ToLower() + "://" + host + ":" + port).PadRight(50, ' ');
         }
 
         // Main Implementation [Connect | Receive | Announce | Scrape]
-        private bool ConnectUDP()
+        private bool ConnectTCP()
         {
+            bool connected;
+            tcpClient = new TcpClient();
+
             try
             {
-                // Socket Connection
-                udpClient = new UdpClient();
-                udpClient.Client.ReceiveTimeout = 800;
+                connected = tcpClient.ConnectAsync(host, port).Wait(options.ConnectTimeout);
 
-                //if (Utils.IsWindows) ???
-                //{
-                //    udpClient.AllowNatTraversal(true);
-                //    udpClient.DontFragment = true;
-                //}
+                if (!connected) return false;
 
-                // Connect Request
-                action = Utils.ToBigEndian((Int32) Action.CONNECT);
-                tranID = Utils.ToBigEndian((Int32) new Random().Next(1,Int32.MaxValue));
-                data   = Utils.ArrayMerge(Utils.ToBigEndian(CONNECTION_ID), action, tranID);
+                if (type == Type.HTTP)
+                    netStream               = tcpClient.GetStream();
+                else
+                {
+                    sslStream               = new SslStream(tcpClient.GetStream(), false, new RemoteCertificateValidationCallback(ValidateServerCertificate));
+                    sslStream.AuthenticateAsClient(host);
+                }
 
-                udpClient.Send(data, data.Length, host, port);
-
-                // Connect Response
-                if (!ReceiveUDP()) return false;
-
-                connID = Utils.ArraySub(ref recvBuff, 8, 8); // Valid for 60 seconds
-
-                return true;
+                //tcpClient.SendBufferSize    = 1024;
+                //tcpClient.ReceiveBufferSize = 1500;
             }
             catch (Exception e)
             {
-                if (options.Verbosity > 0) Log($"[CONNECT] Error {e.Message}\r\n{e.StackTrace}");
-                connID = null;
-            }
-
-            return false;
-        }
-        private bool ReceiveUDP()
-        {
-            try
-            {
-                recvBuff = udpClient.Receive(ref ipEP);
-                if (recvBuff == null || recvBuff.Length == 0) return false;
-            }
-            catch (Exception e)
-            {
-                // Timeouts
-                //if (options.Verbosity > 0) Log($"[RECV] Error {e.Message}\r\n{e.StackTrace}");
+                Log("Failed " + e.Message);
                 return false;
             }
 
+            tcpClient.ReceiveTimeout = options.ReceiveTimeout;
+
             return true;
         }
-
         private bool ReceiveTCP()
         {
             try
@@ -193,41 +201,10 @@ namespace SuRGeoNix.BEP
 
             return true;
         }
-        private bool ConnectTCP()
-        {
-            bool connected;
-            tcpClient = new TcpClient();
-
-            try
-            {
-                connected = tcpClient.ConnectAsync(host, port).Wait(options.ConnectTimeout);
-
-                if (!connected) return false;
-
-                if (type == Type.HTTP)
-                    netStream               = tcpClient.GetStream();
-                else
-                {
-                    sslStream               = new SslStream(tcpClient.GetStream(), false, new RemoteCertificateValidationCallback(ValidateServerCertificate));
-                    sslStream.AuthenticateAsClient(host);
-                }
-
-                tcpClient.SendBufferSize    = 1024;
-                tcpClient.ReceiveBufferSize = 1500;
-            }
-            catch (Exception e)
-            {
-                Log("Failed " + e.Message);
-                return false;
-            }
-
-            return true;
-        }
-
         public bool Announce(   Int32 num_want = -1, Int64 downloaded = 0, Int64 left = 0, Int64 uploaded = 0)
         {
             if (type == Type.UDP)
-                return AnnounceUDP(num_want, downloaded, left, uploaded);
+                { AnnounceUDP(num_want, downloaded, left, uploaded); return true; }
             else
                 return AnnounceTCP(num_want, downloaded, left, uploaded);
         }
@@ -246,12 +223,12 @@ namespace SuRGeoNix.BEP
 
                 if (!ReceiveTCP()) return false;
 
-                BencodeParser parser = new BencodeParser();
-                BDictionary extDic = parser.Parse<BDictionary>(recvBuff);
+                BencodeParser parser= new BencodeParser();
+                BDictionary extDic  = parser.Parse<BDictionary>(recvBuff);
 
-                byte[] hashBytes = ((BString) extDic["peers"]).Value.ToArray();
+                byte[] hashBytes    = ((BString) extDic["peers"]).Value.ToArray();
+                peers               = new ConcurrentDictionary<string, int>();
 
-                peers = new Dictionary<string, int>();
                 for (int i=0; i<hashBytes.Length; i+=6)
                 {
                     IPAddress curIP = new IPAddress(Utils.ArraySub(ref hashBytes,(uint) i, 4, false));
@@ -267,54 +244,118 @@ namespace SuRGeoNix.BEP
 
             return true;
         }
-        public bool AnnounceUDP(Int32 num_want = -1, Int64 downloaded = 0, Int64 left = 0, Int64 uploaded = 0)
+        public void AnnounceUDP(Int32 num_want = -1, Int64 downloaded = 0, Int64 left = 0, Int64 uploaded = 0)
         {
-            if (connID == null && !ConnectUDP()) return false;
-
             try
             {
-                // Announce Request
-                Int32 event_ = 0, externalIp = 0;
-                Int16 externalPort = 17253;
+                // http://www.bittorrent.org/beps/bep_0015.html
 
-                action  = Utils.ToBigEndian((Int32) Action.ANNOUNCE);
-                data    = Utils.ArrayMerge(connID, action, tranID, Utils.StringHexToArray(options.InfoHash), options.PeerId, Utils.ToBigEndian(downloaded), Utils.ToBigEndian(left), Utils.ToBigEndian(uploaded), Utils.ToBigEndian(event_), Utils.ToBigEndian(externalIp), key, Utils.ToBigEndian(num_want), Utils.ToBigEndian(externalPort));
-                udpClient.Send(data, data.Length, host, port);
-                if (!ReceiveUDP()) return false;
-            
-                // Announce Response
-                interval    = (UInt32) BitConverter.ToInt32(Utils.ArraySub(ref recvBuff,  8, 4, true), 0);
-                seeders     = (UInt32) BitConverter.ToInt32(Utils.ArraySub(ref recvBuff, 12, 4, true), 0);
-                leechers    = (UInt32) BitConverter.ToInt32(Utils.ArraySub(ref recvBuff, 16, 4, true), 0);
+                // Allow Re-Requesting a Full Response Tracker (200 per response on Tracker & 100 on DHT?)
+                if (num_want != -1 && curRecursions * 200 > num_want) return;
+                if (num_want == -1 && curRecursions > 3) return;
 
-                peers = new Dictionary<string, int>();
-                for (int i=0; i<(recvBuff.Length - 20) / 6; i++)
+                if (rEP == null) return;
+
+                //udpClient.Close(); // To cancel previous BeginReceives?
+
+                if (connID == null)
                 {
-                    IPAddress curIP = new IPAddress(Utils.ArraySub(ref recvBuff,(uint) (20 + (i*6)), 4, false));
-                    UInt16 curPort  = (UInt16) BitConverter.ToInt16(Utils.ArraySub(ref recvBuff,(uint) (24 + (i*6)), 2, true), 0);
-                    if (curPort > 0) peers[curIP.ToString()] = curPort;
+                    // Connect Request
+                    action = Utils.ToBigEndian((Int32) Action.CONNECT);
+                    tranID = Utils.ToBigEndian((Int32) new Random().Next(1,Int32.MaxValue));
+                    data   = Utils.ArrayMerge(Utils.ToBigEndian(CONNECTION_ID), action, tranID);
+                
+                    udpClient.Send(data, data.Length, rEP);
+                    Log($"Connecting");
                 }
-            }
-            catch (Exception e)
-            {
-                if (options.Verbosity > 0) Log($"Failed AnnounceUDP {e.Message}\r\n{e.StackTrace}");
-                connID = null;
-                return false;
-            }
+                else
+                {
+                    // Announce Request
+                    Int32 event_ = 0, externalIp = 0;
+                    Int16 externalPort = 17253;
 
-            return true;
+                    action  = Utils.ToBigEndian((Int32) Action.ANNOUNCE);
+                    data    = Utils.ArrayMerge(connID, action, tranID, Utils.StringHexToArray(options.InfoHash), options.PeerId, Utils.ToBigEndian(downloaded), Utils.ToBigEndian(left), Utils.ToBigEndian(uploaded), Utils.ToBigEndian(event_), Utils.ToBigEndian(externalIp), key, Utils.ToBigEndian(num_want), Utils.ToBigEndian(externalPort));
+                    udpClient.Send(data, data.Length, rEP);
+                    Log($"Announcing (Recursion: {curRecursions})");
+                }
+
+                udpClient.BeginReceive(ReceiveUDP, null);
+
+            } catch (Exception e) { Log(e.Message + " - " + e.StackTrace); }
+        }
+
+        private int curRecursions = 0;
+
+        private void ReceiveUDP(IAsyncResult ar)
+        {
+            try
+            {
+                recvBuff = udpClient.EndReceive(ar, ref rEP);
+                Log($"Receive Data ({recvBuff?.Length})");
+
+                if (recvBuff == null || recvBuff.Length < 4) { Log($"Failed"); return;}
+
+                byte[] action = Utils.ArraySub(ref recvBuff, 0, 4);
+
+                if (Utils.ArrayComp(Utils.ToBigEndian((Int32) Action.CONNECT), action))
+                {
+                    if (recvBuff.Length < 12) { Log($"Failed"); return;}
+
+                    connID = Utils.ArraySub(ref recvBuff, 8, 8); // Valid for 60 seconds
+                    Log($"Connected (-> Announcing)");
+                    AnnounceUDP();
+                }
+                else if (Utils.ArrayComp(Utils.ToBigEndian((Int32) Action.ERROR), action))
+                {
+                    //TODO: Validate error message (Connection ID failed/bad etc) and/or use internval returned from Announce Response to Re-connect
+                    Log($"Re-Connecting (-> Connecting)");
+                    connID = null;
+                    AnnounceUDP();
+                }
+                else if (Utils.ArrayComp(Utils.ToBigEndian((Int32) Action.ANNOUNCE), action))
+                {
+                    if (recvBuff.Length < 20) { Log($"Failed"); return;}
+
+                    // Announce Response | Currently not in use
+                    //interval    = (UInt32) BitConverter.ToInt32(Utils.ArraySub(ref recvBuff,  8, 4, true), 0);
+                    //seeders     = (UInt32) BitConverter.ToInt32(Utils.ArraySub(ref recvBuff, 12, 4, true), 0);
+                    //leechers    = (UInt32) BitConverter.ToInt32(Utils.ArraySub(ref recvBuff, 16, 4, true), 0);
+
+                    peers = new ConcurrentDictionary<string, int>();
+
+                    for (int i=0; i<(recvBuff.Length - 20) / 6; i++)
+                    {
+                        IPAddress curIP = new IPAddress(Utils.ArraySub(ref recvBuff,(uint) (20 + (i*6)), 4, false));
+                        UInt16 curPort  = (UInt16) BitConverter.ToInt16(Utils.ArraySub(ref recvBuff,(uint) (24 + (i*6)), 2, true), 0);
+                        if (curPort > 0) peers[curIP.ToString()] = curPort;
+                    }
+
+                    if (options.Verbosity > 0) Log($"Success ({peers.Count} Peers)");
+
+                    if (peers.Count > 0) Beggar.FillPeersFromStorage(peers, BitSwarm.PeersStorage.TRACKERSNEW);
+
+                    // Check with bytes cause Peers maybe < 200 | We drop some invalid ports or we dont read them properly?
+                    if (recvBuff.Length == 1220) { curRecursions++; AnnounceUDP(); }
+                }
+
+            } catch (Exception e) { Log(e.Message + " - " + e.StackTrace); }
         }
 
         public bool ScrapeUDP(string infoHash)
         {
-            if (ConnectUDP()) return false;
+            // Currently not used
+
+            //if (ConnectUDP()) return false;
 
             // Scrape Request
             action = Utils.ToBigEndian((Int32) Action.SCRAPE);
             data   = Utils.ArrayMerge(connID, action, tranID, Utils.StringHexToArray(infoHash));
 
-            udpClient.Send(data, data.Length, host, port);
-            if (!ReceiveUDP()) return false;
+            udpClient.Send(data, data.Length, rEP);
+            recvBuff = udpClient.Receive(ref rEP);
+
+            if (recvBuff == null || recvBuff.Length == 0) return false;
 
             // Scrape Response
             leechers    = (UInt32) BitConverter.ToInt32(Utils.ArraySub(ref recvBuff,  8, 4, true), 0);
@@ -326,6 +367,6 @@ namespace SuRGeoNix.BEP
 
         // Misc
         private static bool ValidateServerCertificate(object sender, X509Certificate certificate, X509Chain chain, SslPolicyErrors sslPolicyErrors) { return true; }
-        internal void Log(string msg) { if (options.Verbosity > 0) options.LogFile.Write($"[Tracker ] [{type}:{host}:{port}] {msg}"); }
+        internal void Log(string msg) { if (options.Verbosity > 0) options.LogFile.Write($"[Tracker ] [{typeHostPort}] {msg}"); }
     }
 }

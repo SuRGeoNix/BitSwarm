@@ -47,8 +47,6 @@ namespace SuRGeoNix.BitSwarmClient
                 {
                     opt = new BitSwarm.DefaultOptions();
 
-                    opt.SleepModeLimit  = 1600;
-                    
                     opt.DownloadPath        = downPath.Text;
 
                     opt.MaxThreads          = int.Parse(maxCon.Text);
@@ -59,8 +57,6 @@ namespace SuRGeoNix.BitSwarmClient
                     opt.HandshakeTimeout    = int.Parse(handTimeout.Text);
                     opt.PieceTimeout        = int.Parse(pieceTimeout.Text);
                     opt.MetadataTimeout     = int.Parse(metaTimeout.Text);
-
-                    opt.EnableDHT           = true;
 
                     opt.Verbosity           = 0;
                     opt.LogDHT              = false;

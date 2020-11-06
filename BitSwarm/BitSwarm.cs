@@ -271,6 +271,14 @@ namespace SuRGeoNix
             PAUSED      = 1,
             STOPPED     = 2
         }
+
+        internal enum PeersStorage
+        {
+            DHT,
+            TRACKERS,
+            DHTNEW,
+            TRACKERSNEW
+        }
         #endregion
 
         #region Event Handlers
@@ -340,11 +348,16 @@ namespace SuRGeoNix
         private byte[]                  peerID;
 
         // Main [Torrent / Trackers / Peers / Options]
+        public ConcurrentDictionary<string, Peer>  peers            {get; private set; } // InQueue  Peers
+        public ConcurrentDictionary<string, int>   dhtPeers         {get; private set; } // DHT      Peers
+        public ConcurrentDictionary<string, int>   trackersPeers    {get; private set; } // Tracker  Peers
+
         private Torrent                 torrent;
+
         private List<Tracker>           trackers;
         private Tracker.Options         trackerOpt;
-        private ConcurrentDictionary<string, Peer>              peers;
-        public  DHT                     dht;
+        
+        public  DHT                     dht;                            
         private DHT.Options             dhtOpt;
 
         private Logger                  log;
@@ -363,7 +376,6 @@ namespace SuRGeoNix
         private int                     pieceRejected       = 0;
         private int                     pieceAlreadyRecv    = 0;
         private int                     sha1Fails           = 0;
-        private int                     dhtPeers            = 0;
         #endregion
 
 
@@ -385,8 +397,10 @@ namespace SuRGeoNix
         {
             peerID                          = new byte[20]; rnd.NextBytes(peerID);
 
-            trackers                        = new List<Tracker>();
             peers                           = new ConcurrentDictionary<string, Peer>();
+            dhtPeers                        = new ConcurrentDictionary<string, int>();
+            trackersPeers                   = new ConcurrentDictionary<string, int>();
+            trackers                        = new List<Tracker>();
 
             torrent                         = new Torrent(Options.DownloadPath);
             torrent.metadata.progress       = new BitField(20); // Max Metadata Pieces
@@ -415,8 +429,9 @@ namespace SuRGeoNix
             trackerOpt                      = new Tracker.Options();
             trackerOpt.PeerId               = peerID;
             trackerOpt.InfoHash             = torrent.file.infoHash;
-            trackerOpt.ConnectTimeout       = Options.ConnectionTimeout;
+            trackerOpt.ConnectTimeout       = Options.HandshakeTimeout;
             trackerOpt.ReceiveTimeout       = Options.HandshakeTimeout;
+            Tracker.Beggar                  = this;
 
             trackerOpt.LogFile              = log;
             trackerOpt.Verbosity            = Options.LogTracker ? Options.Verbosity : 0;
@@ -549,12 +564,56 @@ namespace SuRGeoNix
         #endregion
 
         #region Feeders [Torrent -> Trackers | Trackers -> Peers | DHT -> Peers | Client -> Stats]
-        private void FillTrackersFromTorrent()
+        private void  StartTrackers()
+        {
+            for (int i=0; i<trackers.Count; i++)
+            {
+                trackers[i].Announce(Options.PeersFromTracker);
+                if (i % 10 == 0) Thread.Sleep(25);
+            }
+        }
+        internal void FillPeersFromStorage(ConcurrentDictionary<string, int> newPeers, PeersStorage storage)
+        {
+            bool storageNew = storage == PeersStorage.DHTNEW || storage == PeersStorage.TRACKERSNEW;
+            int  countNew   = 0;
+
+            foreach (KeyValuePair<string, int> peerKV in newPeers)
+            {
+                if (storageNew)
+                {
+                    if (dhtPeers.ContainsKey(peerKV.Key) || trackersPeers.ContainsKey(peerKV.Key))
+                    {
+                        if (storage == PeersStorage.TRACKERSNEW)
+                            trackersPeers[peerKV.Key] = peerKV.Value;
+                        else if (storage == PeersStorage.DHTNEW)
+                            dhtPeers[peerKV.Key] = peerKV.Value;
+
+                        continue;
+                    }
+                }
+
+                if (storage == PeersStorage.TRACKERSNEW)
+                    trackersPeers[peerKV.Key] = peerKV.Value;
+                else if (storage == PeersStorage.DHTNEW)
+                    dhtPeers[peerKV.Key] = peerKV.Value;
+
+                if (!peers.ContainsKey($"{peerKV.Key}:{peerKV.Value}")) 
+                    if (peers.TryAdd($"{peerKV.Key}:{peerKV.Value}", new Peer(peerKV.Key, peerKV.Value))) countNew++;
+            }
+
+            if (Options.Verbosity > 0 && countNew > 0) Log($"[{storage.ToString()}] {countNew} Adding Peers");
+        }
+        private void  FillTrackersFromTorrent()
         {
             foreach (Uri uri in torrent.file.trackers)
             {
                 if (uri.Scheme.ToLower() == "http" || uri.Scheme.ToLower() == "https" || uri.Scheme.ToLower() == "udp")
                 {
+                    bool found = false;
+                    foreach (var tracker in trackers)
+                        if (tracker.uri.Scheme == uri.Scheme && tracker.uri.DnsSafeHost == uri.DnsSafeHost && tracker.uri.Port == uri.Port) { found = true; break; }
+                    if (found) continue;
+
                     Log($"[Torrent] [Tracker] [ADD] {uri}");
                     trackers.Add(new Tracker(uri, trackerOpt));
                 }
@@ -562,41 +621,7 @@ namespace SuRGeoNix
                     Log($"[Torrent] [Tracker] [ADD] {uri} Protocol not implemented");
             }
         }
-        private void FillPeersFromTracker(int pos)
-        {
-            if (!trackers[pos].Announce(Options.PeersFromTracker) || trackers[pos].peers == null)
-            {
-                if (Options.LogTracker) trackers[pos].Log($"[{trackers[pos].host}:{trackers[pos].port} Failed");
-
-                return;
-            }
-
-            int countNew = 0;
-
-            foreach (KeyValuePair<string, int> peerKV in trackers[pos].peers)
-                if (!peers.ContainsKey($"{peerKV.Key}:{peerKV.Value}"))
-                    { peers.TryAdd($"{peerKV.Key}:{peerKV.Value}", new Peer(peerKV.Key, peerKV.Value)); countNew++; }
-
-            if (Options.LogTracker) trackers[pos].Log($"[{trackers[pos].host}:{trackers[pos].port}] {countNew} New Peers");
-        }
-        private void FillPeersFromTrackers()
-        {
-            for (int i=0; i<trackers.Count; i++)
-            {
-                int noCache = i;
-                ThreadPool.QueueUserWorkItem( _=> FillPeersFromTracker(noCache) );
-            }
-        }
-        internal void FillPeersFromDHT(ConcurrentDictionary<string, int> newPeers)
-        {
-            int countNew = 0;
-            foreach (KeyValuePair<string, int> peerKV in newPeers)
-                if (!peers.ContainsKey($"{peerKV.Key}:{peerKV.Value}")) 
-                    { if (peers.TryAdd($"{peerKV.Key}:{peerKV.Value}", new Peer(peerKV.Key, peerKV.Value))) dhtPeers++; countNew++; }
-
-            if (Options.Verbosity > 0) Log($"[DHT] {countNew} New Peers");
-        }
-        private void FillStats()
+        private void  FillStats()
         {
             // Stats
             double secondsDiff          = ((Stats.CurrentTime - prevStatsTicks) / 10000000.0); // For more accurancy
@@ -736,7 +761,7 @@ namespace SuRGeoNix
             {
                 Log($"[STATS] [INQUEUE: {String.Format("{0,3}",Stats.PeersInQueue)}]\t[DROPPED: {String.Format("{0,3}",Stats.PeersDropped)}]\t[CONNECTING: {String.Format("{0,3}",Stats.PeersConnecting)}]\t[FAIL1: {String.Format("{0,3}",Stats.PeersFailed1)}]\t[FAIL2: {String.Format("{0,3}",Stats.PeersFailed2)}]\t[READY: {String.Format("{0,3}",Stats.PeersConnected)}]\t[CHOKED: {String.Format("{0,3}",Stats.PeersChoked)}]\t[UNCHOKED: {String.Format("{0,3}",Stats.PeersUnChoked)}]\t[DOWNLOADING: {String.Format("{0,3}",Stats.PeersDownloading)}]");
                 Log($"[STATS] [CUR MAX: {String.Format("{0:n0}", (Stats.MaxRate / 1024)) + " KB/s"}]\t[DOWN CUR: {String.Format("{0:n0}", (Stats.DownRate / 1024)) + " KB/s"}]\t[DOWN AVG: {String.Format("{0:n0}", (Stats.AvgRate / 1024)) + " KB/s"}]\t[ETA CUR: {TimeSpan.FromSeconds(Stats.ETA).ToString(@"hh\:mm\:ss")}]\t[ETA AVG: {TimeSpan.FromSeconds(Stats.AvgETA).ToString(@"hh\:mm\:ss")}]\t[ETA R: {TimeSpan.FromSeconds((Stats.ETA + Stats.AvgETA)/2).ToString(@"hh\:mm\:ss")}]");
-                Log($"[STATS] [TIMEOUTS: {String.Format("{0,4}",pieceTimeouts)}]\t[ALREADYRECV: {String.Format("{0,3}",pieceAlreadyRecv)}]\t[REJECTED: {String.Format("{0,3}",pieceRejected)}]\t[SHA1FAILS:{String.Format("{0,3}",sha1Fails)}]\t[DROPPED BYTES: {Utils.BytesToReadableString(Stats.BytesDropped)}]\t[DHT: {dht?.status}]\t[DHTCACHE: {dht?.CachedPeers.Count}]\t[DHTPEERS: {dhtPeers}]\t[SLEEPMODE: {Stats.SleepMode}]");
+                Log($"[STATS] [TIMEOUTS: {String.Format("{0,4}",pieceTimeouts)}]\t[ALREADYRECV: {String.Format("{0,3}",pieceAlreadyRecv)}]\t[REJECTED: {String.Format("{0,3}",pieceRejected)}]\t[SHA1FAILS:{String.Format("{0,3}",sha1Fails)}]\t[DROPPED BYTES: {Utils.BytesToReadableString(Stats.BytesDropped)}]\t[DHT: {dht?.status}]\t[DHTPEERS: {dhtPeers.Count}]\t[TRACKERSPEERS: {trackersPeers.Count}]\t[SLEEPMODE: {Stats.SleepMode}]");
                 Log($"[STATS] [PROGRESS PIECES: {torrent.data.progress.setsCounter}/{torrent.data.progress.size} | REQ: {torrent.data.requests.setsCounter}]\t[PROGRESS BYTES: {Stats.BytesDownloaded}/{torrent.data.totalSize}]\t[Pieces/Blocks: {torrent.data.pieces}/{torrent.data.blocks}]\t[Piece/Block Length: {torrent.data.pieceSize}|{torrent.data.totalSize % torrent.data.pieceSize}/{torrent.data.blockSize}|{torrent.data.blockLastSize}][Working Pieces: {torrent.data.pieceProgress.Count}]");
             }
         }
@@ -759,41 +784,39 @@ namespace SuRGeoNix
                 prevStatsTicks          = Stats.StartTime;
                 metadataLastRequested   = -1;
                 bool isAutoSleepMode    = Options.SleepModeLimit == -1;
-
-                //bool disconnectPeer     = false; // for downlimit
-                //Options.    DownloadLimit       = Options.DownloadLimit         <= 0 ? Int32.MaxValue   : Options.DownloadLimit;
-                //Options.    SleepModeLimit  = Options.SleepModeLimit    <= 0 ? Int32.MaxValue   : Options.SleepModeLimit;
-                //if (Options.SleepModeLimit  > Options.DownloadLimit)    Options.SleepModeLimit  = Options.DownloadLimit;
+                int curDispatches       = 0;
 
                 // Peers Clean-up & Re-Fills
                 foreach (Peer peer in peers.Values)
                     peers[$"{peer.host}:{peer.port}"] = new Peer(peer.host, peer.port);
 
-                BSTP.Initialize(Math.Max(Options.MinThreads, Options.BoostThreads), Options.MaxThreads);
-                if (Options.BoostThreads > Options.MinThreads) { Stats.BoostMode = true; if (Options.Verbosity > 0) Log($"[MODE] Boost Activated"); }
+                if (Options.EnableTrackers)
+                {
+                    FillPeersFromStorage(dhtPeers, PeersStorage.TRACKERS);
+                    trackersPeers.Clear();
+                    StartTrackers();
+                }
 
                 if (Options.EnableDHT)
                 {
                     logDHT.RestartTime(); 
-                    FillPeersFromDHT(dht.CachedPeers);
-                    dht.ClearCachedPeers();
+                    FillPeersFromStorage(dhtPeers, PeersStorage.DHT);
+                    dhtPeers.Clear();
                     dht.Start();
                 }
 
-                if (Options.EnableTrackers) FillPeersFromTrackers();
+                BSTP.Initialize(Math.Max(Options.MinThreads, Options.BoostThreads), Options.MaxThreads);
+                if (Options.BoostThreads > Options.MinThreads) { Stats.BoostMode = true; if (Options.Verbosity > 0) Log($"[MODE] Boost Activated"); }
 
                 // --------------- Main Loop ---------------
                 if (Options.Verbosity > 0) Log("[BEGGAR  ] " + status);
-
                 //int sleepMs = Math.Max(350, Options.ConnectionTimeout / 3);
-
-                int curDispatches;
 
                 while (status == Status.RUNNING)
                 {
                     // Every Loop [Dispatches | RequestPiece] - Review parallel dispatches curDispatches < (BSTP.MinThreads / 5) + 1
-                    if (!Stats.SleepMode)
-                    {
+                    //if (!Stats.SleepMode)
+                    //{
                         curDispatches = 0;
 
                         foreach (Peer peer in peers.Values)
@@ -806,7 +829,7 @@ namespace SuRGeoNix
                                 if (curDispatches < (BSTP.MinThreads / 5) + 1 && BSTP.Dispatch(peer)) curDispatches++;
                         }
                         //Console.WriteLine(curDispatches);
-                    }
+                    //}
 
                     // Scheduler
 
@@ -889,29 +912,36 @@ namespace SuRGeoNix
                                         {
                                             if (Options.EnableDHT)
                                             {
-                                                if (Options.Verbosity > 0) Log("[DHT FORCE STOP] SleepMode");
+                                                if (Options.Verbosity > 0)
+                                                {
+                                                    if (Options.EnableDHT)      Log($"[Trackers] Re-fill (SleepMode On) {trackersPeers.Count}");
+                                                    if (Options.EnableTrackers) Log("[REFILL] From DHT (SleepMode On)");
+                                                    Log("[DHT] Stopping (SleepMode)");
+                                                }
+                                                if (Options.EnableDHT)      FillPeersFromStorage(dhtPeers, PeersStorage.DHT);
+                                                if (Options.EnableTrackers) FillPeersFromStorage(dhtPeers, PeersStorage.TRACKERS);
                                                 dht.Stop();
                                             }
-                                            //BSTP.SetMinThreads(Options.MinThreads / 2); // If we enable dispatching in every loop
+                                            BSTP.SetMinThreads(Options.MinThreads / 2); // If we enable dispatching in every loop
                                         }
                                         else
                                         {
-                                            //BSTP.SetMinThreads(Options.MinThreads); // If we enable dispatching in every loop
+                                            BSTP.SetMinThreads(Options.MinThreads); // If we enable dispatching in every loop
 
                                             if (Options.EnableTrackers && Stats.PeersInQueue < 100)
                                             {
-                                                if (Options.Verbosity > 0) Log("[REFILL] From Trackers");
-                                                FillPeersFromTrackers();
+                                                if (Options.Verbosity > 0) Log($"[Trackers] Re-fill (SleepMode Off) {trackersPeers.Count}");
+                                                FillPeersFromStorage(dhtPeers, PeersStorage.TRACKERS);
                                             }
 
                                             if (Options.EnableDHT)
                                             {
                                                 if (Options.Verbosity > 0)
                                                 {
-                                                    Log("[DHT FORCE START] SleepMode");
-                                                    Log("[REFILL] From DHT");
+                                                    Log("[DHT] Restarting (SleepMode Off)");
+                                                    Log("[REFILL] From DHT (SleepMode Off)");
                                                 }
-                                                if (Stats.PeersInQueue < 100) { dhtPeers = 0; FillPeersFromDHT(dht.CachedPeers); }
+                                                if (Stats.PeersInQueue < 100) FillPeersFromStorage(dhtPeers, PeersStorage.DHT);
                                                 dht.Start();
                                             }
                                         }
@@ -939,47 +969,57 @@ namespace SuRGeoNix
 
                         } // !Metadata Received
                             
-                        // Every 3 Seconds    [Check DHT Stop/Start - 40 seconds]
+                        // Every 3 Seconds  [Check DHT Stop/Start - 40 seconds]
                         if (curSecond % 3 == 0)
                         {
                             if (Options.EnableDHT)
                             {
                                 if (dht.status == DHT.Status.RUNNING && !Stats.BoostMode && !Stats.EndGameMode && Stats.CurrentTime - dht.StartedAt > 40 * 1000 * 10000)
                                 {
-                                    if (Options.Verbosity > 0) Log("[DHT FORCE STOP] 40 Seconds running");
+                                    if (Options.Verbosity > 0) Log("[DHT] Stopping (40 secs of running)");
                                     dht.Stop();
                                 }
                                 else if (dht.status == DHT.Status.STOPPED && !Stats.SleepMode && Stats.PeersInQueue < 100 && Stats.CurrentTime - dht.StoppedAt > 40 * 1000 * 10000)
                                 {
-                                    if (Options.Verbosity > 0) Log("[DHT FORCE START] 40 Seconds stopped");
+                                    if (Options.Verbosity > 0) Log("[DHT] Restarting (40 secs of idle)");
                                     dht.Start();
                                 }
                             }
                         }
 
-                        // Every 9 Seconds    [Refill from DHT]
+                        // Every 9 Seconds  [Refill from DHT]
                         if (curSecond % 9 == 0)
                         {
                             if (Options.EnableDHT && !Stats.SleepMode && Stats.PeersInQueue < 100)
                             {
-                                if (Options.Verbosity > 0) Log("[REFILL] From DHT");
-                                dhtPeers = 0; FillPeersFromDHT(dht.CachedPeers);
+                                if (Options.Verbosity > 0) Log($"[DHT] Re-fill {dhtPeers.Count}");
+                                FillPeersFromStorage(dhtPeers, PeersStorage.DHT);
                             }
                         }
 
-                        // Every 22 Seconds   [Refill from Trackers]
-                        if (curSecond % 22 == 0)
+                        // Every 22 Seconds [Refill from Trackers]
+                        if (curSecond % 15 == 0)
                         {
                             if (Options.EnableTrackers && !Stats.SleepMode && Stats.PeersInQueue < 100)
                             {
-                                if (Options.Verbosity > 0) Log("[REFILL] From Trackers");
-                                FillPeersFromTrackers();
+                                if (Options.Verbosity > 0) Log($"[Trackers] Re-fill {trackersPeers.Count}");
+                                FillPeersFromStorage(dhtPeers, PeersStorage.TRACKERS);
+                            }
+                        }
+
+                        // Every 31 Seconds [Re-request Trackers]
+                        if (curSecond % 31 == 0)
+                        {
+                            if (Options.EnableTrackers)// && ((!Stats.SleepMode && Stats.PeersInQueue < 100) || Stats.BoostMode))
+                            {
+                                if (Options.Verbosity > 0) Log("[Trackers] Re-requesting");
+                                StartTrackers();
                             }
                         }
 
                     } // Scheduler [Every Second]
 
-                    Thread.Sleep(120);
+                    Thread.Sleep(100 + curDispatches);
 
                     Stats.CurrentTime = DateTime.UtcNow.Ticks;
 

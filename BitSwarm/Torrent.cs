@@ -131,19 +131,6 @@ namespace SuRGeoNix.BEP
             data.pieceRequests  = new List<TorrentData.PieceRequest>();
         }
 
-        public void FillTrackersFromTrackersPath(string fileName)
-        {
-            try
-            {
-                if (fileName == null || fileName.Trim() == "" || !File.Exists(fileName)) return;
-
-                string[] trackers = File.ReadAllLines(fileName);
-
-                foreach (var tracker in trackers)
-                    if (!file.trackers.Contains(new Uri(tracker))) file.trackers.Add(new Uri(tracker));
-
-            } catch (Exception) { }
-        }
         public void FillFromMagnetLink(Uri magnetLink)
         {
             // TODO: Check v2 Magnet Link
@@ -174,7 +161,7 @@ namespace SuRGeoNix.BEP
             if (tr == null) return;
 
             for (int i=0; i<tr.Length; i++)
-                if (!file.trackers.Contains(new Uri(tr[i]))) file.trackers.Add(new Uri(tr[i]));
+                file.trackers.Add(new Uri(tr[i]));
         }
         public void FillFromTorrentFile(string fileName)
         {
@@ -184,7 +171,7 @@ namespace SuRGeoNix.BEP
             if (bdicTorrent["info"] != null)
             {
                 bInfo = (BDictionary) bdicTorrent["info"];
-                file.trackers = GetTrackersFromTorrent(bdicTorrent);
+                FillTrackersFromInfo(bdicTorrent);
             } 
             else if (bdicTorrent["name"] != null)
                 bInfo = bdicTorrent;
@@ -257,7 +244,19 @@ namespace SuRGeoNix.BEP
             data.pieceRequests  = new List<TorrentData.PieceRequest>();
         }
 
-        public static List<Uri> GetTrackersFromTorrent(BDictionary torrent)
+        public void FillTrackersFromTrackersPath(string fileName)
+        {
+            try
+            {
+                if (fileName == null || fileName.Trim() == "" || !File.Exists(fileName)) return;
+
+                string[] trackers = File.ReadAllLines(fileName);
+
+                foreach (var tracker in trackers)
+                    try { file.trackers.Add(new Uri(tracker)); } catch (Exception) { }
+            } catch (Exception) { }
+        }
+        public void FillTrackersFromInfo(BDictionary torrent)
         {
             string tracker = null;
             BList trackersBList = null;
@@ -268,18 +267,14 @@ namespace SuRGeoNix.BEP
             if (torrent["announce-list"] != null)
                 trackersBList = (BList) torrent["announce-list"];
 
-            if (trackersBList == null && tracker == null) return new List<Uri>();
-            if (trackersBList == null) return new List<Uri>() { new Uri(tracker) };
+            if (trackersBList != null)
+                for (int i=0; i<trackersBList.Count; i++)
+                    file.trackers.Add(new Uri(((BString)((BList)trackersBList[i])[0]).ToString()));
 
-            List<Uri> trackers = new List<Uri>();
-
-            for (int i=0; i<trackersBList.Count; i++)
-                trackers.Add(new Uri(((BString)((BList)trackersBList[i])[0]).ToString()));
-
-            if (tracker != null && !trackers.Contains(new Uri(tracker))) trackers.Add(new Uri(tracker));
-
-            return trackers;
+            if (tracker != null)
+                file.trackers.Add(new Uri(tracker));
         }
+
         public static List<string> GetPathsFromInfo(BDictionary info)
         {
             BList files = (BList) info["files"];

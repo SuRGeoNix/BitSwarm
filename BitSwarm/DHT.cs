@@ -44,7 +44,6 @@ namespace SuRGeoNix.BEP
         }
 
         public Status                           status      { get; private set; }
-        public ConcurrentDictionary<string, int>CachedPeers { get; private set; }
         public long                             StartedAt   { get; private set; }
         public long                             StoppedAt   { get; private set; }
 
@@ -104,7 +103,6 @@ namespace SuRGeoNix.BEP
             bucketNodes     = new Dictionary<string, Node>();
             bucketNodes2    = new Dictionary<string, Node>();
             rememberBadNodes= new HashSet<string>();
-            CachedPeers     = new ConcurrentDictionary<string, int>();
             infoHashBytes   = Utils.StringHexToArray(infoHash);
             this.infoHash   = infoHash;
 
@@ -359,10 +357,9 @@ namespace SuRGeoNix.BEP
                         //if (options.Verbosity > 0) Log($"[{node.distance}] [{node.host}] [PEER] {curIP}:{curPort}");
 
                         curPeers[curIP] = curPort;
-                        CachedPeers[curIP] = curPort;
                     }
 
-                    options.Beggar.FillPeersFromDHT(curPeers); // options.NewPeersClbk?.Invoke(curPeers, true);
+                    options.Beggar.FillPeersFromStorage(curPeers, BitSwarm.PeersStorage.DHTNEW);
 
                     //if (options.Verbosity > 0) Log($"[{node.distance}] [{node.host}] [NEW PEERS] {newPeers}");
 
@@ -480,7 +477,7 @@ namespace SuRGeoNix.BEP
                     curSeconds++;
 
                     // Stats
-                    if (options.Verbosity > 0) Log($"[STATS] [REQs: {requested}]\t[RESPs: {responded}]\t[BUCKETSIZE: {bucketNodesPointer.Count}]\t[INBUCKET: {inBucket}]\t[PEERNODES: {havePeers}]\t[PEERS: {CachedPeers.Count}] | [WEIRD]: {weirdPeers} | [NORMAL] {normalPeers}");
+                    if (options.Verbosity > 0) Log($"[STATS] [REQs: {requested}]\t[RESPs: {responded}]\t[BUCKETSIZE: {bucketNodesPointer.Count}]\t[INBUCKET: {inBucket}]\t[PEERNODES: {havePeers}]\t[WEIRD]: {weirdPeers} | [NORMAL] {normalPeers}");
 
                     // Flip Strategy
                     if (curSeconds % 6 == 0) FlipStrategy();
@@ -519,11 +516,6 @@ namespace SuRGeoNix.BEP
             if (status != Status.RUNNING) return;
 
             status = Status.STOPPING;
-        }
-        public void ClearCachedPeers()
-        {
-            CachedPeers.Clear();
-            Log($"Cached Peers cleaned");
         }
 
         // Misc
