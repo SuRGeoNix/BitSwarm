@@ -7,11 +7,11 @@ using System.Threading;
 using BencodeNET.Parsing;
 using BencodeNET.Objects;
 
-using static SuRGeoNix.BitSwarm.BSTP;
+//using static SuRGeoNix.BitSwarm.BSTP;
 
 namespace SuRGeoNix.BEP
 {
-    public class Peer
+    internal class Peer
     {
         #region Declaration | Properties
 
@@ -22,12 +22,16 @@ namespace SuRGeoNix.BEP
          * 00 00 00 00 00 10 00 05                                      | Reserved Bit Allocations      |  8 bytes  | Static EXT_PROTO
          * e8 3f 49 9d d6 eb 76 94 21 a2 70 17 f3 e1 08 fc 7b 9f 60 f5  | SHA-1 Hash of info dictionary | 20 bytes  | Options.Hash      Set by Client
          * 2d 55 54 33 35 35 57 2d 3c b2 29 aa 15 7d 0b 62 6b b6 ce 56  | Unique Per Session Peer ID    | 20 bytes  | Options.PeerID    Set by Client */
-        public static readonly byte[]   BIT_PROTO   = Utils.ArrayMerge(new byte[]   {0x13}, Encoding.UTF8.GetBytes("BitTorrent protocol"));
-        public static readonly byte[]   EXT_PROTO   = Utils.ArrayMerge(new byte[]   {0, 0, 0, 0}, new byte[] {0 , 0x10, 0, (0x1 | 0x4)});
+        public static readonly byte[]   BIT_PROTO       = Utils.ArrayMerge(new byte[]   {0x13}, Encoding.UTF8.GetBytes("BitTorrent protocol"));
+        public static readonly byte[]   EXT_PROTO       = Utils.ArrayMerge(new byte[]   {0, 0, 0, 0}, new byte[] {0 , 0x10, 0, (0x1 | 0x4)});
 
         // [HANDSHAKE EXTENDED]     | http://bittorrent.org/beps/bep_0010.html      | m-> {"key", "value"}, p, v, yourip, ipv6, ipv4, reqq  | Static EXT_BDIC
-        public static readonly byte[]   EXT_BDIC    = (new BDictionary{ {"e", 0 }, {"m" , new BDictionary{ {"ut_metadata", 2 } /*,{"ut_pex" , 1 }*/ } }, { "reqq" , 250 } }).EncodeAsBytes();
+        public static readonly byte[]   EXT_BDIC        = (new BDictionary{ {"e", 0 }, {"m" , new BDictionary{ {"ut_metadata", 2 } /*,{"ut_pex" , 1 }*/ } }, { "reqq" , 250 } }).EncodeAsBytes();
         public static readonly int      MAX_DATA_SIZE   = 0x4000;
+
+        public static byte[]            HANDSHAKE_BYTES; // Will be set by bitswarm's setup
+        public static BitSwarm          Beggar;          // Will be change later on for multiple-instances
+        
 
         // [PEER MESSAGES]
         // Known Assigned Numbers   | http://bittorrent.org/beps/bep_0004.html      | Reserved Message IDs
@@ -132,20 +136,6 @@ namespace SuRGeoNix.BEP
             DOWNLOADING     = 7
         }
 
-        public static class Options
-        {
-            public static BitSwarm     Beggar;
-
-            public static string       InfoHash;
-            public static byte[]       PeerID;
-            public static int          Pieces;
-
-            public static int          Verbosity;
-            public static Logger       LogFile;
-
-            public static int          ConnectionTimeout;
-            public static int          HandshakeTimeout;
-        }
         public class Stage
         {
             public BitField     bitfield;
@@ -159,19 +149,15 @@ namespace SuRGeoNix.BEP
             public bool         haveNone;
 
             public bool         metadataRequested;
+            public int          metadataPiecesRequested;
         }
         public struct Extensions
         {
             public byte         ut_metadata;
         }
 
-        
         public string           host        { get; private set; }
         public int              port        { get; private set; }
-
-        public long             lastAction  { get; private set; }
-        public long             connectedAt { get; private set; }
-        public long             chokedAt    { get; private set; }
 
         public Status           status;
         public Stage            stageYou;
@@ -188,10 +174,8 @@ namespace SuRGeoNix.BEP
 
         public  int             PiecesRequested { get { return piecesRequested; } set { lock (lockerRequests) piecesRequested   = value; } }
         private int             piecesRequested;
-        public  int             PiecesTimeout   { get { return piecesTimeout;   } set { lock (lockerRequests) piecesTimeout     = value; } }
-        private int             piecesTimeout;
 
-        private long            curTimeoutTicks;
+        public  int             PieceTimeouts   { get; private set; }
 
         public List<Tuple<int, int, int>>   lastPieces;
         public List<int>                    allowFastPieces;
@@ -207,103 +191,98 @@ namespace SuRGeoNix.BEP
         #region Connection | Handshake | LTEP Handshake | Disconnect
         public bool Connect()
         {
+            /* NOTES (TCP Socket)
+             * 
+             * TCP Performance based on current OS
+             * 
+             * Increase TCP dynamic ports avaiable & Reduce Close (TIME_WAIT) Delay (eg. on Windows -> https://docs.microsoft.com/en-us/biztalk/technical-guides/settings-that-can-be-modified-to-improve-network-performance)
+             *  - We could possible create a sockets pool and re-use them to also avoid the posibility of dynamic local ports unavailability?
+             *  
+             * Check OS Default Syn Retries and Timeouts (Avoid Retransmissions) & Make sure we use Close/Shutdown on socket to avoid retries after our custom timeout
+             *  - On Unix (/etc/sysctl.conf , net.ipv4.tcp_syn_retries = x)
+             */
+
             tcpClient           = new TcpClient();
             tcpClient.NoDelay   = true;
-            //status              = Status.CONNECTING;
 
             bool connected;
 
             try
             {
-                if (Options.Verbosity > 0) Log(3, "[CONNECTING] ... ");
-                connected = tcpClient.ConnectAsync(host, port).Wait(Options.ConnectionTimeout);
-                if (!connected) tcpClient.Close();
+                if (Beggar.Options.Verbosity > 0) Log(3, "[CONN] ... ");
+                //connected = tcpClient.ConnectAsync(host, port).Wait(Beggar.Options.ConnectionTimeout);
+                //if (!connected) return false;
 
                 // Is Spin Worse?
 
-                //var done = tcpClient.ConnectAsync(host, port);
+                var done    = tcpClient.ConnectAsync(host, port);
+                int sleptMs = 0;
+                int stepMs  = Beggar.Options.ConnectionTimeout / 4;
 
-                //int sleptMs = 0;
-                //int stepMs = Options.ConnectionTimeout / 10;
+                while (!done.IsCompleted && sleptMs < Beggar.Options.ConnectionTimeout)
+                {
+                    Thread.Sleep(stepMs);
+                    sleptMs += stepMs;
+                }
 
-                //while (!done.IsCompleted && sleptMs < Options.ConnectionTimeout)
-                //{
-                //    Thread.Sleep(stepMs);
-                //    sleptMs += stepMs;
-                //}
+                //if (!done.IsCompleted) Interlocked.Increment(ref Beggar.Stats.ConnectTimeouts);
 
-                //connected = done.IsCompleted && tcpClient.Connected;
+                connected = done.IsCompleted && tcpClient.Connected;
+                if (!connected) return false;
             }
-            catch (AggregateException e1)
+            catch (Exception e)
             {
-                // AggregateException -> No such host is known
-                // AggregateException -> No connection could be made because the target machine actively refused it 0.0.0.0:1234
-                if (Options.Verbosity > 0) Log(2, "AggregateException -> " + e1.InnerException.Message);
-                status = Status.FAILED2;
-                return false;
-            }
-            catch (Exception e1)
-            {
-                // Exception-> Specified argument was out of the range of valid values.\r\nParameter name: port
-                if (Options.Verbosity > 0) Log(1, "Exception -> " + e1.Message);
-                status = Status.FAILED2; 
+                if (Beggar.Options.Verbosity > 0) Log(1, "Exception -> " + e.Message);
                 return false;
             }
 
-            // TIMEOUT or TCP RESET?
-            if (!connected) { status = Status.FAILED1; return false; }
+            //if (Beggar.Options.Verbosity > 0) Log(3, "[CONN] Success");
 
-            if (Options.Verbosity > 0) Log(3, "[CONNECT] Success");
-
-            curTimeoutTicks = (long) Options.HandshakeTimeout * 10000;
-            tcpStream       = tcpClient.GetStream();
-            status          = Status.CONNECTED;
+            tcpStream   = tcpClient.GetStream();
+            status      = Status.CONNECTED;
 
             return true;
         }
-        public void SendHandshake()
+        public bool SendHandshake()
         {
             try
             {
-                if (Options.Verbosity > 0) Log(3, "[HANDSHAKE] Handshake Sending ...");
-
-                sendBuff = Utils.ArrayMerge(BIT_PROTO, EXT_PROTO, Utils.StringHexToArray(Options.InfoHash), Options.PeerID);
-                tcpStream.Write(sendBuff, 0, sendBuff.Length);
-
-                lastAction          = DateTime.UtcNow.Ticks;
-                connectedAt         = lastAction;
-                chokedAt            = lastAction;
+                if (Beggar.Options.Verbosity > 0) Log(3, "[HAND] Sending");
+                tcpStream.Write(HANDSHAKE_BYTES, 0, HANDSHAKE_BYTES.Length);
+                Receive(BIT_PROTO.Length + EXT_PROTO.Length + 20 + 20);
+                if (Beggar.Options.Verbosity > 0) Log(3, "[HAND] Received");
 
                 lastPieces          = new List<Tuple<int, int, int>>();
                 allowFastPieces     = new List<int>();
 
                 stageYou            = new Stage();
                 stageYou.extensions = new Extensions();
-            } catch (Exception e)
+            }
+            catch (Exception e)
             {
-                if (Options.Verbosity > 0) Log(1, "[HANDSHAKE] Handshake Sending Error " + e.Message);
-                Disconnect();
+                if (Beggar.Options.Verbosity > 0) Log(1, "[HAND] [ERROR] " + e.Message);
+                return false;
             }
             
+            return true;
         }
         public void SendExtendedHandshake()
         {
             try
             {
-                if (Options.Verbosity > 0) Log(3, "[HANDSHAKE] Extended Handshake Sending ...");
+                if (Beggar.Options.Verbosity > 0) Log(3, "[HAND] Extended Sending");
 
                 sendBuff = Utils.ArrayMerge(PrepareMessage(0, true, EXT_BDIC), PrepareMessage(0xf, false, null), PrepareMessage(0x2, false, null)); // EXTDIC, HAVE NONE, INTRESTED
                 tcpStream.Write(sendBuff, 0, sendBuff.Length);
 
                 //tcpClient.SendBufferSize    = 1500;
                 tcpClient.ReceiveBufferSize = MAX_DATA_SIZE * 4;
-                curTimeoutTicks             = (long)Options.Beggar.Options.PieceTimeout * 10000;
                 recvBuffMax                 = new byte[MAX_DATA_SIZE];
-                lastAction                  = DateTime.UtcNow.Ticks;
                 status                      = Status.READY;
-            } catch (Exception e)
+            }
+            catch (Exception e)
             {
-                if (Options.Verbosity > 0) Log(1, "[HANDSHAKE] Extended Handshake Sending Error " + e.Message);
+                if (Beggar.Options.Verbosity > 0) Log(1, "[HAND] Extended Sending Error " + e.Message);
                 status = Status.FAILED2;
                 Disconnect();
             }
@@ -312,81 +291,64 @@ namespace SuRGeoNix.BEP
         {
             try
             {
+                if (lastPieces != null && lastPieces.Count > 0 && Beggar.isRunning) Beggar.ResetRequests(this, lastPieces);
+
                 status      = Status.FAILED2;
                 recvBuff    = null;
                 sendBuff    = null;
                 //stageYou    = null; // Currently Not Synch with Requests will drop null references
-
-                if (tcpClient != null) tcpClient.Close();
-
-            } catch (Exception) { }
+                
+                if (tcpClient != null) { tcpClient.Close(); tcpClient = null; }
+            } catch (Exception) { status = Status.FAILED2; }
         }
 
         #endregion
 
 
         #region Main Execution Flow (Connect -> Handshakes -> [ProcessMessages <-> Receive])
-        public void Run(BSTPThread bstpThread)
+        public void Run(BitSwarm.BSTP bstp, int threadIndex)
         {
             // CONNECT
-            if (!Connect()) { Disconnect(); return; }
+            if (!Connect())         { Disconnect(); return; }
 
             // HANDSHAKE
-            SendHandshake();
+            if (!SendHandshake())   { Disconnect(); return; }
 
-            try
+            // THREAD TRANSFER FROM SHORTRUN TO LONGRUN
+            if (bstp != null && bstp.Threads != null)
             {
-                Receive(BIT_PROTO.Length + EXT_PROTO.Length + 20 + 20);
-            }
-            catch (Exception e)
-            {
-                if (e.Message == "CUSTOM Connection closed")
-                    if (Options.Verbosity > 0) Log(1, "[ERROR][Handshake] " + e.Message);
-                else
-                    if (Options.Verbosity > 0) Log(1, "[ERROR][Handshake] " + e.Message + "\n" + e.StackTrace);
-
-                Disconnect();
-
-                return;
+                tcpStream.ReadTimeout = Timeout.Infinite;
+                bstp.Threads[threadIndex].isLongRun = true;
+                Interlocked.Increment(ref bstp.LongRun);
             }
 
-            // RECV MESSAGES [LOOP Until Failed or Done]
-
-            // Thread Transfer from Short-Run (BSTP) to Long-Run (Dedicated)
-            tcpStream.ReadTimeout   = Timeout.Infinite;
-            bstpThread.isLongRun    = true;
-            Interlocked.Increment(ref LongRun);
-
-            while (status != Status.FAILED2)
+            // RECV MESSAGES LOOP
+            while (status != Status.FAILED2 && Beggar.isRunning)
             {
-                try
-                {
-                    ProcessMessage();
-                }
+                try { ProcessMessage(); }
+
                 catch (Exception e)
                 {
-                    if (e.Message == "CUSTOM Connection closed")
-                        if (Options.Verbosity > 0) Log(1, "[ERROR][Handshake] " + e.Message);
-                    else
-                        if (Options.Verbosity > 0) Log(1, "[ERROR][Handshake] " + e.Message + "\n" + e.StackTrace);
-                    
-                    Disconnect();
+                    if (Beggar.Options.Verbosity > 0 && e.Message != "CUSTOM Connection closed") Log(4, "[ERROR] " + e.Message + "\n" + e.StackTrace);
 
+                    Disconnect();
                     break;
                 }
             }
 
-            bstpThread.isLongRun = false;
-            Interlocked.Decrement(ref LongRun);
+            // THREAD TRANSFER BACK TO SHORTRUN
+            if (bstp != null && bstp.Threads != null)
+            {
+                bstp.Threads[threadIndex].isLongRun = false;
+                Interlocked.Decrement(ref bstp.LongRun);
+            }
         }
         private void ProcessMessage()
         {
-            lastAction = DateTime.UtcNow.Ticks;
-
             Receive(4); // MSG Length
 
             int msgLen  = Utils.ToBigEndian(recvBuff);
-            if (msgLen == 0) { if (Options.Verbosity > 0) Log(4, "[MSG ] Keep Alive"); return; }
+            if (msgLen == 0) { if (Beggar.Options.Verbosity > 0) Log(4, "[MSG ] Keep Alive"); return; }
 
             Receive(1); // MSG Id
 
@@ -394,41 +356,50 @@ namespace SuRGeoNix.BEP
             {
                                         // Core Messages | http://bittorrent.org/beps/bep_0052.html
                 case Messages.REQUEST:
-                    if (Options.Verbosity > 0) Log(4, "[MSG ] Request");
+                    if (Beggar.Options.Verbosity > 0) Log(4, "[MSG ] Request");
                     // TODO
 
                     break;
 
                 case Messages.CHOKE:
-                    if (Options.Verbosity > 0) Log(2, "[MSG ] Choke");
-                    stageYou.unchoked = false;
-                    chokedAt = DateTime.UtcNow.Ticks;
+                    if (Beggar.Options.Verbosity > 0) Log(2, "[MSG ] Choke");
 
-                    piecesTimeout -= piecesRequested; // Avoid dropping peer (until new timeouts)
+                    stageYou.unchoked = false;
+
+                    if (lastPieces.Count > 0)
+                    {
+                        Beggar.ResetRequests(this, lastPieces);
+                        //piecesRequested = 0; // We should wait for rejects otherwise we loose sync between send/recv pieces (really bad for streaming and FAs)
+                        lastPieces = new List<Tuple<int, int, int>>();
+                    }
+
+                    status = Status.READY;
 
                     return;
                 case Messages.UNCHOKE:
-                    if (Options.Verbosity > 0) Log(2, "[MSG ] Unchoke");
+                    if (Beggar.Options.Verbosity > 0) Log(2, "[MSG ] Unchoke");
+
                     stageYou.unchoked = true;
 
-                    if (Options.Beggar.isRunning && status == Status.READY) Options.Beggar.RequestPiece(this);
+                    if (status == Status.READY) Beggar.RequestPiece(this);
 
                     return;
                 case Messages.INTRESTED:
-                    if (Options.Verbosity > 0) Log(3, "[MSG ] Intrested");
+                    if (Beggar.Options.Verbosity > 0) Log(3, "[MSG ] Intrested");
+
                     stageYou.intrested = true;
 
                     break;
                 case Messages.HAVE:
-                    if (Options.Verbosity > 0) Log(3, "[MSG ] Have");
+                    if (Beggar.Options.Verbosity > 0) Log(3, "[MSG ] Have");
                     Receive(msgLen - 1);
 
                     stageYou.haveNone = false;
 
                     if (stageYou.bitfield == null)
                     {
-                        if (Options.Pieces != 0)
-                            stageYou.bitfield = new BitField(Options.Pieces);
+                        if (Beggar.torrent.data.pieces != 0)
+                            stageYou.bitfield = new BitField(Beggar.torrent.data.pieces);
                         else
                             stageYou.bitfield = new BitField(15000); // MAX PIECES GUESS?
                     }
@@ -438,18 +409,18 @@ namespace SuRGeoNix.BEP
 
                     return;
                 case Messages.BITFIELD:
-                    if (Options.Verbosity > 0) Log(3, "[MSG ] Bitfield");
+                    if (Beggar.Options.Verbosity > 0) Log(3, "[MSG ] Bitfield");
 
                     Receive(msgLen - 1);
 
                     stageYou.haveNone   = false;
                     byte[] bitfield     = new byte[recvBuff.Length];
                     Buffer.BlockCopy(recvBuff, 0, bitfield, 0, recvBuff.Length);
-                    stageYou.bitfield   = new BitField(bitfield, Options.Pieces != 0 ? Options.Pieces : recvBuff.Length * 8);
+                    stageYou.bitfield   = new BitField(bitfield, Beggar.torrent.data.pieces != 0 ? Beggar.torrent.data.pieces : recvBuff.Length * 8);
 
                     return;
                 case Messages.PIECE:
-                    if (Options.Verbosity > 0) Log(2, "[MSG ] Piece");
+                    if (Beggar.Options.Verbosity > 0) Log(2, "[MSG ] Piece");
 
                     Receive(4);         // [Piece Id]
                     int piece   = Utils.ToBigEndian(recvBuff);
@@ -457,36 +428,34 @@ namespace SuRGeoNix.BEP
                     int offset  = Utils.ToBigEndian(recvBuff);
                     Receive(msgLen - 9);// [Data]
 
-                    lock (lockerRequests) piecesRequested--;
+                    int lastPiece = FindPiece(piece, offset);
+                    if (lastPiece != -1) lastPieces.RemoveAt(lastPiece);
+
+                    if (piecesRequested > 0) piecesRequested--;
+
+                    Beggar.PieceReceived(msgLen - 9 == MAX_DATA_SIZE ? recvBuffMax : recvBuff, piece, offset, this);
 
                     if (piecesRequested == 0)
                     {
                         status = Status.READY;
-                        //else if (piecesRequested <= 4) 
-                        //{
-                        
-                        if (Options.Beggar.isRunning)
-                        {
-                            if (stageYou.unchoked)
-                                Options.Beggar.RequestPiece(this);
-                            else if (allowFastPieces.Count > 0)
-                                Options.Beggar.RequestFastPiece(this);
-                        }
-                    }
 
-                    Options.Beggar.PieceReceived(msgLen - 9 == MAX_DATA_SIZE ? recvBuffMax : recvBuff, piece, offset, this);
+                        if (stageYou.unchoked)
+                            Beggar.RequestPiece(this);
+                        else if (allowFastPieces.Count > 0)
+                            Beggar.RequestFastPiece(this);
+                    }
 
                     return;
                                         // DHT Extension        | http://bittorrent.org/beps/bep_0005.html | reserved[7] |= 0x01 | UDP Port for DHT 
                 case Messages.PORT:
-                    if (Options.Verbosity > 0) Log(3, "[MSG ] Port");
+                    if (Beggar.Options.Verbosity > 0) Log(3, "[MSG ] Port");
 
                     // TODO: Add them in DHT as a 3rd Strategy?
 
                     break;
                                         // Fast Extensions      | http://bittorrent.org/beps/bep_0006.html | reserved[7] |= 0x04
                 case Messages.REJECT_REQUEST:// Reject Request
-                    if (Options.Verbosity > 0) Log(2, "[MSG ] Reject Request");
+                    if (Beggar.Options.Verbosity > 0) Log(2, "[MSG ] Reject Request");
 
                     Receive(4);         // [Piece Id]
                     piece   = Utils.ToBigEndian(recvBuff);
@@ -495,35 +464,42 @@ namespace SuRGeoNix.BEP
                     Receive(4);         // [Length]
                     int len = Utils.ToBigEndian(recvBuff);
 
-                    lock (lockerRequests) piecesRequested--;
+                    if (piecesRequested > 0) piecesRequested--;
 
-                    Options.Beggar.PieceRejected(piece, offset, len, this);
+                    Interlocked.Increment(ref Beggar.Stats.Rejects);
+
+                    lastPiece = FindPiece(piece, offset);
+                    if (lastPiece != -1)
+                    {
+                        Beggar.ResetRequest(this, piece, offset, len);
+                        lastPieces.RemoveAt(lastPiece);
+                    }
 
                     if (piecesRequested == 0)
                     {
                         status = Status.READY;
-                        if (Options.Beggar.isRunning)
-                        {
-                            if (stageYou.unchoked)
-                                Options.Beggar.RequestPiece(this);
-                            else if (allowFastPieces.Count > 0)
-                                Options.Beggar.RequestFastPiece(this);
-                        }
+
+                        if (stageYou.unchoked)
+                            Beggar.RequestPiece(this);
+
+                        // Will cause infinite re-requesting
+                        //else if (allowFastPieces.Count > 0)
+                            //Beggar.RequestFastPiece(this);
                     }
 
                     return;
                 case Messages.HAVE_NONE:
-                    if (Options.Verbosity > 0) Log(3, "[MSG ] Have None");
+                    if (Beggar.Options.Verbosity > 0) Log(3, "[MSG ] Have None");
                     stageYou.haveNone = true;
 
                     return;
                 case Messages.HAVE_ALL:
-                    if (Options.Verbosity > 0) Log(3, "[MSG ] Have All");
+                    if (Beggar.Options.Verbosity > 0) Log(3, "[MSG ] Have All");
                     stageYou.haveAll = true;
 
                     return;
                 case Messages.SUGGEST_PIECE:
-                    if (Options.Verbosity > 0) Log(3, "[MSG ] Suggest Piece");
+                    if (Beggar.Options.Verbosity > 0) Log(3, "[MSG ] Suggest Piece");
                     // TODO
 
                     break;
@@ -534,14 +510,14 @@ namespace SuRGeoNix.BEP
 
                     allowFastPieces.Add(allowFastPiece);
 
-                    if (Options.Verbosity > 0) Log(3, $"[MSG ] Allowed Fast [Piece: {allowFastPiece}]");
+                    if (Beggar.Options.Verbosity > 0) Log(3, $"[MSG ] Allowed Fast [Piece: {allowFastPiece}]");
 
-                    if (Options.Beggar.isRunning && status == Status.READY)
+                    if (status == Status.READY)
                     {
                         if (stageYou.unchoked)
-                            Options.Beggar.RequestPiece(this);
+                            Beggar.RequestPiece(this);
                         else if (allowFastPieces.Count > 0)
-                            Options.Beggar.RequestFastPiece(this);
+                            Beggar.RequestFastPiece(this);
                     }
 
                     return;
@@ -552,7 +528,7 @@ namespace SuRGeoNix.BEP
 
                     if (recvBuff[0] == Messages.EXTENDED_HANDSHAKE)
                     {
-                        if (Options.Verbosity > 0) Log(3, "[MSG ] Extended Handshake");
+                        if (Beggar.Options.Verbosity > 0) Log(3, "[HAND] Extended Received");
 
                         Receive(msgLen - 2);
 
@@ -565,6 +541,8 @@ namespace SuRGeoNix.BEP
 
                         // MSG Extended Handshake | Reply
                         SendExtendedHandshake();
+                        
+                        if (status == Status.READY) Beggar.RequestPiece(this);
 
                         return;
                     }
@@ -575,7 +553,7 @@ namespace SuRGeoNix.BEP
                     else if (recvBuff[0] == stageYou.extensions.ut_metadata && stageYou.extensions.ut_metadata != 0) 
                     {
                         // MSG Extended Metadata
-                        if (Options.Verbosity > 0) Log(3, "[MSG ] Extended Metadata");
+                        if (Beggar.Options.Verbosity > 0) Log(3, "[META] ...");
 
                         bool wasDownloading = status == Status.DOWNLOADING;
                         int buffSize        = msgLen - 2;
@@ -591,24 +569,31 @@ namespace SuRGeoNix.BEP
 
                         switch (mdHeadersDic.Get<BNumber>("msg_type").Value)
                         {
-                            case Messages.METADATA_REQUEST:
-                                if (Options.Verbosity > 0) Log(3, "[MSG ] Extended Metadata Request");
-                                break;
-
                             case Messages.METADATA_RESPONSE: // (Expecting 0x4000 | 16384 bytes - except if last piece)
-                                if (Options.Verbosity > 0) Log(2, "[MSG ] Extended Metadata Data");
-                                Options.Beggar.MetadataPieceReceived(buffSize == MAX_DATA_SIZE ? recvBuffMax : recvBuff, (int) mdHeadersDic.Get<BNumber>("piece").Value, mdHeadersDic.EncodeAsString().Length, (int) mdHeadersDic.Get<BNumber>("total_size").Value, this);
+                                if (Beggar.Options.Verbosity > 0) Log(2, "[META] Received");
+                                Beggar.MetadataPieceReceived(buffSize == MAX_DATA_SIZE ? recvBuffMax : recvBuff, (int) mdHeadersDic.Get<BNumber>("piece").Value, mdHeadersDic.EncodeAsString().Length, (int) mdHeadersDic.Get<BNumber>("total_size").Value, this);
+
+                                stageYou.metadataPiecesRequested--;
+
+                                if (stageYou.metadataPiecesRequested == 0 && lastPieces.Count == 0) { stageYou.metadataRequested = false; Beggar.RequestPiece(this); }
 
                                 break;
 
                             case Messages.METADATA_REJECT:
-                                if (Options.Verbosity > 0) Log(2, "[MSG ] Extended Metadata Reject");
-                                Options.Beggar.MetadataPieceRejected((int) mdHeadersDic.Get<BNumber>("piece").Value, host);
+                                if (Beggar.Options.Verbosity > 0) Log(2, "[META] Rejected");
+                                Beggar.MetadataPieceRejected((int) mdHeadersDic.Get<BNumber>("piece").Value, host);
+
+                                stageYou.metadataPiecesRequested--;
+                                if (lastPieces.Count == 0) Beggar.RequestPiece(this);
 
                                 break;
 
+                            case Messages.METADATA_REQUEST:
+                                if (Beggar.Options.Verbosity > 0) Log(3, "[META] Request");
+                                break;
+
                             default:
-                                if (Options.Verbosity > 0) Log(4, "[MSG ] Extended Metadata Unknown " + mdHeadersDic.Get<BNumber>("msg_type").Value);
+                                if (Beggar.Options.Verbosity > 0) Log(4, "[META] Unknown " + mdHeadersDic.Get<BNumber>("msg_type").Value);
                                 break;
 
                         } // Switch Metadata (msg_type)
@@ -619,7 +604,7 @@ namespace SuRGeoNix.BEP
                     }
                     else
                     {
-                        if (Options.Verbosity > 0) Log(4, "[MSG ] Extended Unknown " + recvBuff[0]);
+                        if (Beggar.Options.Verbosity > 0) Log(4, "[MSG ] Extended Unknown " + recvBuff[0]);
                     }
 
                     Receive(msgLen - 2);
@@ -627,7 +612,7 @@ namespace SuRGeoNix.BEP
                     return; // Case Messages.EXTENDED    
 
                 default:
-                    if (Options.Verbosity > 0) Log(4, "[MSG ] Message Unknown " + recvBuff[0]);
+                    if (Beggar.Options.Verbosity > 0) Log(4, "[MSG ] Message Unknown " + recvBuff[0]);
 
                     break;
             } // Switch (MSG Id)
@@ -637,46 +622,80 @@ namespace SuRGeoNix.BEP
         
         private void Receive(int len)
         {
-            long startedAt  = 0;//  = DateTime.UtcNow.Ticks;
             int  curLoop    = 0;
-            int  tooManyTmp = 0;
-            while (tcpClient.Client.Available < len)
+            long startedAt  = 0;
+            long diffMs;
+            int  lenAvailable;
+
+            while ((lenAvailable = tcpClient.Client.Available) < len)
             {
-                Thread.Sleep(20);
-                curLoop ++;
+                if (startedAt == 0) startedAt = DateTime.UtcNow.Ticks;
+                Thread.Sleep(40);
+                curLoop++;
 
-                if (startedAt == 0) 
-                    startedAt = DateTime.UtcNow.Ticks;
-                else
+                // Piece Timeouts
+                if (status == Status.DOWNLOADING && curLoop % (Beggar.Options.PieceTimeout / 40) == 0)
                 {
-                    // Check Timeout
-                    if (curLoop % 5 == 0 && DateTime.UtcNow.Ticks - startedAt > curTimeoutTicks)
-                    {
-                        if (status == Status.READY || status == Status.DOWNLOADING)
-                        {
-                            if (Options.Verbosity > 0) Log(4, $"[NEWTIMEOUT] Checking"); // TODO
-                            startedAt = DateTime.UtcNow.Ticks; // Currently let Beggar to control it
-                            tooManyTmp++;
+                    PieceTimeouts++;
 
-                            if (tooManyTmp == 4)
-                            {
-                                if (Options.Verbosity > 0) Log(4, $"[DROP] [NEWTIMEOUT] Beggar should already drop it");
-                                status = Status.FAILED2;
-                                throw new Exception("CUSTOM Connection closed");
-                            }
-                        }
-                        else
+                    if (PieceTimeouts == 1 && Beggar.Options.PieceRetries > 0 && lastPieces != null && lastPieces.Count > 0) Beggar.ResetRequests(this, lastPieces);
+
+                    if (Beggar.Options.Verbosity > 0) Log(4, $"[TIMEOUT] {PieceTimeouts} ({lenAvailable} < {len} , Requests: {PiecesRequested}, Pieces: {lastPieces.Count}, Timeouts: {PieceTimeouts})");
+
+                    if (PieceTimeouts > Beggar.Options.PieceRetries)
+                    {
+                        if (Beggar.Options.Verbosity > 0) Log(4, $"[DROP] Piece Timeout ({lenAvailable} < {len} , Requests: {PiecesRequested}, Pieces: {lastPieces.Count}, Timeouts: {PieceTimeouts})");
+
+                        Interlocked.Increment(ref Beggar.Stats.PieceTimeouts);
+                        status = Status.FAILED2;
+                        throw new Exception("CUSTOM Connection closed");
+                    }
+                }
+
+                // Peer Scheduler - Every ~200ms [Check Timeout | Chocked | No Pieces | Idle]
+                if (curLoop % 5 == 0)
+                {
+                    diffMs = (startedAt/10000 + (curLoop * 40)) - (startedAt/10000);
+
+                    // TODO check time from last piece received and drop after X seconds (to avoid peers that rejected even unchoked / infinite loop)
+
+                    if (status == Status.READY)
+                    {
+                        // Drop No Pieces Peer
+                        if (Beggar.NoPiecesPeer(this))
                         {
-                            if (Options.Verbosity > 0) Log(4, $"[DROP] [NEWTIMEOUT] Handshake? {len == 68}");
+                            if (Beggar.Options.Verbosity > 0) Log(4, $"[DROP] No Pieces Peer ({lenAvailable} < {len} , Requests: {PiecesRequested}), Pieces: {lastPieces.Count}, Timeouts: {PieceTimeouts})");
                             status = Status.FAILED2;
                             throw new Exception("CUSTOM Connection closed");
                         }
 
+                        // Drop Choked (after 30 seconds)
+                        else if (!stageYou.unchoked)
+                        {
+                            if (diffMs > 30 * 1000)
+                            {
+                                if (Beggar.Options.Verbosity > 0) Log(4, $"[DROP] Choked Peer ({lenAvailable} < {len} , Requests: {PiecesRequested}), Pieces: {lastPieces.Count}, Timeouts: {PieceTimeouts})");
+                                status = Status.FAILED2;
+                                throw new Exception("CUSTOM Connection closed");
+                            }
+                        }
+
+                        // Send Keep Alive (after 6 seconds (25loops = ~second))
+                        if (lenAvailable == 0 && curLoop % (6 * 25) == 0) SendKeepAlive();
                     }
-                }
+
+                    else if (status == Status.CONNECTED && (len == 68 || len == 4) && diffMs > Beggar.Options.HandshakeTimeout)
+                    {
+                        if (Beggar.Options.Verbosity > 0) Log(4, "[DROP] " + (len == 68 ? "Extended " : "") + "Handshake Timeout");
+
+                        Interlocked.Increment(ref Beggar.Stats.HandshakeTimeouts);
+                        status = Status.FAILED2;
+                        throw new Exception("CUSTOM Connection closed");
+                    }
+                } 
                 
-                // Check Disconnect
-                if (curLoop % 7 == 0) // && !(status == Status.READY || status == Status.DOWNLOADING))
+                // Dead Connections Handler
+                else if (curLoop % 16 == 0)
                 {
                     // 1. System.IO.IOException | Unable to read data from the transport connection: An existing connection was forcibly closed by the remote host.
                     // 2. System.IO.IOException | Unable to read data from the transport connection: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond.
@@ -685,28 +704,39 @@ namespace SuRGeoNix.BEP
                     // Catch remote-end FIN/ACK to avoid keeping a closed connection as opened
                     if (tcpClient.Client.Poll(0, SelectMode.SelectRead) && !tcpClient.Client.Poll(0, SelectMode.SelectError))
                     {
-                        byte[] buff = new byte[1];
-                        if (tcpClient.Client.Receive(buff, SocketFlags.Peek) == 0)
+                        // We might get here -> An established connection was aborted by the software in your host machine | Because of RST/ACK?
+                        if (tcpClient.Client.Receive(new byte[1], SocketFlags.Peek) == 0)
                         {
+                            if (Beggar.Options.Verbosity > 0) Log(4, $"[DROP] Custom ({status.ToString()})");
+
                             status = Status.FAILED2;
                             throw new Exception("CUSTOM Connection closed");
                         }
                     }
+                    
                 }
             }
+
+            /* Until we have peer stats (possible solution for low rate peers during critical focus areas buffering)
+            //if (PieceTimeouts > 3)
+            //{
+            //    // Mainly for streaming while buffering critical areas
+            //    Log(4, "[BAD] Sleeping ...");
+            //    Console.WriteLine($"{host} Sleeping for {5 * (Beggar.Stats.PeersDownloading - 1)} from {Beggar.Stats.PeersDownloading} (PiecesTimeout: {PieceTimeouts}, CurrentTimeout: {Beggar.Options.PieceTimeout})");
+            //    Thread.Sleep(5 * (Beggar.Stats.PeersDownloading - 1));
+            //    PieceTimeouts = 0;
+            //} */
 
             if (len == MAX_DATA_SIZE)
                 tcpStream.Read(recvBuffMax, 0, len);
             else
                 { recvBuff = new byte[len]; tcpStream.Read(recvBuff, 0, len); }
-
-            //if (Options.Beggar.Stats.SleepMode && len >= MAX_DATA_SIZE) Thread.Sleep(25);
         }
         private void ReceiveAlternative(int len)
         {
             // Testing another approach for unix platforms
 
-            long timeout    = len == 68 ? (long)Options.HandshakeTimeout * 10000 : (long)Options.Beggar.Options.PieceTimeout * 10000;
+            long timeout    = len == 68 ? (long)Beggar.Options.HandshakeTimeout * 10000 : (long)Beggar.Options.PieceTimeout * 10000;
             long startedAt  = DateTime.UtcNow.Ticks;
             recvBuff        = new byte[len];
             int read = 0;
@@ -715,7 +745,7 @@ namespace SuRGeoNix.BEP
             int offset = 0;
             AutoResetEvent autoResetEvent = new AutoResetEvent(false);
 
-            tcpClient.ReceiveTimeout = len == 68 ? Options.HandshakeTimeout : Options.Beggar.Options.PieceTimeout;
+            tcpClient.ReceiveTimeout = len == 68 ? Beggar.Options.HandshakeTimeout : Beggar.Options.PieceTimeout;
                 
             while (offset != len)
             {
@@ -755,15 +785,19 @@ namespace SuRGeoNix.BEP
         {
             try
             {
+                //if (!tcpClient.Connected) { Disconnect(); return; }
+
+                stageYou.metadataPiecesRequested++;
+                if (piece2 != -1) stageYou.metadataPiecesRequested++;
+
                 sendBuff = PrepareMessage(stageYou.extensions.ut_metadata, true, Encoding.UTF8.GetBytes((new BDictionary { { "msg_type", 0 }, { "piece", piece } }).EncodeAsString()));
                 if (piece2 != -1)
                     sendBuff = Utils.ArrayMerge(sendBuff, PrepareMessage(stageYou.extensions.ut_metadata, true, Encoding.UTF8.GetBytes((new BDictionary { { "msg_type", 0 }, { "piece", piece2 } }).EncodeAsString())));
 
                 tcpStream.Write(sendBuff, 0, sendBuff.Length);
-                lastAction = DateTime.UtcNow.Ticks;
             } catch (Exception e)
             {
-                if (Options.Verbosity > 0) Log(1, $"[REQ][METADATA] {piece},{piece2} {e.Message}");
+                if (Beggar.Options.Verbosity > 0) Log(1, $"[REQ][METADATA] {piece},{piece2} {e.Message}");
                 Disconnect();
             }
         }
@@ -773,6 +807,8 @@ namespace SuRGeoNix.BEP
             {
                 lock (lockerRequests)
                 {
+                    //if (!tcpClient.Connected) { Disconnect(); return; }
+
                     status      = Status.DOWNLOADING;
                     sendBuff    = new byte[0];
 
@@ -783,12 +819,11 @@ namespace SuRGeoNix.BEP
 
                     lastPieces      = pieces;
                     piecesRequested+= pieces.Count;
-                    lastAction      = DateTime.UtcNow.Ticks;
                 }
-
-            } catch (Exception e)
+            }
+            catch (Exception e)
             {
-                if (Options.Verbosity > 0) Log(1, $"[REQ ] Send Failed - {e.Message}\r\n{e.StackTrace}");
+                if (Beggar.Options.Verbosity > 0) Log(1, $"[REQ ] Send Failed - {e.Message}\r\n{e.StackTrace}");
                 Disconnect();
             }
         }
@@ -800,10 +835,9 @@ namespace SuRGeoNix.BEP
         {
             try
             {
-                if (Options.Verbosity > 0) Log(4, "[MSG ] Sending Keep Alive");
+                if (Beggar.Options.Verbosity > 0) Log(4, "[MSG ] Sending Keep Alive");
 
                 tcpStream.Write(new byte[] { 0, 0, 0, 0}, 0, 4);
-                lastAction = DateTime.UtcNow.Ticks;
             } catch (Exception e)
             {
                 Log(1, "[KEEPALIVE] Keep Alive Sending Error " + e.Message);
@@ -818,7 +852,6 @@ namespace SuRGeoNix.BEP
                 sendBuff    = PrepareMessage(Messages.REQUEST, false, Utils.ArrayMerge(Utils.ToBigEndian((Int32) piece), Utils.ToBigEndian((Int32) offset), Utils.ToBigEndian((Int32) len))); //Utils.ArrayMerge();
 
                 tcpStream.Write(sendBuff, 0, sendBuff.Length);
-                lastAction = DateTime.UtcNow.Ticks;
             } catch (Exception e)
             {
                 Log(1, $"[REQ ][PIECE][BLOCK] {piece}\t{offset}\t{len} {e.Message}\r\n{e.StackTrace}");
@@ -837,13 +870,11 @@ namespace SuRGeoNix.BEP
                         sendBuff = Utils.ArrayMerge(sendBuff, PrepareMessage(Messages.CANCEL, false, Utils.ArrayMerge(Utils.ToBigEndian((Int32)piece.Item1), Utils.ToBigEndian((Int32)piece.Item2), Utils.ToBigEndian((Int32)piece.Item3))));
 
                     tcpStream.Write(sendBuff, 0, sendBuff.Length);
-
-                    lastAction = DateTime.UtcNow.Ticks;
                 }
             }
             catch (Exception e)
             {
-                if (Options.Verbosity > 0) Log(1, $"[REQ ] Send Cancel Failed - {e.Message}\r\n{e.StackTrace}");
+                if (Beggar.Options.Verbosity > 0) Log(1, $"[REQ ] Send Cancel Failed - {e.Message}\r\n{e.StackTrace}");
                 status = Status.FAILED2;
                 Disconnect();
             }
@@ -854,19 +885,18 @@ namespace SuRGeoNix.BEP
             {
                 lock (lockerRequests)
                 {
-                    if (Options.Verbosity > 0) Log(2, $"[CANCELING PIECE] Piece: {piece} Offset: {offset}");
+                    if (Beggar.Options.Verbosity > 0) Log(2, $"[CANCELING PIECE] Piece: {piece} Offset: {offset}");
 
                     sendBuff = new byte[0];
                     Utils.ArrayMerge(sendBuff, PrepareMessage(Messages.CANCEL, false, Utils.ArrayMerge(Utils.ToBigEndian((Int32) piece), Utils.ToBigEndian((Int32) offset), Utils.ToBigEndian((Int32) len))));
 
                     tcpStream.Write(sendBuff, 0, sendBuff.Length);
 
-                    lastAction = DateTime.UtcNow.Ticks;
                 }
             }
             catch (Exception e)
             {
-                if (Options.Verbosity > 0) Log(1, $"[REQ ] Send Cancel Failed - {e.Message}\r\n{e.StackTrace}");
+                if (Beggar.Options.Verbosity > 0) Log(1, $"[REQ ] Send Cancel Failed - {e.Message}\r\n{e.StackTrace}");
                 status = Status.FAILED2;
                 Disconnect();
             }
@@ -891,10 +921,9 @@ namespace SuRGeoNix.BEP
 
                 tcpStream.Write(sendBuff, 0, sendBuff.Length);
 
-                lastAction = DateTime.UtcNow.Ticks;
             } catch (Exception e)
             {
-                if (Options.Verbosity > 0) Log(1, "[SENDMESSAGE] Sending Error " + e.Message);
+                if (Beggar.Options.Verbosity > 0) Log(1, "[SENDMESSAGE] Sending Error " + e.Message);
             }
         }
         public byte[] PrepareMessage(byte msgid, bool isExtended, byte[] payload)
@@ -920,7 +949,16 @@ namespace SuRGeoNix.BEP
                 return tmp;
             }
         }
-        internal void Log(int level, string msg) { if (Options.Verbosity > 0 && level <= Options.Verbosity) Options.LogFile.Write($"[Peer    ] [{host.PadRight(15, ' ')}] {msg}"); }
+
+        private int FindPiece(int piece, int offset)
+        {
+            for (int i=0; i<lastPieces.Count; i++)
+                if (lastPieces[i].Item1 == piece && lastPieces[i].Item2 == offset) return i;
+
+            return -1;
+        }
+
+        internal void Log(int level, string msg) { if (Beggar.Options.Verbosity > 0 && Beggar.Options.LogPeer && level <= Beggar.Options.Verbosity) Beggar.log.Write($"[Peer    ] [{host.PadRight(15, ' ')}] {msg}"); }
         #endregion
     }
 }

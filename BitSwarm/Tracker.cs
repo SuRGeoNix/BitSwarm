@@ -1,5 +1,5 @@
 ﻿using System;
-using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Net.Security;
@@ -23,6 +23,7 @@ namespace SuRGeoNix.BEP
         public string   host                        { get; private set; }
         public int      port                        { get; private set; }
         public Type     type                        { get; private set; }
+        public bool     failed                      { get; private set; }
         
         public Options  options;
 
@@ -44,7 +45,6 @@ namespace SuRGeoNix.BEP
             HTTPS   = 3
         }
 
-        public ConcurrentDictionary<string, int>  peers { get; private set; }
         public UInt32   seeders     { get; private set; }
         public UInt32   leechers    { get; private set; }
         public UInt32   completed   { get; private set; }
@@ -97,34 +97,35 @@ namespace SuRGeoNix.BEP
                     break;
                 case "udp":
                     type = Type.UDP;
-
-                    IPAddress[] ips = null;
-
-                    try { ips = Dns.GetHostAddresses(uri.DnsSafeHost); } catch (Exception) { }
-                    
-                    if (ips == null || ips.Length == 0) break;
-
-                    foreach (var ip in ips)
-                        if (ip.AddressFamily == AddressFamily.InterNetwork)
-                            rEP = new IPEndPoint(ip, port);
-                    
-                    if (rEP == null)
-                        foreach (var ip in ips)
-                            if (ip.AddressFamily == AddressFamily.InterNetworkV6)
-                            {  rEP = new IPEndPoint(ip, port); break; }
-
-                    if (rEP == null) { Log("DNS failed"); break; }
-
-                    udpClient   = new UdpClient(0);
-                    udpClient.Client.ReceiveTimeout = options.ReceiveTimeout;
-
                     break;
                 default:
-
                     break;
             }
 
             typeHostPort = (type.ToString().ToLower() + "://" + host + ":" + port).PadRight(50, ' ');
+        }
+
+        private void InitializeUDP()
+        {
+            IPAddress[] ips = null;
+
+            try { ips = Dns.GetHostAddresses(uri.DnsSafeHost); } catch (Exception) { }
+                    
+            if (ips == null || ips.Length == 0) { failed = true; return; }
+
+            foreach (var ip in ips)
+                if (ip.AddressFamily == AddressFamily.InterNetwork)
+                    rEP = new IPEndPoint(ip, port);
+                    
+            if (rEP == null)
+                foreach (var ip in ips)
+                    if (ip.AddressFamily == AddressFamily.InterNetworkV6)
+                    {  rEP = new IPEndPoint(ip, port); break; }
+
+            if (rEP == null) { Log("DNS failed"); failed = true; return; }
+
+            udpClient   = new UdpClient(0);
+            udpClient.Client.ReceiveTimeout = options.ReceiveTimeout;
         }
 
         // Main Implementation [Connect | Receive | Announce | Scrape]
@@ -227,7 +228,7 @@ namespace SuRGeoNix.BEP
                 BDictionary extDic  = parser.Parse<BDictionary>(recvBuff);
 
                 byte[] hashBytes    = ((BString) extDic["peers"]).Value.ToArray();
-                peers               = new ConcurrentDictionary<string, int>();
+                Dictionary<string, int> peers = new Dictionary<string, int>();
 
                 for (int i=0; i<hashBytes.Length; i+=6)
                 {
@@ -235,6 +236,10 @@ namespace SuRGeoNix.BEP
                     UInt16 curPort  = (UInt16) BitConverter.ToInt16(Utils.ArraySub(ref hashBytes,(uint) i + 4, 2, true), 0);
                     if (curPort > 0) peers[curIP.ToString()] = curPort;
                 }
+
+                if (options.Verbosity > 0) Log($"Success ({peers.Count} Peers)");
+
+                if (peers.Count > 0) Beggar.FillPeers(peers, BitSwarm.PeersStorage.TRACKERSNEW);
             }
             catch (Exception e)
             {
@@ -249,6 +254,10 @@ namespace SuRGeoNix.BEP
             try
             {
                 // http://www.bittorrent.org/beps/bep_0015.html
+
+                if (failed) return;
+                if (udpClient == null) InitializeUDP();
+                if (failed) return;
 
                 // Allow Re-Requesting a Full Response Tracker (200 per response on Tracker & 100 on DHT?)
                 if (num_want != -1 && curRecursions * 200 > num_want) return;
@@ -322,7 +331,7 @@ namespace SuRGeoNix.BEP
                     //seeders     = (UInt32) BitConverter.ToInt32(Utils.ArraySub(ref recvBuff, 12, 4, true), 0);
                     //leechers    = (UInt32) BitConverter.ToInt32(Utils.ArraySub(ref recvBuff, 16, 4, true), 0);
 
-                    peers = new ConcurrentDictionary<string, int>();
+                    Dictionary<string, int> peers = new Dictionary<string, int>();
 
                     for (int i=0; i<(recvBuff.Length - 20) / 6; i++)
                     {
@@ -333,7 +342,7 @@ namespace SuRGeoNix.BEP
 
                     if (options.Verbosity > 0) Log($"Success ({peers.Count} Peers)");
 
-                    if (peers.Count > 0) Beggar.FillPeersFromStorage(peers, BitSwarm.PeersStorage.TRACKERSNEW);
+                    if (peers.Count > 0) Beggar.FillPeers(peers, BitSwarm.PeersStorage.TRACKERSNEW);
 
                     // Check with bytes cause Peers maybe < 200 | We drop some invalid ports or we dont read them properly?
                     if (recvBuff.Length == 1220) { curRecursions++; AnnounceUDP(); }

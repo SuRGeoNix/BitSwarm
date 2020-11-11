@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -181,7 +182,7 @@ namespace SuRGeoNix
             byte[] rv = new byte[arrays.Sum(a => a.Length)];
             int offset = 0;
             foreach (byte[] array in arrays) {
-                System.Buffer.BlockCopy(array, 0, rv, offset, array.Length);
+                Buffer.BlockCopy(array, 0, rv, offset, array.Length);
                 offset += array.Length;
             }
             return rv;
@@ -247,14 +248,14 @@ namespace SuRGeoNix
         {
             string bd = "";
 
-            if (        bytes < 1024 )
-                bd =    bytes.ToString();
-            else if (   bytes > 1024    && bytes < 1024 * 1024 )
-                bd =    bytes / 1024        + " KB";
-            else if (   bytes > 1024 * 1024 && bytes < 1024 * 1024 * 1024 )
-                bd =    bytes / (1024 * 1024)     + " MB";
+            if (        bytes < 1024)
+                bd =    bytes + " B";
+            else if (   bytes > 1024    && bytes < 1024 * 1024)
+                bd =    String.Format("{0:n1}",bytes / 1024.0)                  + " KB";
+            else if (   bytes > 1024 * 1024 && bytes < 1024 * 1024 * 1024)
+                bd =    String.Format("{0:n1}",bytes / (1024 * 1024.0))         + " MB";
             else if (   bytes > 1024 * 1024 * 1024 )
-                bd =    bytes / (1024 * 1024 * 1024)  + " GB";
+                bd =    String.Format("{0:n1}",bytes / (1024 * 1024 * 1024.0))  + " GB";
 
             return bd;
         }
@@ -317,7 +318,7 @@ namespace SuRGeoNix
             }
 
             if (t != null && t.IsAlive)
-                Console.WriteLine("Thread X didn't finish properly!");
+                Debug.WriteLine("Thread X didn't finish properly!");
         }
         
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Interoperability", "CA1401:PInvokesShouldNotBeVisible"), System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Security", "CA2118:ReviewSuppressUnmanagedCodeSecurityUsage"), SuppressUnmanagedCodeSecurity]

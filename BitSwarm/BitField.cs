@@ -326,6 +326,15 @@ namespace SuRGeoNix
             }
         }
 
+        public BitField Clone()
+        {
+            BitField clone = new BitField(size);
+
+            Buffer.BlockCopy(bitfield, 0, clone.bitfield, 0, bitfield.Length);
+            clone.setsCounter = setsCounter;
+
+            return clone;
+        }
         public bool CopyFrom(BitField bitfield)
         {
             lock (locker)
@@ -363,8 +372,6 @@ namespace SuRGeoNix
             Console.Write(Convert.ToString(bitfield[bitfield.Length-1], 2).PadLeft(8, '0').Substring(0,((size-1)%8)+1));
             Console.WriteLine("\n==============================");
         }
-        public void SetSize(int size) { this.size = size; }
-        public int GetSize() { return size; }
         public void SetBitfield(byte[] bitfield) { this.bitfield = bitfield; }
         public byte[] GetBitfield() { return bitfield; }
     }

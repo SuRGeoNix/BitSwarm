@@ -103,16 +103,18 @@ namespace SuRGeoNix.BitSwarmClient
             }
             else
             {
-                torrent = e.Torrent;
-                string str = "Name ->\t\t" + torrent.file.name + "\r\nSize ->\t\t" + Utils.BytesToReadableString(torrent.data.totalSize) + "\r\n\r\nFiles\r\n==============================\r\n";
+                torrent      = e.Torrent;
+                output.Text += bitSwarm.DumpTorrent().Replace("\n", "\r\n");
 
-                for (int i=0; i<torrent.data.files.Count; i++)
-                {
-                    str += torrent.data.files[i].FileName + "\t\t(" + Utils.BytesToReadableString(torrent.data.files[i].Size) + ")\r\n";
-                    listBox1.Items.Add(torrent.file.paths[i]);
-                }
+                //string str = "Name ->\t\t" + torrent.file.name + "\r\nSize ->\t\t" + Utils.BytesToReadableString(torrent.data.totalSize) + "\r\n\r\nFiles\r\n==============================\r\n";
 
-                output.Text += str;
+                //for (int i=0; i<torrent.data.files.Count; i++)
+                //{
+                //    str += torrent.data.files[i].FileName + "\t\t(" + Utils.BytesToReadableString(torrent.data.files[i].Size) + ")\r\n";
+                //    listBox1.Items.Add(torrent.file.paths[i]);
+                //}
+
+                //output.Text += str;
 
                 listBox1.BeginUpdate();
                 for (int i = 0; i < listBox1.Items.Count; i++)
@@ -133,8 +135,12 @@ namespace SuRGeoNix.BitSwarmClient
 
             if (e.Status == 0)
             {
+                string fileName = "";
+                if (torrent.file.name != null) fileName = torrent.file.name;
+                if (torrent != null) { torrent.Dispose(); torrent = null; }
+
                 output.Text += "\r\n\r\nFinished at "   + DateTime.Now.ToString("G", DateTimeFormatInfo.InvariantInfo);
-                if (torrent.file.name != null) MessageBox.Show("Downloaded successfully!\r\n" + torrent.file.name);
+                MessageBox.Show("Downloaded successfully!\r\n" + fileName);
             }
             else
             {

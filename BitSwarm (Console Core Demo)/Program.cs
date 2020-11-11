@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Globalization;
 using System.IO;
 using System.Threading;
 
@@ -13,31 +12,21 @@ namespace BitSwarmConsole
         static BitSwarm                 bitSwarm;
         static BitSwarm.DefaultOptions  opt;
         static Torrent                  torrent;
-        static bool                     sessionFinished;
+
+        static bool sessionFinished = false;
+        static bool preventOnce     = true;
+        static bool resized         = false;
+        static int  consoleLastTop  = -1;
+        static int  prevHeight;
 
         static void Main(string[] args)
         {
-            // ----------- For IDE Testing -----------
-
-            //args = new string[6];
-
-            //args[0] = "magnet:?xt=...";   // Magnet Link
-            //args[0] = @"file.torrent";    // Torrent File
-
-            //args[1] = @"folder";          // SavePath   [Default:   %temp%]
-            //args[2] = "20";               // MaxThreads [Default:       20]
-            //args[3] = "200";              // MaxConns   [Default:      200]
-            //args[4] = "2048";             // SleepLimit [Default: No Limit]
-            //args[5] = "false";            // Logs       [Default: Disabled]
-
-            // ---------------------------------------
-
             if (args.Length < 1 || args.Length > 6)
             {
-                Console.WriteLine("./bitswarm TorrentFile|MagnetUrl [SaveDirectory=%temp%] [MinThreads=20] [MaxThreads=200] [SleepLimit=-1 Auto, 0 Disabled, >0 Custom KB/s] [Logs=false]");
+                Console.WriteLine("./bitswarm TorrentFile|MagnetUrl [SaveDirectory=%temp%] [MinThreads=10] [MaxThreads=150] [SleepLimit=-1 Auto, 0 Disabled, >0 Custom KB/s] [Logs=false]");
                 return;
             }
-
+            
             // Prepare Options
             opt = new BitSwarm.DefaultOptions();
             if (args.Length >= 2)
@@ -60,6 +49,7 @@ namespace BitSwarmConsole
             }
 
             // More Options
+
             //opt.EnableDHT     = false;
             //opt.EnableTrackers= false;
             //opt.TrackersPath  = @"c:\root\trackers.txt";
@@ -82,41 +72,34 @@ namespace BitSwarmConsole
                 bitSwarm.Initiliaze(new Uri(args[0]));
 
             // Start BitSwarm Until Something Good or Bad happens
-            Console.WriteLine("[BITSWARM] Started at " + DateTime.Now.ToString("G", DateTimeFormatInfo.InvariantInfo));
             bitSwarm.Start();
 
             Console.CancelKeyPress += new ConsoleCancelEventHandler(CtrlC);
+            prevHeight = Console.WindowHeight;
 
             while (!sessionFinished)
+            {
+                if (Console.WindowHeight != prevHeight) { prevHeight = Console.WindowHeight; resized = true; }
                 Thread.Sleep(500);
-
-            bitSwarm.Dispose();
-
-            // Clean Up 0 Size Files
-            DirectoryInfo downDir = new DirectoryInfo(opt.DownloadPath);
-            foreach (var file in downDir.GetFiles())
-                try { if (file.Length == 0) file.Delete(); } catch (Exception) { }
+            }
         }
-
         protected static void CtrlC(object sender, ConsoleCancelEventArgs args)
         {
-            Console.WriteLine("[BITSWARM] Stopping");
-
-            bitSwarm.Pause();
-            if (!Utils.IsWindows) sessionFinished = true;
-            args.Cancel = true;
+            bitSwarm.Dispose(true);
+            sessionFinished = true;
+            if (preventOnce) { args.Cancel = true; preventOnce = false; }
         }
         private static void BitSwarm_StatusChanged(object source, BitSwarm.StatusChangedArgs e)
         {
             if (e.Status == 0)
             {
-                Console.WriteLine("[BITSWARM] Finished at " + DateTime.Now.ToString("G", DateTimeFormatInfo.InvariantInfo));
-                if (torrent != null && torrent.file.name != null) Console.WriteLine($"Downloaded {torrent.file.name} successfully!\r\n");
+                //Console.WriteLine("[BITSWARM] Finished at " + DateTime.Now.ToString("G", DateTimeFormatInfo.InvariantInfo) + " | Elapsed: " +  (new TimeSpan(bitSwarm.Stats.CurrentTime - bitSwarm.Stats.StartTime)).ToString(@"hh\:mm\:ss\:fff"));
+                if (torrent != null && torrent.file.name != null) Console.WriteLine($"Download of {torrent.file.name} success!\r\n");
             }
             else
             {
-                Console.WriteLine("[BITSWARM] Stopped at " + DateTime.Now.ToString("G", DateTimeFormatInfo.InvariantInfo));
-                if (e.Status == 2) Console.WriteLine("An error occured :( " + e.ErrorMsg);
+                //Console.WriteLine("[BITSWARM] Stopped at " + DateTime.Now.ToString("G", DateTimeFormatInfo.InvariantInfo) + " | Elapsed: " +  (new TimeSpan(bitSwarm.Stats.CurrentTime - bitSwarm.Stats.StartTime)).ToString(@"hh\:mm\:ss\:fff"));
+                if (e.Status == 2) Console.WriteLine("An error has been occured :( " + e.ErrorMsg);
             }
 
             sessionFinished = true;
@@ -124,36 +107,23 @@ namespace BitSwarmConsole
         private static void BitSwarm_MetadataReceived(object source, BitSwarm.MetadataReceivedArgs e)
         {
             torrent = e.Torrent;
-            string str = "\n";
-            str += "===============\n";
-            str += "Torrent Details\n";
-            str += "===============\n\n";
-            str += torrent.file.name + " (" + Utils.BytesToReadableString(torrent.data.totalSize) + ")\n";
-            str += "-----\n";
-            str += "Files\n";
-            str += "-----\n";
-
-            for (int i=0; i<torrent.data.files.Count; i++)
-                str += torrent.data.files[i].FileName + " (" + Utils.BytesToReadableString(torrent.data.files[i].Size) + ")\n";
-
-            Console.WriteLine(str);
+            Console.WriteLine(bitSwarm.DumpTorrent() + "\n");
         }
         private static void BitSwarm_StatsUpdated(object source, BitSwarm.StatsUpdatedArgs e)
         {
-            string str = "";
-            str += " [DOWN CUR] "   + String.Format("{0:n0}", (e.Stats.DownRate / 1024)) + " KB/s";
-            str += " [DOWN AVG] "   + String.Format("{0:n0}", (e.Stats.AvgRate  / 1024)) + " KB/s";
-            str += " [DOWN MAX] "   + String.Format("{0:n0}", (e.Stats.MaxRate  / 1024)) + " KB/s";
-            str += " ||";
-            str += " [ETA] "        + TimeSpan.FromSeconds((e.Stats.ETA + e.Stats.AvgETA)/2).ToString(@"hh\:mm\:ss");
-            str += " [ETA AVG] "    + TimeSpan.FromSeconds(e.Stats.AvgETA).ToString(@"hh\:mm\:ss");
-            str += " [ETA CUR] "    + TimeSpan.FromSeconds(e.Stats.ETA).ToString(@"hh\:mm\:ss");
-            if (torrent != null)
-            str += " || [PROGRESS] " + ((int) (torrent.data.progress.setsCounter * 100.0 / torrent.data.progress.size)) + "%";
+            if (resized)
+            {
+                Console.Clear();
+                Console.WriteLine(bitSwarm.DumpTorrent() + "\n");
+                resized = false;
+            }
 
-            Console.WriteLine("[TOTAL] " + (e.Stats.PeersConnecting + e.Stats.PeersConnected + e.Stats.PeersDownloading) + " | [INQUEUE] " + e.Stats.PeersInQueue + " | [CONNECTING] " + e.Stats.PeersConnecting + " | [CHOCKED] " + e.Stats.PeersChoked + " | [DOWNLOADING] " + e.Stats.PeersDownloading + " | [SLEEPMODE] " + (e.Stats.SleepMode ? "On" : "Off") + (!bitSwarm.Options.EnableDHT ? "" : " | [DHT STATUS] " + bitSwarm.dht.status.ToString() + " | [DHT PEERS] " + bitSwarm.dht.CachedPeers.Count));
-            Console.WriteLine(str);
-            Console.WriteLine("");
+            if (consoleLastTop == -1) consoleLastTop = Console.CursorTop;
+            Console.SetCursorPosition(0, consoleLastTop);
+            for (int i=0; i<10; i++)
+                Console.WriteLine(new String(' ', Console.BufferWidth));
+            Console.SetCursorPosition(0, consoleLastTop);
+            Console.WriteLine(bitSwarm.DumpStats());
         }
     }
 }

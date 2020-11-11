@@ -62,13 +62,10 @@ namespace SuRGeoNix.BEP
             public BitField         progress        { get; set; }
             public BitField         requests        { get; set; }
             public BitField         progressPrev    { get; set; }
-            public BitField         requestsPrev    { get; set; }
 
 
-            public Dictionary<int, PieceProgress>   pieceProgress;
-            public List<PieceRequest>               pieceRequests;
-
-            public class PieceProgress
+            internal Dictionary<int, PieceProgress>   pieceProgress;
+            internal class PieceProgress
             {
                 public PieceProgress(ref TorrentData data, int piece)
                 {
@@ -83,24 +80,6 @@ namespace SuRGeoNix.BEP
                 public byte[]       data;
                 public BitField     progress;
                 public BitField     requests;
-            }
-            public class PieceRequest
-            {
-                public PieceRequest(long timestamp, Peer peer, int piece, int block, int size, bool aggressive = false)
-                {
-                    this.timestamp  = timestamp;
-                    this.peer       = peer;
-                    this.piece      = piece;
-                    this.block      = block;
-                    this.size       = size;
-                    this.aggressive = aggressive;
-                }
-                public long         timestamp;
-                public Peer         peer;
-                public int          piece;
-                public int          block;
-                public int          size;
-                public bool         aggressive;
             }
         }
         public struct MetaData
@@ -128,7 +107,6 @@ namespace SuRGeoNix.BEP
             metadata            = new MetaData();
 
             file.trackers       = new List<Uri>();
-            data.pieceRequests  = new List<TorrentData.PieceRequest>();
         }
 
         public void FillFromMagnetLink(Uri magnetLink)
@@ -233,7 +211,6 @@ namespace SuRGeoNix.BEP
             data.progress       = new BitField(data.pieces);
             data.requests       = new BitField(data.pieces);
             data.progressPrev   = new BitField(data.pieces);
-            data.requestsPrev   = new BitField(data.pieces);
 
             data.blockSize      = Math.Min(Peer.MAX_DATA_SIZE, data.pieceSize);
             data.blocks         = ((data.pieceSize -1)      / data.blockSize) + 1;
@@ -241,7 +218,6 @@ namespace SuRGeoNix.BEP
             data.blocksLastPiece= ((data.pieceLastSize -1)  / data.blockSize) + 1;
 
             data.pieceProgress  = new Dictionary<int, TorrentData.PieceProgress>();
-            data.pieceRequests  = new List<TorrentData.PieceRequest>();
         }
 
         public void FillTrackersFromTrackersPath(string fileName)

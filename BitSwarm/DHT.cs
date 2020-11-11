@@ -60,6 +60,7 @@ namespace SuRGeoNix.BEP
         private Options                         options;
         private string                          infoHash;
         private byte[]                          infoHashBytes;
+        private string[]                        infoHashBits;
 
         private byte[]                          getPeersBytes;
         private IPEndPoint                      ipEP;
@@ -104,10 +105,15 @@ namespace SuRGeoNix.BEP
             bucketNodes2    = new Dictionary<string, Node>();
             rememberBadNodes= new HashSet<string>();
             infoHashBytes   = Utils.StringHexToArray(infoHash);
+            infoHashBits    = new string[20];
             this.infoHash   = infoHash;
+
+            for (int i=0; i<20; i++)
+                infoHashBits[i] = Convert.ToString(infoHashBytes[i], 2).PadLeft(8, '0');
 
             ipEP            = new IPEndPoint(IPAddress.Any, 0);
             udpClient       = new UdpClient(0);
+            udpClient.Client.SendTimeout    = options.ConnectionTimeout;
             udpClient.Client.ReceiveTimeout = options.ConnectionTimeout;
             udpClient.Client.Ttl            = 255;
 
@@ -182,11 +188,10 @@ namespace SuRGeoNix.BEP
                 if (nodeId[i] != infoHashBytes[i])
                 {
                     string ab = Convert.ToString(nodeId[i], 2).PadLeft(8, '0');
-                    string bb = Convert.ToString(infoHashBytes[i], 2).PadLeft(8, '0');
 
                     for (int l=0; l<8; l++)
                     {
-                        if (ab[l] != bb[l])
+                        if (ab[l] != infoHashBits[i][l])
                             distance += 1;
                     }
                 }
@@ -204,11 +209,10 @@ namespace SuRGeoNix.BEP
                 if (nodeId[i] != infoHashBytes[i])
                 {
                     string ab = Convert.ToString(nodeId[i], 2).PadLeft(8, '0');
-                    string bb = Convert.ToString(infoHashBytes[i], 2).PadLeft(8, '0');
 
                     for (int l=0; l<8; l++)
                     {
-                        if (ab[l] != bb[l])
+                        if (ab[l] != infoHashBits[i][l])
                             { distance = (short) ((i * 8) + l + 1); break; }
                     }
 
@@ -336,7 +340,7 @@ namespace SuRGeoNix.BEP
                         return;
                     }
 
-                    ConcurrentDictionary<string, int> curPeers = new ConcurrentDictionary<string, int>();
+                    Dictionary<string, int> curPeers = new Dictionary<string, int>();
 
                     if (isWeirdStrategy)
                         weirdPeers += values.Count;
@@ -359,7 +363,7 @@ namespace SuRGeoNix.BEP
                         curPeers[curIP] = curPort;
                     }
 
-                    options.Beggar.FillPeersFromStorage(curPeers, BitSwarm.PeersStorage.DHTNEW);
+                    if (curPeers.Count > 0) options.Beggar.FillPeers(curPeers, BitSwarm.PeersStorage.DHTNEW);
 
                     //if (options.Verbosity > 0) Log($"[{node.distance}] [{node.host}] [NEW PEERS] {newPeers}");
 

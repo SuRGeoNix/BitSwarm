@@ -220,9 +220,9 @@ namespace SuRGeoNix
 
         public void CreateFile()
         {
-            lock (locker)
+            lock (fileCreating)
             {
-                lock (fileCreating)
+                lock (locker)
                 {
                     if (FileCreated) return;
 
