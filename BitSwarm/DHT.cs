@@ -1,6 +1,11 @@
 ﻿/* DHT Protocol 
  * http://www.bittorrent.org/beps/bep_0005.html
  * 
+ * TODO
+ * 
+ * 1. Min ThreadPool for Nodes to avoid re-creating threads all the time
+ * 2. Possible review the new rEP / ipEP to ensure not receiving wrong packets (maybe rEP for all threads and also ipEP on thread 0)
+ * 
  */
 
 using System;
@@ -8,6 +13,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
+using System.Text.RegularExpressions;
 using System.Threading;
 
 using BencodeNET.Objects;
@@ -111,8 +117,8 @@ namespace SuRGeoNix.BEP
             for (int i=0; i<20; i++)
                 infoHashBits[i] = Convert.ToString(infoHashBytes[i], 2).PadLeft(8, '0');
 
-            ipEP            = new IPEndPoint(IPAddress.Any, 0);
             udpClient       = new UdpClient(0);
+            ipEP            = (IPEndPoint) udpClient.Client.LocalEndPoint; //new IPEndPoint(IPAddress.Any, 0);
             udpClient.Client.SendTimeout    = options.ConnectionTimeout;
             udpClient.Client.ReceiveTimeout = options.ConnectionTimeout;
             udpClient.Client.Ttl            = 255;
@@ -131,10 +137,10 @@ namespace SuRGeoNix.BEP
         {
             Options options = new Options();
             options.ConnectionTimeout       = 350;
-            options.MaxBucketNodes          = 200;
+            options.MaxBucketNodes          = 300;
             options.MinBucketDistance       = 145;
-            options.MinBucketDistance2      = 130;
-            options.NodesPerLevel           = 4;
+            options.MinBucketDistance2      = 100;
+            options.NodesPerLevel           = 8;
             
             return options;
         }
@@ -256,8 +262,17 @@ namespace SuRGeoNix.BEP
             {
                 byte[] recvBuff = null;
 
-                udpClient.Send(getPeersBytes, getPeersBytes.Length, node.host, node.port);
-                recvBuff = udpClient.Receive(ref ipEP);
+                if (Regex.IsMatch(node.host, @"^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$"))
+                {
+                    IPEndPoint rEP = new IPEndPoint(IPAddress.Parse(node.host), node.port);
+                    udpClient.Send(getPeersBytes, getPeersBytes.Length, rEP);
+                    recvBuff = udpClient.Receive(ref rEP);
+                }
+                else
+                {
+                    udpClient.Send(getPeersBytes, getPeersBytes.Length, node.host, node.port);
+                    recvBuff = udpClient.Receive(ref ipEP);
+                }
 
                 if (recvBuff == null || recvBuff.Length == 0) return null;
 

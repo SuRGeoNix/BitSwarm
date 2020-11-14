@@ -181,8 +181,8 @@ namespace SuRGeoNix.BEP
 
             if (isMultiFile)
             {
-                file.paths      = GetPathsFromInfo(bInfo);      long tmpTotalSize;
-                file.lengths    = GetFileLengthsFromInfo(bInfo, out  tmpTotalSize);
+                file.paths      = GetPathsFromInfo(bInfo);
+                file.lengths    = GetFileLengthsFromInfo(bInfo, out long tmpTotalSize);
                 data.totalSize  = tmpTotalSize;
 
                 data.folder = Utils.FindNextAvailableDir(Path.Combine(DownloadPath, file.name)).Replace("..","_");

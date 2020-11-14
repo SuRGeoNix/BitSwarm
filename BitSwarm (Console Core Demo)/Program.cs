@@ -21,6 +21,19 @@ namespace BitSwarmConsole
 
         static void Main(string[] args)
         {
+            // ----------- For IDE Testing -----------
+
+            //args = new string[6];
+
+            //args[0] = "magnet:?xt=...";   // Magnet Link
+            //args[0] = @"file.torrent";    // Torrent File
+
+            //args[1] = @"folder";          // SavePath   [Default:   %temp%]
+            //args[2] = "20";               // MaxThreads [Default:       10]
+            //args[3] = "200";              // MaxConns   [Default:      150]
+            //args[4] = "2048";             // SleepLimit [Default: No Limit] 0: No Limit | -1: Auto | >0: Custom KB/s
+            //args[5] = "false";            // Logs       [Default: Disabled]
+
             if (args.Length < 1 || args.Length > 6)
             {
                 Console.WriteLine("./bitswarm TorrentFile|MagnetUrl [SaveDirectory=%temp%] [MinThreads=10] [MaxThreads=150] [SleepLimit=-1 Auto, 0 Disabled, >0 Custom KB/s] [Logs=false]");

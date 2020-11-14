@@ -176,6 +176,7 @@ namespace SuRGeoNix.BEP
         private int             piecesRequested;
 
         public  int             PieceTimeouts   { get; private set; }
+        public  int             PieceRejects    { get; private set; }
 
         public List<Tuple<int, int, int>>   lastPieces;
         public List<int>                    allowFastPieces;
@@ -368,9 +369,12 @@ namespace SuRGeoNix.BEP
 
                     if (lastPieces.Count > 0)
                     {
-                        Beggar.ResetRequests(this, lastPieces);
-                        //piecesRequested = 0; // We should wait for rejects otherwise we loose sync between send/recv pieces (really bad for streaming and FAs)
-                        lastPieces = new List<Tuple<int, int, int>>();
+                        if (Beggar.focusArea != null || Beggar.lastFocusArea != null)
+                        {
+                            Beggar.ResetRequests(this, lastPieces);
+                            //piecesRequested = 0; // We should wait for rejects otherwise we loose sync between send/recv pieces (really bad for streaming and FAs)
+                            lastPieces = new List<Tuple<int, int, int>>();
+                        }
                     }
 
                     status = Status.READY;
@@ -381,7 +385,7 @@ namespace SuRGeoNix.BEP
 
                     stageYou.unchoked = true;
 
-                    if (status == Status.READY) Beggar.RequestPiece(this);
+                    if (status == Status.READY && piecesRequested == 0) Beggar.RequestPiece(this);
 
                     return;
                 case Messages.INTRESTED:
@@ -431,6 +435,8 @@ namespace SuRGeoNix.BEP
                     int lastPiece = FindPiece(piece, offset);
                     if (lastPiece != -1) lastPieces.RemoveAt(lastPiece);
 
+                    PieceRejects = 0;
+
                     if (piecesRequested > 0) piecesRequested--;
 
                     Beggar.PieceReceived(msgLen - 9 == MAX_DATA_SIZE ? recvBuffMax : recvBuff, piece, offset, this);
@@ -475,6 +481,16 @@ namespace SuRGeoNix.BEP
                         lastPieces.RemoveAt(lastPiece);
                     }
 
+                    // Resets to 0 for each PiecesBlock Success
+                    PieceRejects++;
+
+                    if (PieceRejects >= Beggar.Options.BlockRequests * 3)
+                    {
+                        Log(4, $"[DROP] Too many Rejects");
+                        Disconnect();
+                        return;
+                    }
+                        
                     if (piecesRequested == 0)
                     {
                         status = Status.READY;
@@ -661,8 +677,8 @@ namespace SuRGeoNix.BEP
 
                     if (status == Status.READY)
                     {
-                        // Drop No Pieces Peer
-                        if (Beggar.NoPiecesPeer(this))
+                        // Drop No Pieces Peer (Ensure not early drop)
+                        if (diffMs > 3 * 1000 && Beggar.NoPiecesPeer(this))
                         {
                             if (Beggar.Options.Verbosity > 0) Log(4, $"[DROP] No Pieces Peer ({lenAvailable} < {len} , Requests: {PiecesRequested}), Pieces: {lastPieces.Count}, Timeouts: {PieceTimeouts})");
                             status = Status.FAILED2;
@@ -692,7 +708,7 @@ namespace SuRGeoNix.BEP
                         status = Status.FAILED2;
                         throw new Exception("CUSTOM Connection closed");
                     }
-                } 
+                }
                 
                 // Dead Connections Handler
                 else if (curLoop % 16 == 0)
@@ -726,6 +742,9 @@ namespace SuRGeoNix.BEP
             //    Thread.Sleep(5 * (Beggar.Stats.PeersDownloading - 1));
             //    PieceTimeouts = 0;
             //} */
+
+            // Reset Timeouts on Receive Success?
+            PieceTimeouts = 0;
 
             if (len == MAX_DATA_SIZE)
                 tcpStream.Read(recvBuffMax, 0, len);

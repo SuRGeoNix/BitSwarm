@@ -197,8 +197,8 @@ namespace SuRGeoNix
 
 
         #region Focus Area [For Streaming]
-        private Tuple<int, int> focusArea;
-        private Tuple<int, int> lastFocusArea;
+        internal Tuple<int, int> focusArea;
+        internal Tuple<int, int> lastFocusArea;
         public Tuple<int, int> FocusArea { get { lock (lockerTorrent) return focusArea; } set { lock (lockerTorrent) focusArea = value; } }
         #endregion
 
@@ -250,6 +250,11 @@ namespace SuRGeoNix
             public int      AvgETA              { get; set; }
             public int      ETA                 { get; set; }
 
+            public int      Progress            { get; set; }
+            public int      PiecesIncluded      { get; set; }
+            public long     BytesIncluded       { get; set; }
+            public long     BytesCurDownloaded  { get; set; }
+
             public long     BytesDownloaded     { get; set; }
             public long     BytesDownloadedPrev { get; set; }
             public long     BytesUploaded       { get; set; }
@@ -281,7 +286,6 @@ namespace SuRGeoNix
             public int      ConnectTimeouts; // Not used
             public int      HandshakeTimeouts;
             public int      PieceTimeouts;
-            
         }
 
         public enum SleepModeState
@@ -369,6 +373,10 @@ namespace SuRGeoNix
 
         // Generators (Hash / Random)
         public  static SHA1             sha1                = new SHA1Managed();
+
+        /* Trying to identify a strange bug or Peers that send invalid data on purpose
+        public  static SHA1             sha1_2              = new SHA1Managed();
+        public         SHA1             sha1_3              = new SHA1Managed();*/
         private static Random           rnd                 = new Random();
         internal byte[]                 peerID;
 
@@ -420,7 +428,8 @@ namespace SuRGeoNix
         }
         private void Initiliaze()
         {
-            bstp = new BSTP();
+            bstp    = new BSTP();
+            status  = Status.STOPPED;
 
             peerID                          = new byte[20]; rnd.NextBytes(peerID);
             peersStored                     = new ConcurrentDictionary<string, int>();
@@ -429,14 +438,15 @@ namespace SuRGeoNix
 
             torrent                         = new Torrent(Options.DownloadPath);
             torrent.metadata.progress       = new BitField(20); // Max Metadata Pieces
-            torrent.metadata.pieces         = 2;                // Consider 2 Pieces Until The First Response
-            torrent.metadata.parallelRequests= 14;               // How Many Peers We Will Ask In Parallel (firstPieceTries/2)
+            torrent.metadata.pieces         =  2;                // Consider 2 Pieces Until The First Response
+            torrent.metadata.parallelRequests=14;               // How Many Peers We Will Ask In Parallel (firstPieceTries/2)
 
-            log                             = new Logger(Path.Combine(Options.DownloadPath, "session" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".log"    ), true);
-            if (Options.EnableDHT)
-                logDHT                      = new Logger(Path.Combine(Options.DownloadPath, "session" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + "_DHT.log"), true);
-
-            status                          = Status.STOPPED;
+            if (Options.Verbosity > 0)
+            {
+                log                         = new Logger(Path.Combine(Options.DownloadPath, "session" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".log"    ), true);
+                if (Options.EnableDHT && Options.LogDHT)
+                    logDHT                  = new Logger(Path.Combine(Options.DownloadPath, "session" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + "_DHT.log"), true);
+            }
         }
         private void Setup()
         {
@@ -474,7 +484,13 @@ namespace SuRGeoNix
             // Metadata already done?
             if (  (torrent.file.length > 0      || (torrent.file.lengths != null && torrent.file.lengths.Count > 0))  
                 && torrent.file.pieceLength > 0 && (torrent.file.pieces  != null && torrent.file.pieces. Count > 0))
-                {  torrent.metadata.isDone = true;  MetadataReceived?.Invoke(this, new MetadataReceivedArgs(torrent)); }
+            {
+                torrent.metadata.isDone = true;
+                Stats.PiecesIncluded    = torrent.data.pieces;
+                Stats.BytesIncluded     = torrent.data.totalSize;
+                Log("Dumping Torrent\r\n" + DumpTorrent());
+                MetadataReceived?.Invoke(this, new MetadataReceivedArgs(torrent));
+            }
         }
         
         private void FillTrackersFromTorrent()
@@ -502,15 +518,19 @@ namespace SuRGeoNix
             BitField newProgress = new BitField(torrent.data.pieces);
             newProgress.SetAll();
 
+            Stats.PiecesIncluded    = 0;
+            Stats.BytesIncluded     = 0;
+            long curDistance        = 0;
+
             lock (lockerTorrent)
             {
-                long curDistance = 0;
-
                 for (int i=0; i<torrent.file.paths.Count; i++)
                 {
                     // Is Included
                     if (includeFiles.Contains(torrent.file.paths[i]))
                     {
+                        Stats.BytesIncluded += torrent.file.lengths[i];
+
                         // Was Excluded?    Prev -> New
                         if (!torrent.data.filesIncludes.Contains(torrent.file.paths[i]))
                             newProgress.CopyFrom(torrent.data.progressPrev, (int) (curDistance/torrent.file.pieceLength), (int) ((curDistance + torrent.file.lengths[i])/torrent.file.pieceLength));
@@ -529,16 +549,17 @@ namespace SuRGeoNix
 
                     curDistance += torrent.file.lengths[i];
                 }
-
+                
                 torrent.data.filesIncludes  = includeFiles;
                 torrent.data.progress       = newProgress;
                 CloneProgress();
 
                 for (int i=0; i<torrent.data.filesIncludes.Count; i++)
                     Log($"[FILE INCLUDED] {torrent.data.filesIncludes[i]}");
+
+                Stats.PiecesIncluded += (int) ((Stats.BytesIncluded/torrent.file.pieceLength) + 1);
             }
         }
-
         public void CloneProgress()
         {
             torrent.data.requests = torrent.data.progress.Clone();
@@ -684,31 +705,45 @@ namespace SuRGeoNix
         {
             // Stats
             Stats.CurrentTime           = DateTime.UtcNow.Ticks;
+
+            // Progress
+            int includedSetsCounter     = torrent.data.progress.setsCounter - (torrent.data.pieces - Stats.PiecesIncluded);            
+            Stats.BytesCurDownloaded    = includedSetsCounter * torrent.data.pieceSize;
+            if (Stats.BytesCurDownloaded < 0) Stats.BytesCurDownloaded = 0;
+            Stats.Progress              = includedSetsCounter > 0 ? (int) (includedSetsCounter * 100.0 / Stats.PiecesIncluded) : 0;
+
+            // Rates
             double secondsDiff          = ((Stats.CurrentTime - prevStatsTicks) / 10000000.0); // For more accurancy
             long totalBytesDownloaded   = Stats.BytesDownloaded + Stats.BytesDropped; // Included or Not?
             Stats.DownRate              = (int) ((totalBytesDownloaded - Stats.BytesDownloadedPrev) / secondsDiff); // Change this (2 seconds) if you change scheduler
             Stats.AvgRate               = (int) ( totalBytesDownloaded / curSecond);
-
-            if (torrent.data.totalSize - Stats.BytesDownloaded == 0)
-            {
-                Stats.ETA       = 0;
-                Stats.AvgETA    = 0;
-            } 
-            else
-            {
-                if (Stats.BytesDownloaded - Stats.BytesDownloadedPrev == 0)
-                    Stats.ETA  *= 2; // Kind of infinite | int overflow nice
-                else 
-                    Stats.ETA   = (int) ( (torrent.data.totalSize - Stats.BytesDownloaded) / ((Stats.BytesDownloaded - Stats.BytesDownloadedPrev) / secondsDiff) );
-
-                if (Stats.BytesDownloaded  == 0)
-                    Stats.AvgETA*= 2; // Kind of infinite
-                else
-                    if (curSecond > 0) Stats.AvgETA = (int) ( (torrent.data.totalSize - Stats.BytesDownloaded) / (Stats.BytesDownloaded / curSecond ) );
-            }
-
             if (Stats.DownRate > Stats.MaxRate) Stats.MaxRate = Stats.DownRate;
 
+            // ETAs
+            if (torrent.data.pieces != Stats.PiecesIncluded && curSecond > 0 && Stats.BytesCurDownloaded > 1)
+            {
+                Stats.AvgETA = (int) ( (Stats.PiecesIncluded * torrent.data.pieceSize) / (Stats.BytesCurDownloaded / curSecond ) );
+            }
+            else
+            {
+                if (torrent.data.totalSize - Stats.BytesDownloaded == 0)
+                {
+                    Stats.ETA       = 0;
+                    Stats.AvgETA    = 0;
+                } 
+                else
+                {
+                    if (Stats.BytesDownloaded - Stats.BytesDownloadedPrev == 0)
+                        Stats.ETA  *= 2; // Kind of infinite | int overflow nice
+                    else 
+                        Stats.ETA   = (int) ( (torrent.data.totalSize - Stats.BytesDownloaded) / ((Stats.BytesDownloaded - Stats.BytesDownloadedPrev) / secondsDiff) );
+
+                    if (Stats.BytesDownloaded == 0 && curSecond > 0 && Stats.BytesDownloaded > 1)
+                        Stats.AvgETA = (int) ( (torrent.data.totalSize - Stats.BytesDownloaded) / (Stats.BytesDownloaded / curSecond ) );
+                }
+            }
+
+            // Save Cur to Prev
             Stats.BytesDownloadedPrev   = totalBytesDownloaded;
             prevStatsTicks              = Stats.CurrentTime;
 
@@ -747,7 +782,7 @@ namespace SuRGeoNix
             StatsUpdated?.Invoke(this, new StatsUpdatedArgs(Stats));
 
             // Stats -> Log
-            if (Options.LogStats) Log(DumpStats());
+            if (Options.LogStats) Log("Dumping Stats\r\n" + DumpStats());
             //{
                 
             //    Log($"[STATS] [INQUEUE: {String.Format("{0,3}",Stats.PeersInQueue)}]\t[DROPPED: {String.Format("{0,3}",Stats.PeersDropped)}]\t[CONNECTING: {String.Format("{0,3}",Stats.PeersConnecting)}]\t[FAIL1: {String.Format("{0,3}",Stats.PeersFailed1)}]\t[FAIL2: {String.Format("{0,3}",Stats.PeersFailed2)}]\t[READY: {String.Format("{0,3}",Stats.PeersConnected)}]\t[CHOKED: {String.Format("{0,3}",Stats.PeersChoked)}]\t[UNCHOKED: {String.Format("{0,3}",Stats.PeersUnChoked)}]\t[DOWNLOADING: {String.Format("{0,3}",Stats.PeersDownloading)}]");
@@ -787,24 +822,20 @@ namespace SuRGeoNix
                 mode = "BST";
             else if (Stats.EndGameMode)
                 mode = "END";
-
-            int progress = ((int) (torrent.data.progress.setsCounter * 100.0 / torrent.data.progress.size));
-            int progressLen = progress.ToString().Length;
-
             string stats = "";
-
             for (int i=0; i<100; i++) stats += "=";
 
-
+            
+            string includedBytes = $" ({Utils.BytesToReadableString(Stats.BytesCurDownloaded)} / {Utils.BytesToReadableString(Stats.PiecesIncluded * torrent.data.pieceSize)})"; // Not the actual file sizes but pieces size (- first/last chunks)
             stats += "\n";
             stats += $"BitSwarm  " +
                 $"{PadStats(TimeSpan.FromSeconds(curSecond).ToString(@"hh\:mm\:ss"), 13)} | " + 
                 $"{PadStats("ETA " + TimeSpan.FromSeconds(Stats.AvgETA).ToString(@"hh\:mm\:ss"), 20)} | " +
-                $"{Utils.BytesToReadableString(Stats.BytesDownloaded)} / {Utils.BytesToReadableString(torrent.data.totalSize)}";
+                $"{Utils.BytesToReadableString(Stats.BytesDownloaded)} / {Utils.BytesToReadableString(torrent.data.totalSize)}{(Stats.PiecesIncluded == torrent.data.pieces ? "" : includedBytes)}";
                 
 
             stats += "\n";
-            stats += $" v2.2.3  " +
+            stats += $" v2.2.4  " +
                 $"{PadStats(String.Format("{0:n0}", Stats.DownRate/1024), 9)} KB/s | " +
                 $"{PadStats(String.Format("{0:n1}", ((Stats.DownRate * 8)/1000.0)/1000.0), 15)} Mbps | " +
                 $"Max: {String.Format("{0:n0}", Stats.MaxRate/1024)} KB/s, {String.Format("{0:n0}", ((Stats.MaxRate * 8)/1000.0)/1000.0)} Mbps";
@@ -815,11 +846,12 @@ namespace SuRGeoNix
                 $"{PadStats(" ", 20)} | " +
                 $"Avg: {String.Format("{0:n0}", Stats.AvgRate/1024)} KB/s, {String.Format("{0:n0}", ((Stats.AvgRate * 8)/1000.0)/1000.0)} Mbps";
 
+            int progressLen = Stats.Progress.ToString().Length;
             stats += "\n";
             for (int i=0; i<100; i++)
             {
-                if (i == 50 - progressLen) { stats += progress + "%"; i += progressLen + 1; }
-                stats += i <= progress ? "|" : "-";
+                if (i == 50 - progressLen) { stats += Stats.Progress + "%"; i += progressLen + 1; }
+                stats += i < Stats.Progress ? "|" : "-";
             }
 
             stats += "\n";
@@ -858,7 +890,7 @@ namespace SuRGeoNix
             {
                 if (Utils.IsWindows) Utils.TimeBeginPeriod(5);
 
-                bstp.Initialize(Math.Max(Options.MinThreads, Options.BoostThreads), Options.MaxThreads, peersForDispatch);
+                bstp.Initialize(Math.Max(Options.MinThreads, Math.Min(Options.BoostThreads, Options.MaxThreads)), Options.MaxThreads, peersForDispatch);
                 if (Options.BoostThreads > Options.MinThreads) { Stats.BoostMode = true; if (Options.Verbosity > 0) Log($"[MODE] Boost Activated"); }
 
                 if (wasPaused)
@@ -868,7 +900,7 @@ namespace SuRGeoNix
                 }
 
                 if (Options.EnableTrackers) StartTrackers();
-                if (Options.EnableDHT) { logDHT.RestartTime(); dht.Start(); }
+                if (Options.EnableDHT) { logDHT?.RestartTime(); dht.Start(); }
 
                 curSecond               = 0;
                 prevSecond              = 0;
@@ -880,7 +912,7 @@ namespace SuRGeoNix
                 bool isAutoSleepMode    = Options.SleepModeLimit == -1;
                 int queueEmptySec       = -1;
 
-                log.RestartTime();
+                log?.RestartTime();
                 if (Options.Verbosity > 0) Log("[BEGGAR  ] " + status);
 
                 while (status == Status.RUNNING)
@@ -1347,7 +1379,9 @@ namespace SuRGeoNix
                     torrent.metadata.file.Dispose();
                     torrent.FillFromMetadata();
                     torrent.metadata.isDone = true;
-                    Log(DumpTorrent());
+                    Stats.PiecesIncluded    = torrent.data.pieces;
+                    Stats.BytesIncluded     = torrent.data.totalSize;
+                    Log("Dumping Torrent\r\n" + DumpTorrent());
                     // Invoke? hm...
                     MetadataReceived?.Invoke(this, new MetadataReceivedArgs(torrent));
                 }
@@ -1415,16 +1449,31 @@ namespace SuRGeoNix
                 pieceHash = sha1.ComputeHash(torrent.data.pieceProgress[piece].data);
                 if (!Utils.ArrayComp(torrent.file.pieces[piece], pieceHash))
                 {
-                    Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P]\tPiece: {piece} Block: {block} Offset: {offset} Size: {data.Length} Size2: {torrent.data.pieceProgress[piece].data.Length} SHA-1 validation failed");
+                    /*
+                    // Trying to identify a strange bug or Peers that send invalid data on purpose
+                    bool moreAttempts = false;
+                    pieceHash = sha1.ComputeHash(torrent.data.pieceProgress[piece].data);
+                    if (Utils.ArrayComp(torrent.file.pieces[piece], pieceHash)) { Log("Worked with 1");  moreAttempts = true;}
 
-                    Stats.BytesDropped      += torrent.data.pieceProgress[piece].data.Length;
-                    Stats.BytesDownloaded   -= torrent.data.pieceProgress[piece].data.Length;
-                    sha1Fails++;
+                    pieceHash = sha1_2.ComputeHash(torrent.data.pieceProgress[piece].data);
+                    if (Utils.ArrayComp(torrent.file.pieces[piece], pieceHash)) { Log("Worked with 2");  moreAttempts = true;}
 
-                    UnSetRequestsBit(piece);
-                    torrent.data.pieceProgress.Remove(piece);
+                    pieceHash = sha1_3.ComputeHash(torrent.data.pieceProgress[piece].data);
+                    if (Utils.ArrayComp(torrent.file.pieces[piece], pieceHash)) { Log("Worked with 3");  moreAttempts = true;}
 
-                    return;
+                    if (!moreAttempts)
+                    {*/
+                        Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P]\tPiece: {piece} Block: {block} Offset: {offset} Size: {data.Length} Size2: {torrent.data.pieceProgress[piece].data.Length} SHA-1 validation failed");
+
+                        Stats.BytesDropped      += torrent.data.pieceProgress[piece].data.Length;
+                        Stats.BytesDownloaded   -= torrent.data.pieceProgress[piece].data.Length;
+                        sha1Fails++;
+
+                        UnSetRequestsBit(piece);
+                        torrent.data.pieceProgress.Remove(piece);
+
+                        return;
+                    //}
                 }
 
                 // Save Piece in PartFiles [Thread-safe?]
