@@ -738,7 +738,7 @@ namespace SuRGeoNix
                     else 
                         Stats.ETA   = (int) ( (torrent.data.totalSize - Stats.BytesDownloaded) / ((Stats.BytesDownloaded - Stats.BytesDownloadedPrev) / secondsDiff) );
 
-                    if (Stats.BytesDownloaded == 0 && curSecond > 0 && Stats.BytesDownloaded > 1)
+                    if (Stats.BytesDownloaded != 0 && curSecond > 0 && Stats.BytesDownloaded > 1)
                         Stats.AvgETA = (int) ( (torrent.data.totalSize - Stats.BytesDownloaded) / (Stats.BytesDownloaded / curSecond ) );
                 }
             }

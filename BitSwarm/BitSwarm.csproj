@@ -14,7 +14,7 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>bitswarm bittorrent torrent client streaming dht</PackageTags>
     <Copyright>© SuRGeoNix 2020</Copyright>
-    <Version>2.2.4</Version>
+    <Version>2.2.5</Version>
     <PackageReleaseNotes>First Alpha Testing Completed (started on v2.0)
 
 Improved Performance, Throughput &amp; Stability
@@ -28,14 +28,14 @@ Improved Performance, Throughput &amp; Stability
 - Peers Autonomous Life Cycle (Request/Receive/Timeout/Reject)
 - Large Number of Issues Fixed (including Deadlocks, DHT, Trackers)
 
-Final Adjustments on v2.2.4
+Final Adjustments on v2.2.5
 
 1) DHT Threads &amp; Timing Adjustments
 2) DHT Socket Stability (EndPoints)
 3) Peers Communication (Less Drop Bytes &amp; Handle Multiple Rejects to avoid overhead)
 4) Stats progress re-calculation on include/exclude files</PackageReleaseNotes>
-    <FileVersion>2.2.4.0</FileVersion>
-    <AssemblyVersion>2.2.4.0</AssemblyVersion>
+    <FileVersion>2.2.5.0</FileVersion>
+    <AssemblyVersion>2.2.5.0</AssemblyVersion>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
