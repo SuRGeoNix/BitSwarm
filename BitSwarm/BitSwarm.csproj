@@ -14,28 +14,12 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>bitswarm bittorrent torrent client streaming dht</PackageTags>
     <Copyright>© SuRGeoNix 2020</Copyright>
-    <Version>2.2.5</Version>
-    <PackageReleaseNotes>First Alpha Testing Completed (started on v2.0)
+    <Version>2.2.6</Version>
+    <PackageReleaseNotes>Implemented Ban &amp; Block Diff to identify responsible peers for failure
 
-Improved Performance, Throughput &amp; Stability
-
-- New Threading Implementation (BSTP)
-- New Timeout, Retries &amp; Rejects Handling
-- New Functionality for Allow Fast, Boost &amp; Sleep Mode
-- New Focus Areas for Streaming (Faster &amp; Stable)
-- Reduced Dropped Bytes &amp; Peers Miscommunication
-- Network Sockets Stability &amp; Throughput
-- Peers Autonomous Life Cycle (Request/Receive/Timeout/Reject)
-- Large Number of Issues Fixed (including Deadlocks, DHT, Trackers)
-
-Final Adjustments on v2.2.5
-
-1) DHT Threads &amp; Timing Adjustments
-2) DHT Socket Stability (EndPoints)
-3) Peers Communication (Less Drop Bytes &amp; Handle Multiple Rejects to avoid overhead)
-4) Stats progress re-calculation on include/exclude files</PackageReleaseNotes>
-    <FileVersion>2.2.5.0</FileVersion>
-    <AssemblyVersion>2.2.5.0</AssemblyVersion>
+Fixed a cirtical (but rare) issue with "broken" peers that were sending invalid data which could cause SHA-1 to fail infinite (re-requesting and failing for the same piece).</PackageReleaseNotes>
+    <FileVersion>2.2.6.0</FileVersion>
+    <AssemblyVersion>2.2.6.0</AssemblyVersion>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">

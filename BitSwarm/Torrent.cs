@@ -165,6 +165,9 @@ namespace SuRGeoNix.BEP
 
             BDictionary bInfo = (BDictionary) bParser.Parse(metadata.file.FileName);
             FillFromInfo(bInfo);
+
+            if (file.infoHash != Utils.ArrayToStringHex(sha1.ComputeHash(bInfo.EncodeAsBytes())))
+                Console.WriteLine("CRITICAL!!!! Metadata SHA1 validation failed");
         }
         public void FillFromInfo(BDictionary bInfo)
         {

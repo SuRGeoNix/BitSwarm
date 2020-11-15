@@ -886,7 +886,10 @@ namespace SuRGeoNix.BEP
                     sendBuff = new byte[0];
 
                     foreach (Tuple<int, int, int> piece in lastPieces)
+                    {
+                        if (Beggar.Options.Verbosity > 0) Log(4, $"[REQC] [P]\tPiece: {piece.Item1} Block: {piece.Item2 / Beggar.torrent.data.blockSize} Offset: {piece.Item2} Size: {piece.Item3} Requests: {piecesRequested}");
                         sendBuff = Utils.ArrayMerge(sendBuff, PrepareMessage(Messages.CANCEL, false, Utils.ArrayMerge(Utils.ToBigEndian((Int32)piece.Item1), Utils.ToBigEndian((Int32)piece.Item2), Utils.ToBigEndian((Int32)piece.Item3))));
+                    }
 
                     tcpStream.Write(sendBuff, 0, sendBuff.Length);
                 }

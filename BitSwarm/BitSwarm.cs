@@ -373,10 +373,6 @@ namespace SuRGeoNix
 
         // Generators (Hash / Random)
         public  static SHA1             sha1                = new SHA1Managed();
-
-        /* Trying to identify a strange bug or Peers that send invalid data on purpose
-        public  static SHA1             sha1_2              = new SHA1Managed();
-        public         SHA1             sha1_3              = new SHA1Managed();*/
         private static Random           rnd                 = new Random();
         internal byte[]                 peerID;
 
@@ -646,7 +642,7 @@ namespace SuRGeoNix
             lock (peersForDispatch)
             foreach (KeyValuePair<string, int> peerKV in newPeers)
             {
-                if (!peersStored.ContainsKey(peerKV.Key))
+                if (!peersStored.ContainsKey(peerKV.Key) && !peersBanned.Contains(peerKV.Key))
                 {
                     peersStored.TryAdd(peerKV.Key, peerKV.Value);
                     Peer peer = new Peer(peerKV.Key, peerKV.Value);
@@ -685,7 +681,7 @@ namespace SuRGeoNix
 
                 foreach (var peerKV in peersStored)
                 {
-                    if (!peersRunning.Contains(peerKV.Key))
+                    if (!peersRunning.Contains(peerKV.Key) && !peersBanned.Contains(peerKV.Key))
                     {
                         Peer peer = new Peer(peerKV.Key, peerKV.Value);
                         peersForDispatch.Push(peer);
@@ -835,7 +831,7 @@ namespace SuRGeoNix
                 
 
             stats += "\n";
-            stats += $" v2.2.4  " +
+            stats += $" v2.2.6  " +
                 $"{PadStats(String.Format("{0:n0}", Stats.DownRate/1024), 9)} KB/s | " +
                 $"{PadStats(String.Format("{0:n1}", ((Stats.DownRate * 8)/1000.0)/1000.0), 15)} Mbps | " +
                 $"Max: {String.Format("{0:n0}", Stats.MaxRate/1024)} KB/s, {String.Format("{0:n0}", ((Stats.MaxRate * 8)/1000.0)/1000.0)} Mbps";
@@ -1393,7 +1389,7 @@ namespace SuRGeoNix
             Log($"[{src.PadRight(15, ' ')}] [RECV][M]\tPiece: {piece} Rejected");
         }
 
-        // PieceBlock [Torrent  Receive] 
+        // PieceBlock [Torrent  Receive]
         internal void PieceReceived(byte[] data, int piece, int offset, Peer peer)
         {
             if (!isRunning) return;
@@ -1409,7 +1405,7 @@ namespace SuRGeoNix
                 containsKey     = torrent.data.pieceProgress.ContainsKey(piece);
                 pieceProgress   = torrent.data.progress.GetBit(piece);
                 blockProgress   = containsKey ? torrent.data.pieceProgress[piece].progress.GetBit(block) : false;
-    
+
                 // Piece Done | Block Done
                 if (   (!containsKey && pieceProgress )     // Piece Done
                     || ( containsKey && blockProgress ) )   // Block Done
@@ -1432,6 +1428,9 @@ namespace SuRGeoNix
                 if (Options.Verbosity > 1) Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P]\tPiece: {piece} Block: {block} Offset: {offset} Size: {data.Length} Requests: {peer.PiecesRequested}");
                 Stats.BytesDownloaded += data.Length;
 
+                // Keep track of received data in case of SHA1 failure to ban the responsible peer
+                recvBlocksTracking[$"{piece}|{block}"] = peer.host;
+                
                 // Parse Block Data to Piece Data
                 Buffer.BlockCopy(data, 0, torrent.data.pieceProgress[piece].data, offset, data.Length);
 
@@ -1449,31 +1448,48 @@ namespace SuRGeoNix
                 pieceHash = sha1.ComputeHash(torrent.data.pieceProgress[piece].data);
                 if (!Utils.ArrayComp(torrent.file.pieces[piece], pieceHash))
                 {
-                    /*
-                    // Trying to identify a strange bug or Peers that send invalid data on purpose
-                    bool moreAttempts = false;
-                    pieceHash = sha1.ComputeHash(torrent.data.pieceProgress[piece].data);
-                    if (Utils.ArrayComp(torrent.file.pieces[piece], pieceHash)) { Log("Worked with 1");  moreAttempts = true;}
+                    // Failure twice in a row | Ban peers with Diff blocks (possible to ban good ones | also in case of not diff / failed block came from same peer with same invalid data -> we ban the most famous one)
+                    if (sha1FailedPieces.ContainsKey(piece))
+                    {
+                        if (Options.Verbosity > 0) Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P]\tPiece: {piece} Block: {block} Offset: {offset} Size: {data.Length} Size2: {torrent.data.pieceProgress[piece].data.Length} SHA-1 failed | Doing Diff (both)");
+                        SHA1FailedPiece sfp = new SHA1FailedPiece(piece, torrent.data.pieceProgress[piece].data, recvBlocksTracking, torrent.data.blocks);
+                        List<string> responsiblePeers = SHA1FailedPiece.FindDiffs(sha1FailedPieces[piece], sfp, true);
 
-                    pieceHash = sha1_2.ComputeHash(torrent.data.pieceProgress[piece].data);
-                    if (Utils.ArrayComp(torrent.file.pieces[piece], pieceHash)) { Log("Worked with 2");  moreAttempts = true;}
+                        // We will probably ban also good peers here
+                        foreach(string host in responsiblePeers)
+                            BanPeer(host);
+                    }
 
-                    pieceHash = sha1_3.ComputeHash(torrent.data.pieceProgress[piece].data);
-                    if (Utils.ArrayComp(torrent.file.pieces[piece], pieceHash)) { Log("Worked with 3");  moreAttempts = true;}
+                    // Failure first time | Keep piece data for later review
+                    else
+                    {
+                        if (Options.Verbosity > 0) Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P]\tPiece: {piece} Block: {block} Offset: {offset} Size: {data.Length} Size2: {torrent.data.pieceProgress[piece].data.Length} SHA-1 failed | Adding for review");
+                        SHA1FailedPiece sfp = new SHA1FailedPiece(piece, torrent.data.pieceProgress[piece].data, recvBlocksTracking, torrent.data.blocks);
+                        sha1FailedPieces.TryAdd(piece, sfp);
+                    }
 
-                    if (!moreAttempts)
-                    {*/
-                        Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P]\tPiece: {piece} Block: {block} Offset: {offset} Size: {data.Length} Size2: {torrent.data.pieceProgress[piece].data.Length} SHA-1 validation failed");
+                    Stats.BytesDropped      += torrent.data.pieceProgress[piece].data.Length;
+                    Stats.BytesDownloaded   -= torrent.data.pieceProgress[piece].data.Length;
+                    sha1Fails++;
 
-                        Stats.BytesDropped      += torrent.data.pieceProgress[piece].data.Length;
-                        Stats.BytesDownloaded   -= torrent.data.pieceProgress[piece].data.Length;
-                        sha1Fails++;
+                    UnSetRequestsBit(piece);
+                    torrent.data.pieceProgress.Remove(piece);
 
-                        UnSetRequestsBit(piece);
-                        torrent.data.pieceProgress.Remove(piece);
+                    return;
+                }
 
-                        return;
-                    //}
+                // Finally SHA-1 previously failed now success (found responsible peer for previous failure)
+                else if (sha1FailedPieces.ContainsKey(piece))
+                {
+                    if (Options.Verbosity > 0) Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P]\tPiece: {piece} Block: {block} Offset: {offset} Size: {data.Length} Size2: {torrent.data.pieceProgress[piece].data.Length} SHA-1 Success | Doing Diff");
+                    SHA1FailedPiece sfp = new SHA1FailedPiece(piece, torrent.data.pieceProgress[piece].data, recvBlocksTracking, torrent.data.blocks);
+                    List<string> responsiblePeers = SHA1FailedPiece.FindDiffs(sha1FailedPieces[piece], sfp);
+
+                    foreach(string host in responsiblePeers)
+                        BanPeer(host);
+
+                    // Clean-up
+                    sha1FailedPieces.TryRemove(piece, out SHA1FailedPiece tmp01);
                 }
 
                 // Save Piece in PartFiles [Thread-safe?]
@@ -1507,6 +1523,10 @@ namespace SuRGeoNix
                         
                 }
             }
+
+            // Clean-Up
+            for (int i=0; i<torrent.data.blocks; i++)
+                recvBlocksTracking.TryRemove($"{piece}|{i}", out string tmp01);
         }
 
         // PieceBlock [Torrent  Rejected | Timeout | Failed]
@@ -1618,6 +1638,102 @@ namespace SuRGeoNix
         }
         #endregion
 
+        #region Ban | SHA-1 Fails
+        private void BanPeer(string host)
+        {
+            Log($"[BAN] {host}");
+
+            peersBanned.Add(host);
+
+            lock (peersForDispatch)
+                foreach (var thread in bstp.Threads)
+                {
+                    if (thread != null && thread.peer != null && thread.peer.host == host)
+                    {
+                        Log($"[BAN] {host} Found in BSTP");
+                        thread.peer.Disconnect();  thread.peer = null;
+                        peersStored.TryRemove(host, out int tmp01); 
+                    }
+                }
+        }
+        class SHA1FailedPiece
+        {
+            public int      piece;
+            public byte[]   data;
+            public ConcurrentDictionary<string, string> recvBlocksTracking = new ConcurrentDictionary<string, string>();
+
+            public SHA1FailedPiece(int piece, byte[] data, ConcurrentDictionary<string, string> tracking, int numberOfBlocks)
+            {
+                this.piece  = piece;
+                this.data   = data;
+
+                // Copy From Recv Tracking only Piece Specific
+                for (int i=0; i<numberOfBlocks; i++)
+                {
+                    if (!tracking.ContainsKey($"{piece}|{i}"))
+                        continue;
+                    else
+                        recvBlocksTracking[$"{piece}|{i}"] = tracking[$"{piece}|{i}"];
+                }
+                    
+            }
+
+            public static List<string> FindDiffs(SHA1FailedPiece sfp1, SHA1FailedPiece sfp2, bool bothSide = true)
+            {
+                // Will not check the LastPiece / LastBlock
+                if (sfp1 == null || sfp2 == null || sfp1.piece != sfp2.piece || sfp1.data.Length != sfp2.data.Length || sfp1.data.Length % Peer.MAX_DATA_SIZE != 0)
+                    return null;
+
+                List<string> responsiblePeers = new List<string>();
+
+                Dictionary<string, int> famousCounter = new Dictionary<string, int>();
+
+                // Creates the list with responsible peers (diff blocks sent)
+                for(int i=0; i<=sfp1.data.Length % Peer.MAX_DATA_SIZE; i++)
+                {
+                    if (!famousCounter.ContainsKey(sfp1.recvBlocksTracking[$"{sfp1.piece}|{i}"])) famousCounter.Add(sfp1.recvBlocksTracking[$"{sfp1.piece}|{i}"], 0);
+                    if (!famousCounter.ContainsKey(sfp2.recvBlocksTracking[$"{sfp2.piece}|{i}"])) famousCounter.Add(sfp2.recvBlocksTracking[$"{sfp2.piece}|{i}"], 0);
+
+                    famousCounter[sfp1.recvBlocksTracking[$"{sfp1.piece}|{i}"]]++;
+                    famousCounter[sfp2.recvBlocksTracking[$"{sfp2.piece}|{i}"]]++;
+
+                    byte[] block1 = Utils.ArraySub(ref sfp1.data, i, Peer.MAX_DATA_SIZE);
+                    byte[] block2 = Utils.ArraySub(ref sfp2.data, i, Peer.MAX_DATA_SIZE);
+                    
+                    if (!Utils.ArrayComp(block1, block2))
+                    {
+                        if (!responsiblePeers.Contains(sfp1.recvBlocksTracking[$"{sfp1.piece}|{i}"]))
+                            responsiblePeers.Add(sfp1.recvBlocksTracking[$"{sfp1.piece}|{i}"]);
+
+                        if (bothSide && !responsiblePeers.Contains(sfp2.recvBlocksTracking[$"{sfp2.piece}|{i}"]))
+                            responsiblePeers.Add(sfp2.recvBlocksTracking[$"{sfp2.piece}|{i}"]);
+                    }
+                }
+
+                // Same invalid blocks probably from same peer (let's gamble with posibilities)
+                if (responsiblePeers.Count == 0)
+                {
+                    string  mostFamous  = "";
+                    int     curMin      = 0;
+                    foreach (var famous in famousCounter)
+                    {
+                        if (famous.Value > curMin)
+                        {
+                            curMin      = famous.Value;
+                            mostFamous  = famous.Key;
+                        }
+                    }
+                    if (mostFamous != "") responsiblePeers.Add(mostFamous);
+                }
+                
+                return responsiblePeers;
+            }
+        }
+        HashSet<string> peersBanned = new HashSet<string>();
+        ConcurrentDictionary<int, SHA1FailedPiece> sha1FailedPieces = new ConcurrentDictionary<int, SHA1FailedPiece>();
+        ConcurrentDictionary<string, string> recvBlocksTracking = new ConcurrentDictionary<string, string>();
+        #endregion
+
         #region Misc
         private void CreatePieceProgress(int piece)
         {
@@ -1638,6 +1754,15 @@ namespace SuRGeoNix
                 return torrent.data.blockSize;
         }
         internal bool NoPiecesPeer(Peer peer) { return torrent.metadata.isDone && !peer.stageYou.haveAll && (peer.stageYou.haveNone || peer.stageYou.bitfield == null || torrent.data.requests.GetFirst01(peer.stageYou.bitfield) == -1); }
+        public void CancelRequestedPieces()
+        {
+            lock (peersForDispatch)
+                foreach (var thread in bstp.Threads)
+                {
+                    if (thread != null && thread.peer != null && thread.peer.status == Peer.Status.DOWNLOADING)
+                        thread.peer.CancelPieces();
+                }
+        }
         internal void Log(string msg) { if (Options.Verbosity > 0) log.Write($"[BitSwarm] {msg}"); }
         #endregion
     }
