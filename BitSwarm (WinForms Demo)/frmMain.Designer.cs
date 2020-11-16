@@ -75,8 +75,6 @@
             this.pUnchocked = new System.Windows.Forms.ToolStripStatusLabel();
             this.toolStripStatusLabel23 = new System.Windows.Forms.ToolStripStatusLabel();
             this.pDownloading = new System.Windows.Forms.ToolStripStatusLabel();
-            this.toolStripStatusLabel25 = new System.Windows.Forms.ToolStripStatusLabel();
-            this.pDropped = new System.Windows.Forms.ToolStripStatusLabel();
             this.progress = new System.Windows.Forms.ToolStripProgressBar();
             this.label11 = new System.Windows.Forms.Label();
             this.label12 = new System.Windows.Forms.Label();
@@ -297,12 +295,10 @@
             this.pUnchocked,
             this.toolStripStatusLabel23,
             this.pDownloading,
-            this.toolStripStatusLabel25,
-            this.pDropped,
             this.progress});
             this.statusStrip1.Location = new System.Drawing.Point(0, 534);
             this.statusStrip1.Name = "statusStrip1";
-            this.statusStrip1.Size = new System.Drawing.Size(1151, 22);
+            this.statusStrip1.Size = new System.Drawing.Size(1126, 22);
             this.statusStrip1.TabIndex = 23;
             this.statusStrip1.Text = "statusStrip1";
             // 
@@ -381,8 +377,8 @@
             // toolStripStatusLabel14
             // 
             this.toolStripStatusLabel14.Name = "toolStripStatusLabel14";
-            this.toolStripStatusLabel14.Size = new System.Drawing.Size(38, 17);
-            this.toolStripStatusLabel14.Text = "Failed";
+            this.toolStripStatusLabel14.Size = new System.Drawing.Size(30, 17);
+            this.toolStripStatusLabel14.Text = "DHT";
             // 
             // pFailed
             // 
@@ -393,8 +389,8 @@
             // toolStripStatusLabel16
             // 
             this.toolStripStatusLabel16.Name = "toolStripStatusLabel16";
-            this.toolStripStatusLabel16.Size = new System.Drawing.Size(44, 17);
-            this.toolStripStatusLabel16.Text = "Failed1";
+            this.toolStripStatusLabel16.Size = new System.Drawing.Size(61, 17);
+            this.toolStripStatusLabel16.Text = "DHT Peers";
             // 
             // pFailed1
             // 
@@ -405,8 +401,8 @@
             // toolStripStatusLabel18
             // 
             this.toolStripStatusLabel18.Name = "toolStripStatusLabel18";
-            this.toolStripStatusLabel18.Size = new System.Drawing.Size(44, 17);
-            this.toolStripStatusLabel18.Text = "Failed2";
+            this.toolStripStatusLabel18.Size = new System.Drawing.Size(58, 17);
+            this.toolStripStatusLabel18.Text = "TRK Peers";
             // 
             // pFailed2
             // 
@@ -449,18 +445,6 @@
             this.pDownloading.Name = "pDownloading";
             this.pDownloading.Size = new System.Drawing.Size(13, 17);
             this.pDownloading.Text = "0";
-            // 
-            // toolStripStatusLabel25
-            // 
-            this.toolStripStatusLabel25.Name = "toolStripStatusLabel25";
-            this.toolStripStatusLabel25.Size = new System.Drawing.Size(56, 17);
-            this.toolStripStatusLabel25.Text = "Dropped ";
-            // 
-            // pDropped
-            // 
-            this.pDropped.Name = "pDropped";
-            this.pDropped.Size = new System.Drawing.Size(13, 17);
-            this.pDropped.Text = "0";
             // 
             // progress
             // 
@@ -618,7 +602,7 @@
             this.AllowDrop = true;
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(1151, 556);
+            this.ClientSize = new System.Drawing.Size(1126, 556);
             this.Controls.Add(this.sleepLimit);
             this.Controls.Add(this.label18);
             this.Controls.Add(this.label17);
@@ -661,7 +645,7 @@
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.Name = "frmMain";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-            this.Text = "BitSwarm";
+            this.Text = "BitSwarm 2.0";
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.frmMain_FormClosing);
             this.Load += new System.EventHandler(this.frmMain_Load);
             this.DragDrop += new System.Windows.Forms.DragEventHandler(this.frmMain_DragDrop);
@@ -720,8 +704,6 @@
         private System.Windows.Forms.ToolStripStatusLabel pUnchocked;
         private System.Windows.Forms.ToolStripStatusLabel toolStripStatusLabel23;
         private System.Windows.Forms.ToolStripStatusLabel pDownloading;
-        private System.Windows.Forms.ToolStripStatusLabel toolStripStatusLabel25;
-        private System.Windows.Forms.ToolStripStatusLabel pDropped;
         private System.Windows.Forms.ToolStripProgressBar progress;
         private System.Windows.Forms.Label label11;
         private System.Windows.Forms.Label label12;

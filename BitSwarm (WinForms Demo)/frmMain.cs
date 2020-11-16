@@ -169,14 +169,13 @@ namespace SuRGeoNix.BitSwarmClient
                 pPeers.Text         = e.Stats.PeersTotal.ToString();
                 pInqueue.Text       = e.Stats.PeersInQueue.ToString();
                 pConnecting.Text    = e.Stats.PeersConnecting.ToString();
-                pConnected.Text     = (e.Stats.PeersConnecting + e.Stats.PeersConnected + e.Stats.PeersDownloading).ToString();
-                pFailed.Text        = (e.Stats.PeersFailed1 + e.Stats.PeersFailed2).ToString();
-                pFailed1.Text       = e.Stats.PeersFailed1.ToString();
-                pFailed2.Text       = e.Stats.PeersFailed2.ToString();
+                pConnected.Text     = (e.Stats.PeersConnecting + e.Stats.PeersConnected).ToString();
+                pFailed.Text        = bitSwarm.dht.status == DHT.Status.RUNNING ? "On" : "Off";
+                pFailed1.Text       = bitSwarm.dhtPeers.ToString();
+                pFailed2.Text       = bitSwarm.trackersPeers.ToString();
                 pChoked.Text        = e.Stats.PeersChoked.ToString();
                 pUnchocked.Text     = e.Stats.PeersUnChoked.ToString();
                 pDownloading.Text   = e.Stats.PeersDownloading.ToString();
-                pDropped.Text       = e.Stats.PeersDropped.ToString();
 
                 if (torrent != null && torrent.data.totalSize != 0) 
                     progress.Value = e.Stats.Progress;

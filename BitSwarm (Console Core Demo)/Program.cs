@@ -120,22 +120,12 @@ namespace BitSwarmConsole
         private static void BitSwarm_MetadataReceived(object source, BitSwarm.MetadataReceivedArgs e)
         {
             torrent = e.Torrent;
-            Console.WriteLine(bitSwarm.DumpTorrent() + "\n");
+            Console.Clear();
         }
         private static void BitSwarm_StatsUpdated(object source, BitSwarm.StatsUpdatedArgs e)
         {
-            if (resized)
-            {
-                Console.Clear();
-                Console.WriteLine(bitSwarm.DumpTorrent() + "\n");
-                resized = false;
-            }
-
-            if (consoleLastTop == -1) consoleLastTop = Console.CursorTop;
-            Console.SetCursorPosition(0, consoleLastTop);
-            for (int i=0; i<10; i++)
-                Console.WriteLine(new String(' ', Console.BufferWidth));
-            Console.SetCursorPosition(0, consoleLastTop);
+            Console.SetCursorPosition(0, 0);
+            Console.WriteLine(bitSwarm.DumpTorrent() + "\r\n");
             Console.WriteLine(bitSwarm.DumpStats());
         }
     }
