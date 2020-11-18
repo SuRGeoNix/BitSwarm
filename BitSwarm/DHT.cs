@@ -3,9 +3,10 @@
  * 
  * TODO
  * 
+ * DHT IPv6 Extension http://bittorrent.org/beps/bep_0032.html | We can use the ipv4 dht to get ipv6 nodes (by adding 'want' parameter to the request with both n4 and n6 nodes) but we cant use it to get 18-octet IPv6 values
+ * 
  * 1. Min ThreadPool for Nodes to avoid re-creating threads all the time
  * 2. Possible review the new rEP / ipEP to ensure not receiving wrong packets (maybe rEP for all threads and also ipEP on thread 0)
- * 
  */
 
 using System;
@@ -117,8 +118,9 @@ namespace SuRGeoNix.BEP
             for (int i=0; i<20; i++)
                 infoHashBits[i] = Convert.ToString(infoHashBytes[i], 2).PadLeft(8, '0');
 
-            udpClient       = new UdpClient(0);
-            ipEP            = (IPEndPoint) udpClient.Client.LocalEndPoint; //new IPEndPoint(IPAddress.Any, 0);
+            udpClient       = new UdpClient(0, AddressFamily.InterNetwork); // Ensure that we use IPv4 DHT
+            ipEP            = (IPEndPoint) udpClient.Client.LocalEndPoint;
+
             udpClient.Client.SendTimeout    = options.ConnectionTimeout;
             udpClient.Client.ReceiveTimeout = options.ConnectionTimeout;
             udpClient.Client.Ttl            = 255;
@@ -371,14 +373,14 @@ namespace SuRGeoNix.BEP
                         string curIP    = (new IPAddress(Utils.ArraySub(ref value, 0, 4))).ToString();
                         UInt16 curPort  = (UInt16) BitConverter.ToInt16(Utils.ArraySub(ref value, 4, 2, true), 0);
 
-                        if (curPort < 100) continue; // Drop fake
+                        if (curPort < 500) continue; // Drop fake / Avoid DDOS
 
                         //if (options.Verbosity > 0) Log($"[{node.distance}] [{node.host}] [PEER] {curIP}:{curPort}");
 
                         curPeers[curIP] = curPort;
                     }
 
-                    if (curPeers.Count > 0) options.Beggar.FillPeers(curPeers, BitSwarm.PeersStorage.DHTNEW);
+                    if (curPeers.Count > 0) options.Beggar.FillPeers(curPeers, BitSwarm.PeersStorage.DHT);
 
                     //if (options.Verbosity > 0) Log($"[{node.distance}] [{node.host}] [NEW PEERS] {newPeers}");
 

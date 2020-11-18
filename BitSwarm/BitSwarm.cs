@@ -2,45 +2,15 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Threading;
 using System.Security.Cryptography;
 
+using BencodeNET.Objects;
 using SuRGeoNix.BEP;
 using static SuRGeoNix.BEP.Torrent.TorrentData;
 
 namespace SuRGeoNix
 {
-    /* TODO (Draft Notes)
-     * 
-     * 1. [Jobs -> Peer] | TimeBeginPeriod(1) is too much, after that we could go in TimeBeginPeriod(>=5) or even remove it completely
-     *  Try to avoid all the schedule jobs and transfer the functionality directly in the Peer.ProcessMessage()
-     *      eg. Piece Request after Unchoked, PieceReceived, PieceRejected
-     *          Similarly should handle possible Piece Cancel/Timeouts/KeepAlives/Interested/"Autokill/drop" etc.
-     *          
-     *      Additionally, check where possible to Dispatch New Peers when they arrive (fill from trackers/fill from dht etc.)
-     *          Randomness on how you dispatch them? (to avoid upload limits and high cpu?)
-     * 
-     * 2. [Peers Lists]
-     *  Αvoid large lists (ban peers, less re-fills)
-     * 
-     * 3. [Streaming] | Focus Points Requests Algorithm
-     *  The problem: We need as soon as possible specific pieces so by requesting the same pieces/blocks from more than one peer,
-     *               we ensure we will receive it faster but at the same time we will have more already received pieces/blocks => dropped bytes
-     *               
-     *               The right adjustment it is required for Piece Timeout, RequestBlocksPerPeer, Piece/Block Randomness
-     *               
-     * 4. [Threads]
-     *  Transfer all the threads (especially .net threadpool) to BSTP
-     *      Review also async & thread sleeps (try to replace them with better alternatives)
-     *      
-     * 5. [Sleep Mode]
-     * 
-     *  Consider using an automatic approach (eg. after X seconds of current session get [Max Down Rate - 700KB/s]
-     *  
-     * 6. +++ Allow Fast / PeX / uTP / Proxy / Seeding / Load-Save Session / Multiple-Instances
-     */
-
     public class BitSwarm
     {
         #region BitSwarm's Thread Pool [Short/Long Run]
@@ -113,7 +83,8 @@ namespace SuRGeoNix
                     {
                         Threads[index].peer?.Run(this, index);
                         if (ShortRun > MinThreads || Stop || Threads == null || Threads[index] == null) break;
-                        if (peersForDispatch.TryPop(out Peer tmp)) { Threads[index].peer = tmp; Threads[index].peer.status = Peer.Status.CONNECTING; } else break;
+                        lock (peersForDispatch)
+                            if (peersForDispatch.TryPop(out Peer tmp)) { Threads[index].peer = tmp; Threads[index].peer.status = Peer.Status.CONNECTING; } else break;
 
                     } while (true);
 
@@ -227,6 +198,7 @@ namespace SuRGeoNix
             public int      PieceTimeout        { get; set; } = 5000;
             public int      PieceRetries        { get; set; } =    0;
 
+            public bool     EnablePEX           { get; set; } = true;
             public bool     EnableDHT           { get; set; } = true;
             public bool     EnableTrackers      { get; set; } = true;
             public int      PeersFromTracker    { get; set; } = -1;
@@ -304,9 +276,8 @@ namespace SuRGeoNix
         internal enum PeersStorage
         {
             DHT,
-            TRACKERS,
-            DHTNEW,
-            TRACKERSNEW
+            PEX,
+            TRACKER
         }
         #endregion
 
@@ -405,6 +376,7 @@ namespace SuRGeoNix
         private int                     sha1Fails           = 0;
         public int                      dhtPeers            = 0; // Not accurate (based on uniqueness)
         public int                      trackersPeers       = 0; // Not accurate (based on uniqueness)
+        public int                      pexPeers            = 0; // Not accurate (based on uniqueness)
         #endregion
 
 
@@ -424,6 +396,8 @@ namespace SuRGeoNix
         }
         private void Initiliaze()
         {
+            if (!Directory.Exists(Options.DownloadPath)) Directory.CreateDirectory(Options.DownloadPath);
+
             bstp    = new BSTP();
             status  = Status.STOPPED;
 
@@ -468,8 +442,13 @@ namespace SuRGeoNix
             trackerOpt.Verbosity            = Options.LogTracker ? Options.Verbosity : 0;
 
             // Peer
-            Peer.Beggar                     = this;
+            BDictionary extensions = new BDictionary();
+            extensions.Add("ut_metadata", Peer.Messages.EXT_UT_METADATA);
+            if (Options.EnablePEX) extensions.Add("ut_pex", Peer.Messages.EXT_UT_PEX);
+
             Peer.HANDSHAKE_BYTES            = Utils.ArrayMerge(Peer.BIT_PROTO, Peer.EXT_PROTO, Utils.StringHexToArray(torrent.file.infoHash), peerID);
+            Peer.EXT_BDIC                   = (new BDictionary() { {"e", 0 }, { "m", extensions }, {"reqq", 250 } }).EncodeAsBytes();
+            Peer.Beggar                     = this;
 
             // Fill from TorrentFile | MagnetLink + TrackersPath to Trackers
             torrent.FillTrackersFromTrackersPath(Options.TrackersPath);
@@ -640,16 +619,16 @@ namespace SuRGeoNix
             int countNew = 0;
 
             lock (peersForDispatch)
-            foreach (KeyValuePair<string, int> peerKV in newPeers)
-            {
-                if (!peersStored.ContainsKey(peerKV.Key) && !peersBanned.Contains(peerKV.Key))
+                foreach (KeyValuePair<string, int> peerKV in newPeers)
                 {
-                    peersStored.TryAdd(peerKV.Key, peerKV.Value);
-                    Peer peer = new Peer(peerKV.Key, peerKV.Value);
-                    peersForDispatch.Push(peer); //if (!bstp.Dispatch(peer)) peersForDispatch.Push(peer);
-                    countNew++;   
+                    if (!peersStored.ContainsKey(peerKV.Key) && !peersBanned.Contains(peerKV.Key))
+                    {
+                        peersStored.TryAdd(peerKV.Key, peerKV.Value);
+                        Peer peer = new Peer(peerKV.Key, peerKV.Value);
+                        peersForDispatch.Push(peer); //if (!bstp.Dispatch(peer)) peersForDispatch.Push(peer);
+                        countNew++;   
+                    }
                 }
-            }
 
             if (peersForDispatch.Count > 0 && bstp.ShortRun < bstp.MinThreads)
             {
@@ -657,10 +636,12 @@ namespace SuRGeoNix
                     bstp.Dispatch(null);
             }
 
-            if (storage == PeersStorage.TRACKERSNEW)
+            if (storage == PeersStorage.TRACKER)
                 trackersPeers += countNew;
-            else if (storage == PeersStorage.DHTNEW)
+            else if (storage == PeersStorage.DHT)
                 dhtPeers += countNew;
+            else if (storage == PeersStorage.PEX)
+                pexPeers += countNew;
 
             if (Options.Verbosity > 0 && countNew > 0) Log($"[{storage.ToString()}] {countNew} Adding Peers");
         }
@@ -699,94 +680,91 @@ namespace SuRGeoNix
         
         private void  FillStats()
         {
-            // Stats
-            Stats.CurrentTime           = DateTime.UtcNow.Ticks;
-
-            // Progress
-            int includedSetsCounter     = torrent.data.progress.setsCounter - (torrent.data.pieces - Stats.PiecesIncluded);            
-            Stats.BytesCurDownloaded    = includedSetsCounter * torrent.data.pieceSize;
-            if (Stats.BytesCurDownloaded < 0) Stats.BytesCurDownloaded = 0;
-            Stats.Progress              = includedSetsCounter > 0 ? (int) (includedSetsCounter * 100.0 / Stats.PiecesIncluded) : 0;
-
-            // Rates
-            double secondsDiff          = ((Stats.CurrentTime - prevStatsTicks) / 10000000.0); // For more accurancy
-            long totalBytesDownloaded   = Stats.BytesDownloaded + Stats.BytesDropped; // Included or Not?
-            Stats.DownRate              = (int) ((totalBytesDownloaded - Stats.BytesDownloadedPrev) / secondsDiff); // Change this (2 seconds) if you change scheduler
-            Stats.AvgRate               = (int) ( totalBytesDownloaded / curSecond);
-            if (Stats.DownRate > Stats.MaxRate) Stats.MaxRate = Stats.DownRate;
-
-            // ETAs
-            if (torrent.data.pieces != Stats.PiecesIncluded && curSecond > 0 && Stats.BytesCurDownloaded > 1)
+            try
             {
-                Stats.AvgETA = (int) ( (Stats.PiecesIncluded * torrent.data.pieceSize) / (Stats.BytesCurDownloaded / curSecond ) );
-            }
-            else
-            {
-                if (torrent.data.totalSize - Stats.BytesDownloaded == 0)
+                // Stats
+                Stats.CurrentTime           = DateTime.UtcNow.Ticks;
+
+                // Progress
+                int includedSetsCounter     = torrent.data.progress.setsCounter - (torrent.data.pieces - Stats.PiecesIncluded);            
+                Stats.BytesCurDownloaded    = includedSetsCounter * torrent.data.pieceSize;
+                if (Stats.BytesCurDownloaded < 0) Stats.BytesCurDownloaded = 0;
+                Stats.Progress              = includedSetsCounter > 0 ? (int) (includedSetsCounter * 100.0 / Stats.PiecesIncluded) : 0;
+
+                // Rates
+                double secondsDiff          = ((Stats.CurrentTime - prevStatsTicks) / 10000000.0); // For more accurancy
+                long totalBytesDownloaded   = Stats.BytesDownloaded + Stats.BytesDropped; // Included or Not?
+                Stats.DownRate              = (int) ((totalBytesDownloaded - Stats.BytesDownloadedPrev) / secondsDiff); // Change this (2 seconds) if you change scheduler
+                Stats.AvgRate               = (int) ( totalBytesDownloaded / curSecond);
+                if (Stats.DownRate > Stats.MaxRate) Stats.MaxRate = Stats.DownRate;
+
+                // ETAs
+                if (torrent.data.pieces != Stats.PiecesIncluded && curSecond > 0 && Stats.BytesCurDownloaded > 1)
                 {
-                    Stats.ETA       = 0;
-                    Stats.AvgETA    = 0;
-                } 
+                    Stats.AvgETA = (int) ( (Stats.PiecesIncluded * torrent.data.pieceSize) / (Stats.BytesCurDownloaded / curSecond ) );
+                }
                 else
                 {
-                    if (Stats.BytesDownloaded - Stats.BytesDownloadedPrev == 0)
-                        Stats.ETA  *= 2; // Kind of infinite | int overflow nice
-                    else 
-                        Stats.ETA   = (int) ( (torrent.data.totalSize - Stats.BytesDownloaded) / ((Stats.BytesDownloaded - Stats.BytesDownloadedPrev) / secondsDiff) );
-
-                    if (Stats.BytesDownloaded != 0 && curSecond > 0 && Stats.BytesDownloaded > 1)
-                        Stats.AvgETA = (int) ( (torrent.data.totalSize - Stats.BytesDownloaded) / (Stats.BytesDownloaded / curSecond ) );
-                }
-            }
-
-            // Save Cur to Prev
-            Stats.BytesDownloadedPrev   = totalBytesDownloaded;
-            prevStatsTicks              = Stats.CurrentTime;
-
-            // Stats & Clean-up
-            Stats.PeersTotal        = peersStored.Count;
-            Stats.PeersInQueue      = peersForDispatch.Count;
-            Stats.PeersConnecting   = bstp.ShortRun;
-            Stats.PeersConnected    = bstp.LongRun;
-            Stats.PeersChoked       = 0;
-            Stats.PeersUnChoked     = 0;
-            Stats.PeersDownloading  = 0;
-
-            Stats.PeersDropped      = 0; // NOT SET
-            Stats.PeersFailed1      = 0; // NOT SET
-            Stats.PeersFailed2      = 0; // NOT SET
-
-            foreach (var thread in bstp.Threads)
-            {
-                if (thread.isLongRun)
-                {
-                    if (thread.peer.status == Peer.Status.READY)
+                    if (torrent.data.totalSize - Stats.BytesDownloaded == 0)
                     {
-                        if (thread.peer.stageYou.unchoked)
-                            Stats.PeersUnChoked++;
-                        else
-                            Stats.PeersChoked++;
-                    }
-                    else if (thread.peer.status == Peer.Status.DOWNLOADING)
+                        Stats.ETA       = 0;
+                        Stats.AvgETA    = 0;
+                    } 
+                    else
                     {
-                        Stats.PeersDownloading++;
+                        if (Stats.BytesDownloaded - Stats.BytesDownloadedPrev == 0)
+                            Stats.ETA  *= 2; // Kind of infinite | int overflow nice
+                        else 
+                            Stats.ETA   = (int) ( (torrent.data.totalSize - Stats.BytesDownloaded) / ((Stats.BytesDownloaded - Stats.BytesDownloadedPrev) / secondsDiff) );
+
+                        if (Stats.BytesDownloaded != 0 && curSecond > 0 && Stats.BytesDownloaded > 1)
+                            Stats.AvgETA = (int) ( (torrent.data.totalSize - Stats.BytesDownloaded) / (Stats.BytesDownloaded / curSecond ) );
                     }
                 }
-            }
 
-            // Stats -> UI
-            StatsUpdated?.Invoke(this, new StatsUpdatedArgs(Stats));
+                // Save Cur to Prev
+                Stats.BytesDownloadedPrev   = totalBytesDownloaded;
+                prevStatsTicks              = Stats.CurrentTime;
 
-            // Stats -> Log
-            if (Options.LogStats) Log("Dumping Stats\r\n" + DumpStats());
-            //{
-                
-            //    Log($"[STATS] [INQUEUE: {String.Format("{0,3}",Stats.PeersInQueue)}]\t[DROPPED: {String.Format("{0,3}",Stats.PeersDropped)}]\t[CONNECTING: {String.Format("{0,3}",Stats.PeersConnecting)}]\t[FAIL1: {String.Format("{0,3}",Stats.PeersFailed1)}]\t[FAIL2: {String.Format("{0,3}",Stats.PeersFailed2)}]\t[READY: {String.Format("{0,3}",Stats.PeersConnected)}]\t[CHOKED: {String.Format("{0,3}",Stats.PeersChoked)}]\t[UNCHOKED: {String.Format("{0,3}",Stats.PeersUnChoked)}]\t[DOWNLOADING: {String.Format("{0,3}",Stats.PeersDownloading)}]");
-            //    Log($"[STATS] [CUR MAX: {String.Format("{0:n0}", (Stats.MaxRate / 1024)) + " KB/s"}]\t[DOWN CUR: {String.Format("{0:n0}", (Stats.DownRate / 1024)) + " KB/s"}]\t[DOWN AVG: {String.Format("{0:n0}", (Stats.AvgRate / 1024)) + " KB/s"}]\t[ETA CUR: {TimeSpan.FromSeconds(Stats.ETA).ToString(@"hh\:mm\:ss")}]\t[ETA AVG: {TimeSpan.FromSeconds(Stats.AvgETA).ToString(@"hh\:mm\:ss")}]\t[ETA R: {TimeSpan.FromSeconds((Stats.ETA + Stats.AvgETA)/2).ToString(@"hh\:mm\:ss")}]");
+                // Stats & Clean-up
+                Stats.PeersTotal        = peersStored.Count;
+                Stats.PeersInQueue      = peersForDispatch.Count;
+                Stats.PeersConnecting   = bstp.ShortRun;
+                Stats.PeersConnected    = bstp.LongRun;
+                Stats.PeersChoked       = 0;
+                Stats.PeersUnChoked     = 0;
+                Stats.PeersDownloading  = 0;
 
-            //    Log($"[STATS] [PIECE TIMEOUTS: {String.Format("{0,4}",Stats.PieceTimeouts)}]\t[HAND TIMEOUTS: {String.Format("{0,4}",Stats.HandshakeTimeouts)}]\t[ALREADYRECV: {String.Format("{0,3}",Stats.AlreadyReceived)}]\t[REJECTED: {String.Format("{0,3}",Stats.Rejects)}]\t[SHA1FAILS:{String.Format("{0,3}",sha1Fails)}]\t[DROPPED BYTES: {Utils.BytesToReadableString(Stats.BytesDropped)}]\t[DHT: {dht?.status}]\t[DHTPEERS: {dhtPeers}]\t[TRACKERSPEERS: {trackersPeers}]\t[SLEEPMODE: {Stats.SleepMode}]");
-            //    Log($"[STATS] [PROGRESS PIECES: {torrent.data.progress.setsCounter}/{torrent.data.progress.size} | REQ: {torrent.data.requests.setsCounter}]\t[PROGRESS BYTES: {Stats.BytesDownloaded}/{torrent.data.totalSize}]\t[Pieces/Blocks: {torrent.data.pieces}/{torrent.data.blocks}]\t[Piece/Block Length: {torrent.data.pieceSize}|{torrent.data.totalSize % torrent.data.pieceSize}/{torrent.data.blockSize}|{torrent.data.blockLastSize}][Working Pieces: {torrent.data.pieceProgress.Count}]");
-            //}
+                Stats.PeersDropped      = 0; // NOT SET
+                Stats.PeersFailed1      = 0; // NOT SET
+                Stats.PeersFailed2      = 0; // NOT SET
+
+                lock (peersForDispatch)
+                    foreach (var thread in bstp.Threads)
+                    {
+                        if (thread.isLongRun && thread.peer != null)
+                        {
+                            if (thread.peer.status == Peer.Status.READY)
+                            {
+                                if (thread.peer.stageYou.unchoked)
+                                    Stats.PeersUnChoked++;
+                                else
+                                    Stats.PeersChoked++;
+                            }
+                            else if (thread.peer.status == Peer.Status.DOWNLOADING)
+                            {
+                                Stats.PeersDownloading++;
+                            }
+                        }
+                    }
+
+                // Stats -> UI
+                StatsUpdated?.Invoke(this, new StatsUpdatedArgs(Stats));
+
+                // Stats -> Log
+                if (Options.LogStats) Log("Dumping Stats\r\n" + DumpStats());
+
+            } catch (Exception e) { Log($"[CRITICAL ERROR] Msg: {e.Message}\r\n{e.StackTrace}"); }
         }
         public string DumpTorrent()
         {
@@ -825,22 +803,22 @@ namespace SuRGeoNix
             string includedBytes = $" ({Utils.BytesToReadableString(Stats.BytesCurDownloaded)} / {Utils.BytesToReadableString(Stats.PiecesIncluded * torrent.data.pieceSize)})"; // Not the actual file sizes but pieces size (- first/last chunks)
             stats += "\n";
             stats += $"BitSwarm  " +
-                $"{PadStats(TimeSpan.FromSeconds(curSecond).ToString(@"hh\:mm\:ss"), 13)} | " + 
+                $"{PadStats(TimeSpan.FromSeconds(curSecond).ToString(@"hh\:mm\:ss"), 15)} | " + 
                 $"{PadStats("ETA " + TimeSpan.FromSeconds(Stats.AvgETA).ToString(@"hh\:mm\:ss"), 20)} | " +
-                $"{Utils.BytesToReadableString(Stats.BytesDownloaded)} / {Utils.BytesToReadableString(torrent.data.totalSize)}{(Stats.PiecesIncluded == torrent.data.pieces ? "" : includedBytes)}";
+                $"{Utils.BytesToReadableString(Stats.BytesDownloaded)} / {Utils.BytesToReadableString(torrent.data.totalSize)}{(Stats.PiecesIncluded == torrent.data.pieces ? "" : includedBytes)}           ";
                 
 
             stats += "\n";
-            stats += $" v2.2.6  " +
-                $"{PadStats(String.Format("{0:n0}", Stats.DownRate/1024), 9)} KB/s | " +
+            stats += $" v2.2.7  " +
+                $"{PadStats(String.Format("{0:n0}", Stats.DownRate/1024), 11)} KB/s | " +
                 $"{PadStats(String.Format("{0:n1}", ((Stats.DownRate * 8)/1000.0)/1000.0), 15)} Mbps | " +
-                $"Max: {String.Format("{0:n0}", Stats.MaxRate/1024)} KB/s, {String.Format("{0:n0}", ((Stats.MaxRate * 8)/1000.0)/1000.0)} Mbps";
+                $"Max: {String.Format("{0:n0}", Stats.MaxRate/1024)} KB/s, {String.Format("{0:n0}", ((Stats.MaxRate * 8)/1000.0)/1000.0)} Mbps            ";
 
             stats += "\n";
             stats += $"         " +
-                $"{PadStats($"Mode: {mode}", 13)}  | " +
+                $"{PadStats($"Mode: {mode}", 15)}  | " +
                 $"{PadStats(" ", 20)} | " +
-                $"Avg: {String.Format("{0:n0}", Stats.AvgRate/1024)} KB/s, {String.Format("{0:n0}", ((Stats.AvgRate * 8)/1000.0)/1000.0)} Mbps";
+                $"Avg: {String.Format("{0:n0}", Stats.AvgRate/1024)} KB/s, {String.Format("{0:n0}", ((Stats.AvgRate * 8)/1000.0)/1000.0)} Mbps            ";
 
             int progressLen = Stats.Progress.ToString().Length;
             stats += "\n";
@@ -852,22 +830,22 @@ namespace SuRGeoNix
 
             stats += "\n";
             stats += $"[PEERS ] " +
-                $"{PadStats($"{Stats.PeersDownloading}/{Stats.PeersChoked}", 9)} D/W  | " +
+                $"{PadStats($"{Stats.PeersDownloading}/{Stats.PeersChoked}", 11)} D/W  | " +
                 $"{PadStats($"{Stats.PeersConnecting}/{Stats.PeersInQueue}/{Stats.PeersTotal}", 14)} C/Q/T | " +
-                $"{trackersPeers}/{dhtPeers} TRK/DHT {(dht.status == DHT.Status.RUNNING ? "(On)" : "(Off)")}";
+                $"{pexPeers}/{trackersPeers}/{dhtPeers} PEX/TRK/DHT {(dht.status == DHT.Status.RUNNING ? "(On)" : "(Off)")}                ";
 
             stats += "\n";
             stats += $"[PIECES] " +
-                $"{PadStats($"{torrent.data.progress.setsCounter}/{torrent.data.pieces}", 9)} D/T  | " +
+                $"{PadStats($"{torrent.data.progress.setsCounter}/{torrent.data.pieces}", 11)} D/T  | " +
                 $"{PadStats($"{torrent.data.requests.setsCounter}", 14)} REQ   | " +
-                $"{Utils.BytesToReadableString(Stats.BytesDropped)} / {Stats.AlreadyReceived} BLK (Drops)";
+                $"{Utils.BytesToReadableString(Stats.BytesDropped)} / {Stats.AlreadyReceived} BLK (Drops)             ";
 
 
             stats += "\n";
             stats += $"[ERRORS] " +
-                $"{PadStats($"{Stats.PieceTimeouts}", 9)} TMO  | " +
+                $"{PadStats($"{Stats.PieceTimeouts}", 11)} TMO  | " +
                 $"{PadStats($"{Stats.Rejects}", 14)} RJS   | " +
-                $"{sha1Fails} SHA";
+                $"{sha1Fails} SHA                ";
 
             stats += "\n";
             for (int i=0; i<100; i++) stats += "=";
@@ -1077,7 +1055,7 @@ namespace SuRGeoNix
                 Log("[BEGGAR  ] " + status);
 
             } catch (ThreadAbortException) {
-            } catch (Exception e) { Log($"[BEGGAR] Beggar(), Msg: {e.Message}\r\n{e.StackTrace}"); StatusChanged?.Invoke(this, new StatusChangedArgs(2, e.Message + "\r\n"+ e.StackTrace)); }
+            } catch (Exception e) { Log($"[CRITICAL ERROR] Msg: {e.Message}\r\n{e.StackTrace}"); StatusChanged?.Invoke(this, new StatusChangedArgs(2, e.Message + "\r\n"+ e.StackTrace)); }
 
             if (Utils.IsWindows) Utils.TimeEndPeriod(5);
         }
@@ -1099,14 +1077,14 @@ namespace SuRGeoNix
                 if (peer.stageYou.metadataRequested) return;
 
                 // Ugly Prison TBR | Start Game with Unknown Bitfield Size So they can start and not be prisoned here
-                if (peer.stageYou.metadataRequested || peer.stageYou.extensions.ut_metadata == 0)
+                if (peer.stageYou.extensions.ut_metadata == 0)
                 {
                     while(isRunning && !torrent.metadata.isDone) Thread.Sleep(25);
                     return;
                 }
 
                 // Ugly Prison TBR | Start Game with Unknown Bitfield Size So they can start and not be prisoned here
-                if (torrent.metadata.parallelRequests < 1)
+                else if (torrent.metadata.parallelRequests < 1)
                 {
                     while(isRunning && !torrent.metadata.isDone && torrent.metadata.parallelRequests < 1) Thread.Sleep(25);
                     RequestPiece(peer);

@@ -14,12 +14,14 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>bitswarm bittorrent torrent client streaming dht</PackageTags>
     <Copyright>© SuRGeoNix 2020</Copyright>
-    <Version>2.2.6</Version>
-    <PackageReleaseNotes>Implemented Ban &amp; Block Diff to identify responsible peers for failure
-
-Fixed a cirtical (but rare) issue with "broken" peers that were sending invalid data which could cause SHA-1 to fail infinite (re-requesting and failing for the same piece).</PackageReleaseNotes>
-    <FileVersion>2.2.6.0</FileVersion>
-    <AssemblyVersion>2.2.6.0</AssemblyVersion>
+    <Version>2.2.7</Version>
+    <PackageReleaseNotes>- Adding support for IPv4 &amp; IPv6 Peer Exchange (PEX) / BEP 11
+- Fixing critical but rare issue with null reference and missing lock in FillStats (was crashing the application)
+- Fixing critical issue with metadata extension (was listening for receive on remote extension id instead of local)
+- Fixing DHT/Tracker sockets issue by ensuring that will listen on IPv4 interface (until IPv6 will be added)
+- Fixing a minor issue with DumpStats (was not clearing the line buffer before printing the new one)</PackageReleaseNotes>
+    <FileVersion>2.2.7.0</FileVersion>
+    <AssemblyVersion>2.2.7.0</AssemblyVersion>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">

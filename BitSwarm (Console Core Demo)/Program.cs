@@ -15,9 +15,7 @@ namespace BitSwarmConsole
 
         static bool sessionFinished = false;
         static bool preventOnce     = true;
-        static bool resized         = false;
-        static int  consoleLastTop  = -1;
-        static int  prevHeight;
+        static int  consoleStatsPos = 0;
 
         static void Main(string[] args)
         {
@@ -42,12 +40,7 @@ namespace BitSwarmConsole
             
             // Prepare Options
             opt = new BitSwarm.DefaultOptions();
-            if (args.Length >= 2)
-            {
-                if (!Directory.Exists(args[1])) Directory.CreateDirectory(args[1]);
-                opt.DownloadPath = args[1];
-            }
-
+            if (args.Length >= 2) opt.DownloadPath      = args[1];
             if (args.Length >= 3) opt.MinThreads        = int.Parse(args[2]);
             if (args.Length >= 4) opt.MaxThreads        = int.Parse(args[3]);
             if (args.Length >= 5) opt.SleepModeLimit    = int.Parse(args[4]);
@@ -63,21 +56,25 @@ namespace BitSwarmConsole
 
             // More Options
 
+            // [Feeders]
+            //opt.EnablePEX     = false;
             //opt.EnableDHT     = false;
             //opt.EnableTrackers= false;
             //opt.TrackersPath  = @"c:\root\trackers.txt";
 
+            // [Timeouts]
             //opt.ConnectionTimeout   = 1200;
             //opt.HandshakeTimeout    = 2400;
             //opt.MetadataTimeout     = 1600;
-            //opt.PieceTimeout        = 7000;
+            //opt.PieceTimeout        = 2000;
+            //opt.PieceRetries        = 3; // Re-requests timed-out pieces on the first timeout
 
             // Initialize BitSwarm
             bitSwarm = new BitSwarm(opt);
 
-            bitSwarm.StatsUpdated       += BitSwarm_StatsUpdated;
-            bitSwarm.MetadataReceived   += BitSwarm_MetadataReceived;
-            bitSwarm.StatusChanged      += BitSwarm_StatusChanged;
+            bitSwarm.MetadataReceived   += BitSwarm_MetadataReceived;   // Receives torrent data [on torrent file will fire directly, on magnetlink will fire on metadata received]
+            bitSwarm.StatsUpdated       += BitSwarm_StatsUpdated;       // Stats refresh every 2 seconds
+            bitSwarm.StatusChanged      += BitSwarm_StatusChanged;      // Paused/Stopped or Finished
 
             if (File.Exists(args[0])) 
                 bitSwarm.Initiliaze(args[0]);
@@ -88,13 +85,8 @@ namespace BitSwarmConsole
             bitSwarm.Start();
 
             Console.CancelKeyPress += new ConsoleCancelEventHandler(CtrlC);
-            prevHeight = Console.WindowHeight;
 
-            while (!sessionFinished)
-            {
-                if (Console.WindowHeight != prevHeight) { prevHeight = Console.WindowHeight; resized = true; }
-                Thread.Sleep(500);
-            }
+            while (!sessionFinished) Thread.Sleep(500);
         }
         protected static void CtrlC(object sender, ConsoleCancelEventArgs args)
         {
@@ -121,11 +113,20 @@ namespace BitSwarmConsole
         {
             torrent = e.Torrent;
             Console.Clear();
+            if (Utils.IsWindows) { Console.WriteLine(bitSwarm.DumpTorrent() + "\r\n"); consoleStatsPos = Console.CursorTop; }
         }
         private static void BitSwarm_StatsUpdated(object source, BitSwarm.StatsUpdatedArgs e)
         {
-            Console.SetCursorPosition(0, 0);
-            Console.WriteLine(bitSwarm.DumpTorrent() + "\r\n");
+            if (Utils.IsWindows)
+            {
+                Console.SetCursorPosition(0, consoleStatsPos);
+            }
+            else
+            {
+                Console.SetCursorPosition(0, 0);
+                Console.WriteLine(bitSwarm.DumpTorrent() + "\r\n");
+            }
+            
             Console.WriteLine(bitSwarm.DumpStats());
         }
     }

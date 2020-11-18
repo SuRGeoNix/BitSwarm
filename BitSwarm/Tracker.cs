@@ -117,14 +117,15 @@ namespace SuRGeoNix.BEP
                 if (ip.AddressFamily == AddressFamily.InterNetwork)
                     rEP = new IPEndPoint(ip, port);
                     
-            if (rEP == null)
-                foreach (var ip in ips)
-                    if (ip.AddressFamily == AddressFamily.InterNetworkV6)
-                    {  rEP = new IPEndPoint(ip, port); break; }
+            // Need to implement also IPv6 retrieval to support IPv6
+            //if (rEP == null)
+            //    foreach (var ip in ips)
+            //        if (ip.AddressFamily == AddressFamily.InterNetworkV6)
+            //        { rEP = new IPEndPoint(ip, port); break; }
 
             if (rEP == null) { Log("DNS failed"); failed = true; return; }
 
-            udpClient   = new UdpClient(0);
+            udpClient   = new UdpClient(0, AddressFamily.InterNetwork); // Currently only IPv4
             udpClient.Client.ReceiveTimeout = options.ReceiveTimeout;
         }
 
@@ -239,7 +240,7 @@ namespace SuRGeoNix.BEP
 
                 if (options.Verbosity > 0) Log($"Success ({peers.Count} Peers)");
 
-                if (peers.Count > 0) Beggar.FillPeers(peers, BitSwarm.PeersStorage.TRACKERSNEW);
+                if (peers.Count > 0) Beggar.FillPeers(peers, BitSwarm.PeersStorage.TRACKER);
             }
             catch (Exception e)
             {
@@ -337,12 +338,15 @@ namespace SuRGeoNix.BEP
                     {
                         IPAddress curIP = new IPAddress(Utils.ArraySub(ref recvBuff,(uint) (20 + (i*6)), 4, false));
                         UInt16 curPort  = (UInt16) BitConverter.ToInt16(Utils.ArraySub(ref recvBuff,(uint) (24 + (i*6)), 2, true), 0);
-                        if (curPort > 0) peers[curIP.ToString()] = curPort;
+
+                        if (curPort < 500) continue; // Drop fake / Avoid DDOS
+
+                        peers[curIP.ToString()] = curPort;
                     }
 
                     if (options.Verbosity > 0) Log($"Success ({peers.Count} Peers)");
 
-                    if (peers.Count > 0) Beggar.FillPeers(peers, BitSwarm.PeersStorage.TRACKERSNEW);
+                    if (peers.Count > 0) Beggar.FillPeers(peers, BitSwarm.PeersStorage.TRACKER);
 
                     // Check with bytes cause Peers maybe < 200 | We drop some invalid ports or we dont read them properly?
                     if (recvBuff.Length == 1220) { curRecursions++; AnnounceUDP(); }

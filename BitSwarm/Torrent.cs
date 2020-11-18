@@ -52,7 +52,7 @@ namespace SuRGeoNix.BEP
 
             public int              pieces          { get; set; }
             public int              pieceSize       { get; set; }
-            public int              pieceLastSize   { get; set; }
+            public int              pieceLastSize   { get; set; } // NOTE: it can be 0, it should be equals with pieceSize in case of totalSize % pieceSize = 0
 
             public int              blocks          { get; set; }
             public int              blockSize       { get; set; }
@@ -209,7 +209,7 @@ namespace SuRGeoNix.BEP
 
             data.pieces         = file.pieces.Count;
             data.pieceSize      = file.pieceLength;
-            data.pieceLastSize  = (int) (data.totalSize % data.pieceSize);
+            data.pieceLastSize  = (int) (data.totalSize % data.pieceSize); // NOTE: it can be 0, it should be equals with pieceSize in case of totalSize % pieceSize = 0
             
             data.progress       = new BitField(data.pieces);
             data.requests       = new BitField(data.pieces);

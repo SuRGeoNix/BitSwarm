@@ -25,9 +25,10 @@ namespace SuRGeoNix.BEP
         public static readonly byte[]   BIT_PROTO       = Utils.ArrayMerge(new byte[]   {0x13}, Encoding.UTF8.GetBytes("BitTorrent protocol"));
         public static readonly byte[]   EXT_PROTO       = Utils.ArrayMerge(new byte[]   {0, 0, 0, 0}, new byte[] {0 , 0x10, 0, (0x1 | 0x4)});
 
-        // [HANDSHAKE EXTENDED]     | http://bittorrent.org/beps/bep_0010.html      | m-> {"key", "value"}, p, v, yourip, ipv6, ipv4, reqq  | Static EXT_BDIC
-        public static readonly byte[]   EXT_BDIC        = (new BDictionary{ {"e", 0 }, {"m" , new BDictionary{ {"ut_metadata", 2 } /*,{"ut_pex" , 1 }*/ } }, { "reqq" , 250 } }).EncodeAsBytes();
         public static readonly int      MAX_DATA_SIZE   = 0x4000;
+
+        // [HANDSHAKE EXTENDED]     | http://bittorrent.org/beps/bep_0010.html      | m-> {"key", "value"}, p, v, yourip, ipv6, ipv4, reqq  | Static EXT_BDIC
+        public static byte[]            EXT_BDIC;        // Will be set by bitswarm's setup
 
         public static byte[]            HANDSHAKE_BYTES; // Will be set by bitswarm's setup
         public static BitSwarm          Beggar;          // Will be change later on for multiple-instances
@@ -71,18 +72,20 @@ namespace SuRGeoNix.BEP
             // LTEP Handshake
             public const byte EXTENDED_HANDSHAKE    = 0x00;
 
+            // [msg-id = m -> ut_pex]
+            // Peer Exchange (PEX)  | http://bittorrent.org/beps/bep_0011.html
+            public const byte EXT_UT_PEX            = 0x01;
+
             // [msg-id = m -> ut_metadata]
             // Metadata Extenstion  | http://www.bittorrent.org/beps/bep_0009.html  | Extension for Peers to Send Metadata Files
             // Bencoded <msg_type><piece>[<total_size>]
+            public const byte EXT_UT_METADATA       = 0x02;
             public const byte METADATA_REQUEST      = 0x00;
             public const byte METADATA_RESPONSE     = 0x01;
             public const byte METADATA_REJECT       = 0x02;
 
-            // [msg-id = m -> ut_pex]
-            // Peer Exchange (PEX)  | http://bittorrent.org/beps/bep_0011.html
-
             // [msg-id = m -> lt_donthave]
-            // DontHave             | http://bittorrent.org/beps/bep_0054.html      | Old alternative of Fast Extension
+            // DontHave             | http://bittorrent.org/beps/bep_0054.html      | Extension for advertising that it no longer has a piece (on previous Have/BitField messages)
         }
 
         /* Main Implementation  | Run()
@@ -154,10 +157,13 @@ namespace SuRGeoNix.BEP
         public struct Extensions
         {
             public byte         ut_metadata;
+            //public byte         ut_pex;
         }
 
         public string           host        { get; private set; }
         public int              port        { get; private set; }
+
+        //public byte[]           remotePeerID { get; private set;}
 
         public Status           status;
         public Stage            stageYou;
@@ -251,6 +257,7 @@ namespace SuRGeoNix.BEP
                 if (Beggar.Options.Verbosity > 0) Log(3, "[HAND] Sending");
                 tcpStream.Write(HANDSHAKE_BYTES, 0, HANDSHAKE_BYTES.Length);
                 Receive(BIT_PROTO.Length + EXT_PROTO.Length + 20 + 20);
+                //remotePeerID = Utils.ArraySub(ref recvBuff, 47, 20);
                 if (Beggar.Options.Verbosity > 0) Log(3, "[HAND] Received");
 
                 lastPieces          = new List<Tuple<int, int, int>>();
@@ -495,12 +502,7 @@ namespace SuRGeoNix.BEP
                     {
                         status = Status.READY;
 
-                        if (stageYou.unchoked)
-                            Beggar.RequestPiece(this);
-
-                        // Will cause infinite re-requesting
-                        //else if (allowFastPieces.Count > 0)
-                            //Beggar.RequestFastPiece(this);
+                        if (stageYou.unchoked) Beggar.RequestPiece(this);
                     }
 
                     return;
@@ -542,6 +544,8 @@ namespace SuRGeoNix.BEP
                 case Messages.EXTENDED:
                     Receive(1); // MSG Extension Id
 
+                    if (Beggar.Options.Verbosity > 0) Log(3, "[MSG ] Extended ...");
+
                     if (recvBuff[0] == Messages.EXTENDED_HANDSHAKE)
                     {
                         if (Beggar.Options.Verbosity > 0) Log(3, "[HAND] Extended Received");
@@ -554,6 +558,8 @@ namespace SuRGeoNix.BEP
                         if (cur != null)    stageYou.extensions.ut_metadata = (byte) ((int) cur);
                         cur                 = Utils.GetFromBDic(extDic, new string[] {"m", "ut_metadata"});
                         if (cur != null)    stageYou.extensions.ut_metadata = (byte) ((int) cur);
+                        //cur                 = Utils.GetFromBDic(extDic, new string[] {"m", "ut_pex"});
+                        //if (cur != null)    stageYou.extensions.ut_pex      = (byte) ((int) cur);
 
                         // MSG Extended Handshake | Reply
                         SendExtendedHandshake();
@@ -563,10 +569,60 @@ namespace SuRGeoNix.BEP
                         return;
                     }
 
-                    // TODO: recvBuff[0] == extensions.ut_pex   | PEX http://bittorrent.org/beps/bep_0011.html
+                                        // Peer Exchange (PEX)  | http://bittorrent.org/beps/bep_0011.html
+                    else if (recvBuff[0] == Messages.EXT_UT_PEX)
+                    {
+                        /* TODO:
+                         * 
+                         * By adding IPv6 we loose uniquness by host on peers, we should change the uniquness based on remotePeerId (currently possible we connect to the same IPv4 / IPv6 peer ?) - We can also get ipv6 from Extended message (->ipv6)
+                         * Possible process also dropped to remove peers from main storage (or even "ban" them to avoid re-push them in the queue)
+                         */
+
+                        if (Beggar.Options.Verbosity > 0) Log(3, "[PEX] ...");
+
+                        Receive(msgLen - 2);
+
+                        byte[] buff = msgLen - 2 == MAX_DATA_SIZE ? recvBuffMax : recvBuff;
+
+                        BDictionary extDic              = bParser.Parse<BDictionary>(recvBuff);
+                        byte[] buffAdded                = new byte[0];
+                        Dictionary<string, int> peers   = new Dictionary<string, int>();
+
+                        if (extDic.ContainsKey("added")) buffAdded = ((BString)extDic["added"]).Value.ToArray();
+
+                        for (int i = 0; i < buffAdded.Length / 6; i++)
+                        {
+                            System.Net.IPAddress curIP = new System.Net.IPAddress(Utils.ArraySub(ref buffAdded, (uint)i * 6, 4, false));
+                            UInt16 curPort = (UInt16)BitConverter.ToInt16(Utils.ArraySub(ref buffAdded, (uint)4 + (i * 6), 2, true), 0);
+
+                            if (curPort < 500) continue; // Drop fake / Avoid DDOS
+
+                            peers[curIP.ToString()] = curPort;
+                        }
+
+                        buffAdded = new byte[0];
+                        if (extDic.ContainsKey("added6")) buffAdded = ((BString) extDic["added6"]).Value.ToArray();
+
+                        for (int i=0; i<buffAdded.Length / 18; i++)
+                        {
+                            System.Net.IPAddress curIP = new System.Net.IPAddress(Utils.ArraySub(ref buffAdded,(uint) i*18, 16, false));
+                            UInt16 curPort  = (UInt16) BitConverter.ToInt16(Utils.ArraySub(ref buffAdded,(uint) 16 + (i*18), 2, true), 0);
+
+                            if (curPort < 500) continue; // Drop fake / Avoid DDOS
+
+                            peers[curIP.ToString()] = curPort;
+                        }
+
+                        if (peers.Count > 0) Beggar.FillPeers(peers, BitSwarm.PeersStorage.PEX);
+
+                        //if (Beggar.Options.Verbosity > 0) Log(3, $"[PEX] {peers.Count}");
+
+                        return;
+                    }
+
 
                     // Extension for Peers to Send Metadata Files | info-dictionary part of the .torrent file | http://bittorrent.org/beps/bep_0009.html
-                    else if (recvBuff[0] == stageYou.extensions.ut_metadata && stageYou.extensions.ut_metadata != 0) 
+                    else if (recvBuff[0] == Messages.EXT_UT_METADATA)
                     {
                         // MSG Extended Metadata
                         if (Beggar.Options.Verbosity > 0) Log(3, "[META] ...");
