@@ -4,13 +4,13 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>netcoreapp3.1</TargetFramework>
     <RootNamespace>BitSwarmConsole</RootNamespace>
-    <AssemblyName>bitswarm</AssemblyName>
+    <AssemblyName>bswarm</AssemblyName>
     <AssemblyVersion>2.2.8.0</AssemblyVersion>
     <FileVersion>2.2.8.0</FileVersion>
     <Version>2.2.8</Version>
     <Company>SuRGeoNix</Company>
     <Product>BitSwarm</Product>
-    <PackageId>BitSwarm</PackageId>
+    <PackageId>BitSwarmConsole</PackageId>
     <Authors>SuRGeoNix</Authors>
   </PropertyGroup>
 
@@ -21,5 +21,4 @@
   <ItemGroup>
     <ProjectReference Include="..\BitSwarm\BitSwarm.csproj" />
   </ItemGroup>
-
 </Project>

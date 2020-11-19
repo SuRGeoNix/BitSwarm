@@ -20,7 +20,6 @@
 - Organizing logs &amp; clean-up of part files</PackageReleaseNotes>
     <FileVersion>2.2.8.0</FileVersion>
     <AssemblyVersion>2.2.8.0</AssemblyVersion>
-    <AssemblyName>BitSwarmLib</AssemblyName>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">

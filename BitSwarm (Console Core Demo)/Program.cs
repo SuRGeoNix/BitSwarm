@@ -150,8 +150,8 @@ namespace BitSwarmConsole
         }
         private static void PrintHelp<T>(ParserResult<T> result, IEnumerable<Error> errs)
         {
-            var helpText = HelpText.AutoBuild(result, h => { return HelpText.DefaultParsingErrorsHandler(result, h); }, e => e, false, 160);
-            helpText.AddPostOptionsText("\r\n" + "USAGE: \r\n\r\n\t" + "./bitswarm [OPTIONS] torrentfile|magnetlink");
+            var helpText = HelpText.AutoBuild(result, h => { h.Heading = $"BitSwarm v{BitSwarm.Version}" ; return HelpText.DefaultParsingErrorsHandler(result, h); }, e => e, false, 160);
+            helpText.AddPostOptionsText("\r\n" + "USAGE: \r\n\r\n\t" + $"{AppDomain.CurrentDomain.FriendlyName} [OPTIONS] torrentfile|magnetlink");
             Console.WriteLine(helpText);
         }
         private static void PrintMenu() { Console.WriteLine("[1: Stats] [2: Torrent] [3: Peers] [4: Peers (w/Refresh)] [Ctrl-C: Exit]".PadLeft(100, ' ')); }

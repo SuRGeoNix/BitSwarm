@@ -262,7 +262,7 @@ namespace SuRGeoNix
             public int      PieceTimeouts;
         }
 
-        public string Version { get; private set; } = Assembly.GetExecutingAssembly().GetName().Version.ToString();
+        public static string Version { get; private set; } = System.Text.RegularExpressions.Regex.Replace(Assembly.GetExecutingAssembly().GetName().Version.ToString(), @"\.0$", "");
 
         public enum SleepModeState
         {
@@ -816,7 +816,7 @@ namespace SuRGeoNix
                 
 
             stats += "\n";
-            stats += $"v{Version} " +
+            stats += $"v{Version}".PadRight(9, ' ') +
                 $"{PadStats(String.Format("{0:n0}", Stats.DownRate/1024), 11)} KB/s | " +
                 $"{PadStats(String.Format("{0:n1}", ((Stats.DownRate * 8)/1000.0)/1000.0), 15)} Mbps | " +
                 $"Max: {String.Format("{0:n0}", Stats.MaxRate/1024)} KB/s, {String.Format("{0:n0}", ((Stats.MaxRate * 8)/1000.0)/1000.0)} Mbps            ";
