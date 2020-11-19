@@ -141,11 +141,13 @@ namespace SuRGeoNix.BEP
 
         public class Stage
         {
+            public string       version;
+
             public BitField     bitfield;
             public Extensions   extensions;
 
-            public bool         handshake;
-            public bool         handshakeEx;
+            //public bool         handshake;
+            //public bool         handshakeEx;
             public bool         unchoked;
             public bool         intrested;
             public bool         haveAll;
@@ -186,6 +188,10 @@ namespace SuRGeoNix.BEP
 
         public List<Tuple<int, int, int>>   lastPieces;
         public List<int>                    allowFastPieces;
+
+        private long blockRequestedAt;
+        private long totalWaitDuration = 0;
+        private long totalBytesReceived = 0;
 
         public Peer(string host, int port) 
         {  
@@ -448,6 +454,11 @@ namespace SuRGeoNix.BEP
 
                     Beggar.PieceReceived(msgLen - 9 == MAX_DATA_SIZE ? recvBuffMax : recvBuff, piece, offset, this);
 
+                    long curTime = DateTime.UtcNow.Ticks;
+
+                    totalWaitDuration   += curTime - blockRequestedAt;
+                    totalBytesReceived  += msgLen - 9;
+
                     if (piecesRequested == 0)
                     {
                         status = Status.READY;
@@ -457,6 +468,8 @@ namespace SuRGeoNix.BEP
                         else if (allowFastPieces.Count > 0)
                             Beggar.RequestFastPiece(this);
                     }
+                    else
+                        blockRequestedAt = curTime;
 
                     return;
                                         // DHT Extension        | http://bittorrent.org/beps/bep_0005.html | reserved[7] |= 0x01 | UDP Port for DHT 
@@ -560,6 +573,10 @@ namespace SuRGeoNix.BEP
                         if (cur != null)    stageYou.extensions.ut_metadata = (byte) ((int) cur);
                         //cur                 = Utils.GetFromBDic(extDic, new string[] {"m", "ut_pex"});
                         //if (cur != null)    stageYou.extensions.ut_pex      = (byte) ((int) cur);
+
+
+                        cur                 = Utils.GetFromBDic(extDic, new string[] {"v"});
+                        if (cur != null)    stageYou.version = cur.ToString();
 
                         // MSG Extended Handshake | Reply
                         SendExtendedHandshake();
@@ -894,6 +911,7 @@ namespace SuRGeoNix.BEP
 
                     lastPieces      = pieces;
                     piecesRequested+= pieces.Count;
+                    blockRequestedAt= DateTime.UtcNow.Ticks;
                 }
             }
             catch (Exception e)
@@ -981,7 +999,13 @@ namespace SuRGeoNix.BEP
         }
         #endregion
 
-        #region Misc        
+        #region Misc
+        public long GetDownRate() // Bytes (Per Second)
+        {
+            if (totalBytesReceived == 0) return 0;
+
+            return (long) (((double)totalBytesReceived / (double)totalWaitDuration) * 10000000);
+        }
         public void SendMessage(byte msgid, bool isExtended, byte[] payload)
         {
             try

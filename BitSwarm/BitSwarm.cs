@@ -2,6 +2,8 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Security.Cryptography;
 
@@ -177,14 +179,14 @@ namespace SuRGeoNix
         #region Structs | Enums
         public class DefaultOptions
         {
-            public string   DownloadPath        { get; set; }   = Path.GetTempPath();
+            public string   DownloadPath        { get; set; } = ".";
             //public string   TempPath            { get; set; }
 
             public int      MaxThreads          { get; set; } =  150;    // Max Total  Connection Threads  | Short-Run + Long-Run
-            public int      MinThreads          { get; set; } =   10;    // Max New    Connection Threads  | Short-Run
+            public int      MinThreads          { get; set; } =   15;    // Max New    Connection Threads  | Short-Run
 
             public int      BoostThreads        { get; set; } =   60;    // Max New    Connection Threads  | Boot Boost
-            public int      BoostTime           { get; set; } =   30;    // Boot Boost Time (Ms)
+            public int      BoostTime           { get; set; } =   30;    // Boot Boost Time (Seconds)
 
             // -1: Auto | 0: Disabled | Auto will figure out SleepModeLimit from MaxRate
             public int      SleepModeLimit      { get; set; } =    0;     // Activates Sleep Mode (Low Resources) at the specify DownRate | DHT Stop, Re-Fills Stop (DHT/Trackers) & MinThreads Drop to MinThreads / 2
@@ -259,6 +261,8 @@ namespace SuRGeoNix
             public int      HandshakeTimeouts;
             public int      PieceTimeouts;
         }
+
+        public string Version { get; private set; } = Assembly.GetExecutingAssembly().GetName().Version.ToString();
 
         public enum SleepModeState
         {
@@ -396,6 +400,7 @@ namespace SuRGeoNix
         }
         private void Initiliaze()
         {
+            if (Options.DownloadPath.Trim() == ".") Options.DownloadPath = Environment.CurrentDirectory;
             if (!Directory.Exists(Options.DownloadPath)) Directory.CreateDirectory(Options.DownloadPath);
 
             bstp    = new BSTP();
@@ -413,9 +418,9 @@ namespace SuRGeoNix
 
             if (Options.Verbosity > 0)
             {
-                log                         = new Logger(Path.Combine(Options.DownloadPath, "session" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".log"    ), true);
+                log                         = new Logger(Path.Combine(Options.DownloadPath, "Logs", "session" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".log"    ), true);
                 if (Options.EnableDHT && Options.LogDHT)
-                    logDHT                  = new Logger(Path.Combine(Options.DownloadPath, "session" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + "_DHT.log"), true);
+                    logDHT                  = new Logger(Path.Combine(Options.DownloadPath, "Logs", "session" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + "_DHT.log"), true);
             }
         }
         private void Setup()
@@ -447,7 +452,7 @@ namespace SuRGeoNix
             if (Options.EnablePEX) extensions.Add("ut_pex", Peer.Messages.EXT_UT_PEX);
 
             Peer.HANDSHAKE_BYTES            = Utils.ArrayMerge(Peer.BIT_PROTO, Peer.EXT_PROTO, Utils.StringHexToArray(torrent.file.infoHash), peerID);
-            Peer.EXT_BDIC                   = (new BDictionary() { {"e", 0 }, { "m", extensions }, {"reqq", 250 } }).EncodeAsBytes();
+            Peer.EXT_BDIC                   = (new BDictionary() { {"e", 0 }, { "m", extensions }, {"reqq", 250 }, {"v", $"BitSwarm {Version}" } }).EncodeAsBytes();
             Peer.Beggar                     = this;
 
             // Fill from TorrentFile | MagnetLink + TrackersPath to Trackers
@@ -479,11 +484,11 @@ namespace SuRGeoNix
                         if (tracker.uri.Scheme == uri.Scheme && tracker.uri.DnsSafeHost == uri.DnsSafeHost && tracker.uri.Port == uri.Port) { found = true; break; }
                     if (found) continue;
 
-                    Log($"[Torrent] [Tracker] [ADD] {uri}");
+                    if (Options.LogTracker) Log($"[Torrent] [Tracker] [ADD] {uri}");
                     trackers.Add(new Tracker(uri, trackerOpt));
                 }
                 else
-                    Log($"[Torrent] [Tracker] [ADD] {uri} Protocol not implemented");
+                    if (Options.LogTracker) Log($"[Torrent] [Tracker] [ADD] {uri} Protocol not implemented");
             }
         }
         public void IncludeFiles(List<string> includeFiles)
@@ -768,6 +773,8 @@ namespace SuRGeoNix
         }
         public string DumpTorrent()
         {
+            if (torrent == null || !torrent.metadata.isDone) return "Metadata not ready";
+
             string str = "";
             str += "=================\n";
             str += "|Torrent Details|\n";
@@ -809,7 +816,7 @@ namespace SuRGeoNix
                 
 
             stats += "\n";
-            stats += $" v2.2.7  " +
+            stats += $"v{Version} " +
                 $"{PadStats(String.Format("{0:n0}", Stats.DownRate/1024), 11)} KB/s | " +
                 $"{PadStats(String.Format("{0:n1}", ((Stats.DownRate * 8)/1000.0)/1000.0), 15)} Mbps | " +
                 $"Max: {String.Format("{0:n0}", Stats.MaxRate/1024)} KB/s, {String.Format("{0:n0}", ((Stats.MaxRate * 8)/1000.0)/1000.0)} Mbps            ";
@@ -852,6 +859,54 @@ namespace SuRGeoNix
             stats += "\n";
 
             return stats;
+        }
+        public string DumpPeers(int sortBy = 2)
+        {
+            Dictionary<string, string> peersDump = new Dictionary<string, string>();
+
+            lock (peersForDispatch)
+                foreach (var thread in bstp.Threads)
+                {
+                    if (!thread.isLongRun || thread.peer == null) continue;
+
+                    Peer peer = thread.peer;
+
+                    if (peer.status == Peer.Status.DOWNLOADING)
+                    {
+                        string verA = "";
+                        string verB = "";
+
+                        if (peer.stageYou != null && peer.stageYou.version != null)
+                        {
+                            int vPos = peer.stageYou.version.LastIndexOf('/');
+                            if (vPos == -1) vPos = peer.stageYou.version.LastIndexOf(' ');
+
+                            verA = vPos == -1 ? peer.stageYou.version : peer.stageYou.version.Substring(0, vPos); 
+                            verB = vPos == -1 ? "" : peer.stageYou.version.Substring(vPos + 1);
+
+                            if (verA.Length > 25) verA = verA.Substring(0, 25);
+                            if (verB.Length > 11) verA = verA.Substring(0, 11);
+                        }
+
+                        long   downRate =   peer.GetDownRate()/1024;
+                        string peerDump =   $"[{peer.host}".PadRight(40, ' ') + ":" + PadStats($"{peer.port}]", 6) + " " + 
+                                            $"[{verA}".PadRight(26, ' ') + PadStats($"{verB}]", 12) + " " + 
+                                            $"[{String.Format("{0:n0}", downRate).PadLeft(6, ' ')} KB/s]";
+
+                        //if (sortBy == 2)
+                        peersDump.Add(peerDump, downRate.ToString());
+                    }
+                }
+
+            string dump = "";
+            //if (sortBy == 2)
+            foreach (var peerDump in peersDump.OrderBy(x => int.Parse(x.Value)))
+                dump += peerDump.Key + "             \r\n";
+
+            
+            dump += "\r\n" + ($"[{Stats.PeersDownloading}/{Stats.PeersChoked} D/W] [{String.Format("{0:n0}", Stats.DownRate/1024).PadLeft(6, ' ')} KB/s]").PadLeft(100, ' ') + "        \r\n";
+
+            return dump;
         }
         static string PadStats(string str, int num) { return str.PadLeft(num, ' '); }
         #endregion

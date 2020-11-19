@@ -6,7 +6,7 @@
     <Company>SuRGeoNix</Company>
     <Authors>SuRGeoNix</Authors>
     <PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
-    <Description>BitTorrent library for clients &amp; streaming purposes</Description>
+    <Description>Bittorrent library for clients &amp; streaming purposes</Description>
     <PackageLicenseFile></PackageLicenseFile>
     <PackageProjectUrl>https://github.com/SuRGeoNix/BitSwarm</PackageProjectUrl>
     <PackageIcon>BitSwarm.png</PackageIcon>
@@ -14,14 +14,13 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>bitswarm bittorrent torrent client streaming dht</PackageTags>
     <Copyright>© SuRGeoNix 2020</Copyright>
-    <Version>2.2.7</Version>
-    <PackageReleaseNotes>- Adding support for IPv4 &amp; IPv6 Peer Exchange (PEX) / BEP 11
-- Fixing critical but rare issue with null reference and missing lock in FillStats (was crashing the application)
-- Fixing critical issue with metadata extension (was listening for receive on remote extension id instead of local)
-- Fixing DHT/Tracker sockets issue by ensuring that will listen on IPv4 interface (until IPv6 will be added)
-- Fixing a minor issue with DumpStats (was not clearing the line buffer before printing the new one)</PackageReleaseNotes>
-    <FileVersion>2.2.7.0</FileVersion>
-    <AssemblyVersion>2.2.7.0</AssemblyVersion>
+    <Version>2.2.8</Version>
+    <PackageReleaseNotes>- Adding peer download rate stats
+- Changing default download path from %temp% to %current%
+- Organizing logs &amp; clean-up of part files</PackageReleaseNotes>
+    <FileVersion>2.2.8.0</FileVersion>
+    <AssemblyVersion>2.2.8.0</AssemblyVersion>
+    <AssemblyName>BitSwarmLib</AssemblyName>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">

@@ -249,7 +249,8 @@ namespace SuRGeoNix
         {
             if (fileStream != null)
             {
-                bool deleteFile = fileStream.Length == 0;
+                //bool deleteFile = fileStream.Length == 0;
+                bool deleteFile = true;
                 fileStream.Flush();
                 fileStream.Close();
                 if (deleteFile) File.Delete(FileName + ".part");
