@@ -1,18 +1,18 @@
 ﻿using System;
 using System.Globalization;
-using System.IO;
-using System.Windows.Forms;
 using System.Collections.Generic;
+using System.Windows.Forms;
 
-using SuRGeoNix.BEP;
+using SuRGeoNix.BitSwarmLib;
+using SuRGeoNix.BitSwarmLib.BEP;
 
 namespace SuRGeoNix.BitSwarmClient
 {
     public partial class frmMain : Form
     {
-        static Torrent                 torrent;
-        static BitSwarm                bitSwarm;
-        static BitSwarm.DefaultOptions opt;
+        static Torrent  torrent;
+        static BitSwarm bitSwarm;
+        static Options  opt;
 
         long requestedBytes = 0;
 
@@ -23,9 +23,9 @@ namespace SuRGeoNix.BitSwarmClient
         
         private void frmMain_Load(object sender, EventArgs e)
         {
-            BitSwarm.DefaultOptions opt = new BitSwarm.DefaultOptions();
+            Options opt = new Options();
 
-            downPath.Text           = opt.DownloadPath;
+            downPath.Text           = opt.FolderComplete;
             maxCon.Text             = opt.MaxThreads.ToString();
             maxThreads.Text         = opt.MinThreads.ToString();
             sleepLimit.Text         = opt.SleepModeLimit.ToString();
@@ -45,9 +45,9 @@ namespace SuRGeoNix.BitSwarmClient
 
                 try
                 {
-                    opt = new BitSwarm.DefaultOptions();
+                    opt = new Options();
 
-                    opt.DownloadPath        = downPath.Text;
+                    opt.FolderComplete      = downPath.Text;
 
                     opt.MaxThreads          = int.Parse(maxCon.Text);
                     opt.MinThreads          = int.Parse(maxThreads.Text);
@@ -73,11 +73,7 @@ namespace SuRGeoNix.BitSwarmClient
                     bitSwarm.MetadataReceived   += BitSwarm_MetadataReceived;
                     bitSwarm.StatusChanged      += BitSwarm_StatusChanged;
 
-                    if (File.Exists(input.Text.Trim())) 
-                        bitSwarm.Initiliaze(input.Text.Trim());
-                    else
-                        bitSwarm.Initiliaze(new Uri(input.Text.Trim()));
-
+                    bitSwarm.Open(input.Text);
                     bitSwarm.Start();
                 }
                 catch (Exception e1)
@@ -106,7 +102,7 @@ namespace SuRGeoNix.BitSwarmClient
                 torrent      = e.Torrent;
                 output.Text += bitSwarm.DumpTorrent().Replace("\n", "\r\n");
 
-                for (int i = 0; i < torrent.data.files.Count; i++)
+                for (int i = 0; i < torrent.file.paths.Count; i++)
                     listBox1.Items.Add(torrent.file.paths[i]);
 
                 listBox1.BeginUpdate();
@@ -139,10 +135,10 @@ namespace SuRGeoNix.BitSwarmClient
             {
                 output.Text += "\r\n\r\nStopped at "    + DateTime.Now.ToString("G", DateTimeFormatInfo.InvariantInfo);
 
-                if (e.Status == 0)
+                if (e.Status == 2)
                 {
                     output.Text += "\r\n\r\n" + "An error occurred :(\r\n\t" + e.ErrorMsg;
-                    MessageBox.Show("An error occured :( " + e.ErrorMsg);
+                    MessageBox.Show("An error occured :( \r\n" + e.ErrorMsg);
                 }
             }
 
@@ -164,15 +160,15 @@ namespace SuRGeoNix.BitSwarmClient
                 etaAvg.Text         = TimeSpan.FromSeconds(e.Stats.AvgETA).ToString(@"hh\:mm\:ss");
                 etaCur.Text         = TimeSpan.FromSeconds(e.Stats.ETA).ToString(@"hh\:mm\:ss");
 
-                bDownloaded.Text    = Utils.BytesToReadableString(e.Stats.BytesDownloaded);
+                bDownloaded.Text    = Utils.BytesToReadableString(e.Stats.BytesDownloaded + e.Stats.BytesDownloadedPrevSession);
                 bDropped.Text       = Utils.BytesToReadableString(e.Stats.BytesDropped);
                 pPeers.Text         = e.Stats.PeersTotal.ToString();
                 pInqueue.Text       = e.Stats.PeersInQueue.ToString();
                 pConnecting.Text    = e.Stats.PeersConnecting.ToString();
                 pConnected.Text     = (e.Stats.PeersConnecting + e.Stats.PeersConnected).ToString();
-                pFailed.Text        = bitSwarm.dht.status == DHT.Status.RUNNING ? "On" : "Off";
-                pFailed1.Text       = bitSwarm.dhtPeers.ToString();
-                pFailed2.Text       = bitSwarm.trackersPeers.ToString();
+                pFailed.Text        = bitSwarm.isDHTRunning ? "On" : "Off";
+                pFailed1.Text       = e.Stats.DHTPeers.ToString();
+                pFailed2.Text       = e.Stats.TRKPeers.ToString();
                 pChoked.Text        = e.Stats.PeersChoked.ToString();
                 pUnchocked.Text     = e.Stats.PeersUnChoked.ToString();
                 pDownloading.Text   = e.Stats.PeersDownloading.ToString();

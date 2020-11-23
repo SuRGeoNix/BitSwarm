@@ -9,7 +9,7 @@ using System.Security.Cryptography.X509Certificates;
 using BencodeNET.Parsing;
 using BencodeNET.Objects;
 
-namespace SuRGeoNix.BEP
+namespace SuRGeoNix.BitSwarmLib.BEP
 {
     /* TODO
      * 

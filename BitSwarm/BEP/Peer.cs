@@ -7,11 +7,9 @@ using System.Threading;
 using BencodeNET.Parsing;
 using BencodeNET.Objects;
 
-//using static SuRGeoNix.BitSwarm.BSTP;
-
-namespace SuRGeoNix.BEP
+namespace SuRGeoNix.BitSwarmLib.BEP
 {
-    internal class Peer
+    class Peer
     {
         #region Declaration | Properties
 
@@ -143,7 +141,7 @@ namespace SuRGeoNix.BEP
         {
             public string       version;
 
-            public BitField     bitfield;
+            public Bitfield     bitfield;
             public Extensions   extensions;
 
             //public bool         handshake;
@@ -320,7 +318,7 @@ namespace SuRGeoNix.BEP
 
 
         #region Main Execution Flow (Connect -> Handshakes -> [ProcessMessages <-> Receive])
-        public void Run(BitSwarm.BSTP bstp, int threadIndex)
+        public void Run(ThreadPool bstp, int threadIndex)
         {
             // CONNECT
             if (!Connect())         { Disconnect(); return; }
@@ -416,9 +414,9 @@ namespace SuRGeoNix.BEP
                     if (stageYou.bitfield == null)
                     {
                         if (Beggar.torrent.data.pieces != 0)
-                            stageYou.bitfield = new BitField(Beggar.torrent.data.pieces);
+                            stageYou.bitfield = new Bitfield(Beggar.torrent.data.pieces);
                         else
-                            stageYou.bitfield = new BitField(15000); // MAX PIECES GUESS?
+                            stageYou.bitfield = new Bitfield(15000); // MAX PIECES GUESS?
                     }
 
                     int havePiece = Utils.ToBigEndian(recvBuff);
@@ -433,11 +431,13 @@ namespace SuRGeoNix.BEP
                     stageYou.haveNone   = false;
                     byte[] bitfield     = new byte[recvBuff.Length];
                     Buffer.BlockCopy(recvBuff, 0, bitfield, 0, recvBuff.Length);
-                    stageYou.bitfield   = new BitField(bitfield, Beggar.torrent.data.pieces != 0 ? Beggar.torrent.data.pieces : recvBuff.Length * 8);
+                    stageYou.bitfield   = new Bitfield(bitfield, Beggar.torrent.data.pieces != 0 ? Beggar.torrent.data.pieces : recvBuff.Length * 8);
 
                     return;
                 case Messages.PIECE:
                     if (Beggar.Options.Verbosity > 0) Log(2, "[MSG ] Piece");
+
+                    status = Status.DOWNLOADING; // Bug was noticed Downloading peer was in READY and couldn't get out with timeout
 
                     Receive(4);         // [Piece Id]
                     int piece   = Utils.ToBigEndian(recvBuff);
@@ -711,6 +711,11 @@ namespace SuRGeoNix.BEP
         
         private void Receive(int len)
         {
+            /* TODO
+             * 1. Review modulo (heavy for cpu)
+             * 2. Review sleep time (it depends on how many blocks we request at the once / at the last block it should not sleep enough so it will re-request quickly)
+             */
+
             int  curLoop    = 0;
             long startedAt  = 0;
             long diffMs;

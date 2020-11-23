@@ -18,6 +18,9 @@ namespace SuRGeoNix
         public static bool IsWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
 
         // Dir / File Next Available
+        public static string GetValidFileName(string name)      { return string.Join("_", name.Split(Path.GetInvalidFileNameChars())); }
+        public static string GetValidPathName(string name)      { return string.Join("_", name.Split(Path.GetInvalidPathChars())).Replace("..", "_"); }
+        public static string GetValidFilePathName(string name)  { return (GetValidPathName(GetValidFileName(name))); }
         public static string FindNextAvailablePartFile(string fileName)
         {
             // Windows MAX_PATH = 260

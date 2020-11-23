@@ -4,267 +4,35 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Security.Cryptography;
 
 using BencodeNET.Objects;
-using SuRGeoNix.BEP;
-using static SuRGeoNix.BEP.Torrent.TorrentData;
+using SuRGeoNix.Partfiles;
 
-namespace SuRGeoNix
+using SuRGeoNix.BitSwarmLib.BEP;
+
+using static SuRGeoNix.BitSwarmLib.BEP.Torrent.TorrentData;
+
+namespace SuRGeoNix.BitSwarmLib
 {
     public class BitSwarm
     {
-        #region BitSwarm's Thread Pool [Short/Long Run]
-        internal class BSTP
+        public static string Version { get; private set; } = Regex.Replace(Assembly.GetExecutingAssembly().GetName().Version.ToString(), @"\.0$", "");
+
+        #region Enums
+
+        public enum InputType
         {
-            public  bool          Stop        { get; internal set; }
-            public  int           MaxThreads  { get; private  set; }
-            public  int           MinThreads  { get; private  set; }
-            public  int           Available   => MaxThreads- Running;
-            public  int           Running;
-            public  int           ShortRun    => Running   - LongRun;
-            public  int           LongRun;
-
-            public ConcurrentStack<Peer> peersForDispatch;
-            public BSTPThread[] Threads;
-
-            private readonly object lockerThreads = new object();
-            public void Initialize(int minThreads, int maxThreads, ConcurrentStack<Peer> peersStack)
-            {
-                lock (lockerThreads)
-                {
-                    //Console.WriteLine("Initializing... Threads -> " + (Threads == null ? "Null" : Threads.Length.ToString()));
-                    Dispose();
-
-                    Stop        = false;
-                    MinThreads  = minThreads;
-                    MaxThreads  = maxThreads;
-                    Running     = maxThreads;
-                    Threads     = new BSTPThread[MaxThreads];
-
-                    peersForDispatch = peersStack;
-
-                    for (int i=0; i<MaxThreads; i++)
-                    {
-                        StartThread(i);
-
-                        if (i % 25 == 0) Thread.Sleep(25);
-                    }
-
-                    //Console.WriteLine("Initialized");
-                }
-            }
-            public void SetMinThreads(int minThreads)
-            {
-                //Console.WriteLine($"[BSTP] MinThreds changing to {MinThreads}");
-                lock (lockerThreads) MinThreads = minThreads;
-            }
-            private void StartThread(int i)
-            {
-                int cacheI = i;
-
-                Threads[i]                      = new BSTPThread();
-                Threads[i].thread               = new Thread(_ => { ThreadRun(cacheI); });
-                Threads[i].thread.IsBackground  = true;
-                Threads[i].thread.Start();
-            }
-            private void ThreadRun(int index)
-            {
-                //Console.WriteLine($"[{Thread.CurrentThread.ManagedThreadId}] Started");
-
-                Interlocked.Decrement(ref Running);
-                Threads[index].IsAlive  = true;
-
-                while (!Stop)
-                {
-                    Threads[index].resetEvent.WaitOne();
-                    if (Stop) break;
-
-                    do
-                    {
-                        Threads[index].peer?.Run(this, index);
-                        if (ShortRun > MinThreads || Stop || Threads == null || Threads[index] == null) break;
-                        lock (peersForDispatch)
-                            if (peersForDispatch.TryPop(out Peer tmp)) { Threads[index].peer = tmp; Threads[index].peer.status = Peer.Status.CONNECTING; } else break;
-
-                    } while (true);
-
-                    if (Threads != null && Threads[index] != null) Threads[index].IsRunning = false;
-                    Interlocked.Decrement(ref Running);
-                }
-
-                //Console.WriteLine($"[{Thread.CurrentThread.ManagedThreadId}] Stopped");
-            }
-
-            public bool Dispatch(Peer peer)
-            {
-                lock (lockerThreads)
-                {
-                    if (Stop || Running >= MaxThreads || ShortRun >= MinThreads) return false;
-
-                    foreach (var thread in Threads)
-                        if (thread != null && !thread.IsRunning && thread.IsAlive)
-                        {
-                            if (Running >= MaxThreads || ShortRun >= MinThreads) return false;
-
-                            if (peer != null) peer.status = Peer.Status.CONNECTING;
-                            thread.peer     = peer;
-                            thread.IsRunning= true;
-                            Interlocked.Increment(ref Running);
-                            thread.resetEvent.Set();
-
-                            return true;
-                        }
-
-                    return false;
-                }
-            }
-            public void Dispose()
-            {
-                lock (lockerThreads)
-                {
-                    //Console.WriteLine("BSTP Disposing");
-
-                    if (peersForDispatch != null) lock (peersForDispatch) peersForDispatch.Clear();
-                    Stop = true;
-
-                    if (Threads != null)
-                    {
-                        foreach (var thread in Threads)
-                        {
-                            //if (thread != null && thread.peer != null)
-                            //{
-                            //    if (thread.peer.status != Peer.Status.NEW && thread.peer.status != Peer.Status.FAILED1 && thread.peer.status != Peer.Status.FAILED2) Console.WriteLine($"BSTP!? Requests: {thread.peer.PiecesRequested}, Status {thread.peer.status.ToString()}" + (thread.peer.lastPieces != null ? ", Pieces: " + thread.peer.lastPieces.Count : ""));
-                            //    //thread.peer.Disconnect();
-                            //}
-                            thread?.resetEvent.Set();
-                        }
-                        //Console.WriteLine("BSTP Disconnects Done");
-                        int escape = 150;
-                        while (Running > 0 && escape > 0) { Thread.Sleep(20); escape--; }
-                        //if (escape <= 0) Console.WriteLine("BSTP Disposing Failed");
-                    }
-
-                    MinThreads  = 0;
-                    MaxThreads  = 0;
-                    Running     = 0;
-                    Threads     = null;
-
-                    //Console.WriteLine("BSTP Disposed");
-                }
-            }
-
-            public class BSTPThread
-            {
-                public AutoResetEvent   resetEvent = new AutoResetEvent(false);
-                public bool             isLongRun   { get; internal set; }
-                public bool             IsRunning   { get; internal set; }
-                public bool             IsAlive     { get; internal set; }
-
-                public Thread           thread;
-                public Peer             peer;
-            }
+            Torrent,
+            Magnet,
+            Sha1,
+            Base32,
+            Session,
+            Unkown
         }
-        #endregion
-
-
-        #region Focus Area [For Streaming]
-        internal Tuple<int, int> focusArea;
-        internal Tuple<int, int> lastFocusArea;
-        public Tuple<int, int> FocusArea { get { lock (lockerTorrent) return focusArea; } set { lock (lockerTorrent) focusArea = value; } }
-        #endregion
-
-
-        #region Structs | Enums
-        public class DefaultOptions
-        {
-            public string   DownloadPath        { get; set; } = ".";
-            //public string   TempPath            { get; set; }
-
-            public int      MaxThreads          { get; set; } =  150;    // Max Total  Connection Threads  | Short-Run + Long-Run
-            public int      MinThreads          { get; set; } =   15;    // Max New    Connection Threads  | Short-Run
-
-            public int      BoostThreads        { get; set; } =   60;    // Max New    Connection Threads  | Boot Boost
-            public int      BoostTime           { get; set; } =   30;    // Boot Boost Time (Seconds)
-
-            // -1: Auto | 0: Disabled | Auto will figure out SleepModeLimit from MaxRate
-            public int      SleepModeLimit      { get; set; } =    0;     // Activates Sleep Mode (Low Resources) at the specify DownRate | DHT Stop, Re-Fills Stop (DHT/Trackers) & MinThreads Drop to MinThreads / 2
-
-            //public int      DownloadLimit       { get; set; } = -1;
-            //public int      UploadLimit         { get; set; }
-
-            public int      ConnectionTimeout   { get; set; } =  600;
-            public int      HandshakeTimeout    { get; set; } =  800;
-            public int      MetadataTimeout     { get; set; } = 1600;
-            public int      PieceTimeout        { get; set; } = 5000;
-            public int      PieceRetries        { get; set; } =    0;
-
-            public bool     EnablePEX           { get; set; } = true;
-            public bool     EnableDHT           { get; set; } = true;
-            public bool     EnableTrackers      { get; set; } = true;
-            public int      PeersFromTracker    { get; set; } = -1;
-
-            public int      BlockRequests       { get; set; } =  6;
-
-            public int      Verbosity           { get; set; } =  0;   // 1 -> BitSwarm | DHT, 2 -> SavePiece | Peers | Trackers
-            public bool     LogTracker          { get; set; } = false;
-            public bool     LogPeer             { get; set; } = false;
-            public bool     LogDHT              { get; set; } = false;
-            public bool     LogStats            { get; set; } = false;
-
-            public string   TrackersPath        { get; set; } = null;
-        }
-        public struct StatsStructure
-        {
-            public int      DownRate            { get; set; }
-            public int      AvgRate             { get; set; }
-            public int      MaxRate             { get; set; }
-
-            public int      AvgETA              { get; set; }
-            public int      ETA                 { get; set; }
-
-            public int      Progress            { get; set; }
-            public int      PiecesIncluded      { get; set; }
-            public long     BytesIncluded       { get; set; }
-            public long     BytesCurDownloaded  { get; set; }
-
-            public long     BytesDownloaded     { get; set; }
-            public long     BytesDownloadedPrev { get; set; }
-            public long     BytesUploaded       { get; set; }
-            public long     BytesDropped        { get; set; }
-
-            public int      PeersTotal          { get; set; }
-            public int      PeersInQueue        { get; set; }
-            public int      PeersConnecting     { get; set; }
-            public int      PeersConnected      { get; set; }
-            public int      PeersFailed1        { get; set; }
-            public int      PeersFailed2        { get; set; }
-            public int      PeersFailed         { get; set; }
-            public int      PeersChoked         { get; set; }
-            public int      PeersUnChoked       { get; set; }
-            public int      PeersDownloading    { get; set; }
-            public int      PeersDropped        { get; set; }
-
-            public long     StartTime           { get; set; }
-            public long     CurrentTime         { get; set; }
-            public long     EndTime             { get; set; }
-
-            public bool     SleepMode           { get; set; }
-            public bool     BoostMode           { get; set; }
-            public bool     EndGameMode         { get; set; }
-
-            public int      AlreadyReceived     { get; set; }
-            public int      Rejects;
-
-            public int      ConnectTimeouts; // Not used
-            public int      HandshakeTimeouts;
-            public int      PieceTimeouts;
-        }
-
-        public static string Version { get; private set; } = System.Text.RegularExpressions.Regex.Replace(Assembly.GetExecutingAssembly().GetName().Version.ToString(), @"\.0$", "");
-
-        public enum SleepModeState
+        private enum SleepModeState
         {
             Automatic,
             Manual,
@@ -325,20 +93,26 @@ namespace SuRGeoNix
         public delegate void StatsUpdatedHandler(object source, StatsUpdatedArgs e);
         public class StatsUpdatedArgs : EventArgs
         {
-            public StatsStructure Stats { get; set; }
-            public StatsUpdatedArgs(StatsStructure stats)
+            public Stats Stats { get; set; }
+            public StatsUpdatedArgs(Stats stats)
             {
                 Stats = stats;
             }
         }
         #endregion
 
-        #region Properties
-        public DefaultOptions   Options;
-        public StatsStructure   Stats;
+        #region Public Properties Exposed
+        public Options          Options;
+        public Stats            Stats;
         public bool             isRunning       => status == Status.RUNNING;
         public bool             isPaused        => status == Status.PAUSED;
         public bool             isStopped       => status == Status.STOPPED;
+        public bool             isDHTRunning    => dht.status == DHT.Status.RUNNING;
+        public string           LoadedSessionFile   { get; set; }
+        public Tuple<int, int>  FocusArea           { get { lock (lockerTorrent) return focusArea; } set { lock (lockerTorrent) focusArea = value; } }
+
+        internal Tuple<int, int> focusArea;
+        internal Tuple<int, int> lastFocusArea;
         #endregion
 
         #region Declaration
@@ -347,13 +121,13 @@ namespace SuRGeoNix
         readonly object  lockerMetadata      = new object();
 
         // Generators (Hash / Random)
-        public  static SHA1             sha1                = new SHA1Managed();
+        private static SHA1             sha1                = new SHA1Managed();
         private static Random           rnd                 = new Random();
         internal byte[]                 peerID;
 
         // Main [Torrent / Trackers / Peers / Options]
 
-        BSTP bstp;
+        ThreadPool bstp;
         internal ConcurrentDictionary<string, int>  peersStored         {get; private set; }
         internal ConcurrentStack<Peer>              peersForDispatch    {get; private set; }
 
@@ -362,7 +136,7 @@ namespace SuRGeoNix
         private List<Tracker>           trackers;
         private Tracker.Options         trackerOpt;
         
-        public  DHT                     dht;                            
+        private DHT                     dht;                            
         private DHT.Options             dhtOpt;
 
         internal Logger                 log;
@@ -372,38 +146,31 @@ namespace SuRGeoNix
 
         private long                    metadataLastRequested;
         private bool                    wasPaused;
-
-        // More Stats
         private int                     curSecond           = 0;
         private int                     prevSecond          = 0;
         internal long                   prevStatsTicks      = 0;
-        private int                     sha1Fails           = 0;
-        public int                      dhtPeers            = 0; // Not accurate (based on uniqueness)
-        public int                      trackersPeers       = 0; // Not accurate (based on uniqueness)
-        public int                      pexPeers            = 0; // Not accurate (based on uniqueness)
         #endregion
 
-
-        #region Constructors / Initializers / Setup / IncludeFiles
-        public BitSwarm(DefaultOptions opt = null) { Options = (opt == null) ? new DefaultOptions() : opt; }
-        public  void Initiliaze(string torrent)
-        {
-            Initiliaze();
-            this.torrent.FillFromTorrentFile(torrent);
-            Setup();
-        }
-        public  void Initiliaze(Uri magnetLink)
-        {
-            Initiliaze();
-            torrent.FillFromMagnetLink(magnetLink);
-            Setup();
-        }
+        #region Initiliaze | Setup
         private void Initiliaze()
         {
-            if (Options.DownloadPath.Trim() == ".") Options.DownloadPath = Environment.CurrentDirectory;
-            if (!Directory.Exists(Options.DownloadPath)) Directory.CreateDirectory(Options.DownloadPath);
+            // https://github.com/dotnet/runtime/issues/25792 ?
 
-            bstp    = new BSTP();
+            Options.FolderComplete      = Environment.ExpandEnvironmentVariables(Options.FolderComplete);
+            Options.FolderIncomplete    = Environment.ExpandEnvironmentVariables(Options.FolderIncomplete);
+            Options.FolderTorrents      = Environment.ExpandEnvironmentVariables(Options.FolderTorrents);
+            Options.FolderSessions      = Environment.ExpandEnvironmentVariables(Options.FolderSessions);
+
+            if (Options.TrackersPath != null)
+            Options.TrackersPath        = Environment.ExpandEnvironmentVariables(Options.TrackersPath);
+
+            if (!Directory.Exists(Options.FolderComplete))  Directory.CreateDirectory(Options.FolderComplete);
+            if (!Directory.Exists(Options.FolderIncomplete))Directory.CreateDirectory(Options.FolderIncomplete);
+            if (!Directory.Exists(Options.FolderTorrents))  Directory.CreateDirectory(Options.FolderTorrents);
+            if (!Directory.Exists(Options.FolderSessions))  Directory.CreateDirectory(Options.FolderSessions);
+
+            bstp    = new ThreadPool();
+            Stats   = new Stats();
             status  = Status.STOPPED;
 
             peerID                          = new byte[20]; rnd.NextBytes(peerID);
@@ -411,16 +178,16 @@ namespace SuRGeoNix
             peersForDispatch                = new ConcurrentStack<Peer>();
             trackers                        = new List<Tracker>();
 
-            torrent                         = new Torrent(Options.DownloadPath);
-            torrent.metadata.progress       = new BitField(20); // Max Metadata Pieces
+            torrent                         = new Torrent(this);
+            torrent.metadata.progress       = new Bitfield(20); // Max Metadata Pieces
             torrent.metadata.pieces         =  2;                // Consider 2 Pieces Until The First Response
             torrent.metadata.parallelRequests=14;               // How Many Peers We Will Ask In Parallel (firstPieceTries/2)
 
             if (Options.Verbosity > 0)
             {
-                log                         = new Logger(Path.Combine(Options.DownloadPath, "Logs", "session" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".log"    ), true);
+                log                         = new Logger(Path.Combine(Options.FolderComplete, "Logs", "session" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".log"    ), true);
                 if (Options.EnableDHT && Options.LogDHT)
-                    logDHT                  = new Logger(Path.Combine(Options.DownloadPath, "Logs", "session" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + "_DHT.log"), true);
+                    logDHT                  = new Logger(Path.Combine(Options.FolderComplete, "Logs", "session" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + "_DHT.log"), true);
             }
         }
         private void Setup()
@@ -472,30 +239,159 @@ namespace SuRGeoNix
                 MetadataReceived?.Invoke(this, new MetadataReceivedArgs(torrent));
             }
         }
-        
-        private void FillTrackersFromTorrent()
-        {
-            foreach (Uri uri in torrent.file.trackers)
-            {
-                if (uri.Scheme.ToLower() == "http" || uri.Scheme.ToLower() == "https" || uri.Scheme.ToLower() == "udp")
-                {
-                    bool found = false;
-                    foreach (var tracker in trackers)
-                        if (tracker.uri.Scheme == uri.Scheme && tracker.uri.DnsSafeHost == uri.DnsSafeHost && tracker.uri.Port == uri.Port) { found = true; break; }
-                    if (found) continue;
+        #endregion
 
-                    if (Options.LogTracker) Log($"[Torrent] [Tracker] [ADD] {uri}");
-                    trackers.Add(new Tracker(uri, trackerOpt));
+        #region Public Methods Exposed [Ctor | Open | Start | Pause | Dispose | IncludeFiles | Dumps]
+        /// <summary>
+        /// Creates a new instance of BitSwarm (subscribe to events before Open/Start)
+        /// </summary>
+        /// <param name="opt">BitSwarm's main options (can be changed later)</param>
+        public BitSwarm(Options opt = null) { Options = (opt == null) ? new Options() : opt; }
+
+        /// <summary>
+        /// Opens a Torrent File, Magnet Link, SHA-1 Hex Hash, Base32 Hash or a previously Saved Session (.bsf)
+        /// </summary>
+        /// <param name="input">Torrent File, Magnet Link, SHA-1 Hex Hash, Base32 Hash or Saved Session File</param>
+        public void Open(string input)
+        {
+            if (input == null || input.Trim() == "") throw new Exception("No input has been provided");
+            input = input.Trim();
+
+            Initiliaze();
+
+            bool isSessionFile = false;
+            //bool isTorrentFile = false;
+            BDictionary bInfo  = null;
+
+            // Check Torrent | Session
+            if (File.Exists(input))
+            {
+                FileInfo fi = new FileInfo(input);
+
+                if (fi.Extension.ToLower() == ".bsf")
+                    isSessionFile = true;
+                else if (fi.Extension.ToLower() == ".torrent")
+                    bInfo = torrent.FillFromTorrentFile(input);
+                else
+                    throw new Exception("Unknown file format has been provided");
+            }
+
+            // Check MagnetLink | SHA-1 Hash | Base32
+            else
+            {
+                if (Regex.IsMatch(input, @"^magnet:", RegexOptions.IgnoreCase))
+                    torrent.FillFromMagnetLink(new Uri(input));
+                else if (Regex.IsMatch(input, @"^[0-9abcdef]+$", RegexOptions.IgnoreCase))
+                {
+                    torrent.file.infoHash = input;
+                    if (torrent.file.infoHash.Length != 40) throw new Exception("[SHA-1] No valid hash found");
+
+                }
+                else if (Regex.IsMatch(input, @"^[a-z2-7]+$", RegexOptions.IgnoreCase))
+                {
+                    torrent.file.infoHash = Utils.ArrayToStringHex(Utils.FromBase32String(input));
+                    if (torrent.file.infoHash.Length != 40) throw new Exception("[BASE32] No valid hash found");
                 }
                 else
-                    if (Options.LogTracker) Log($"[Torrent] [Tracker] [ADD] {uri} Protocol not implemented");
+                    throw new Exception("Unknown string input has been provided");
             }
+
+            string sessionFilePath = Path.Combine(Options.FolderSessions, torrent.file.infoHash.ToUpper() + ".bsf"); //  string.Join("_", torrent.file.name.Split(Path.GetInvalidFileNameChars()));
+
+            // Input file is Session or a saved Session found in temp (for provided hash)
+            if (isSessionFile || File.Exists(sessionFilePath))
+            {
+                LoadedSessionFile = isSessionFile ? input : sessionFilePath;
+                torrent = Torrent.LoadSession(LoadedSessionFile);
+                if (torrent == null) throw new Exception($"Unable to load session file {LoadedSessionFile}");
+                torrent.bitSwarm = this;
+                torrent.FillFromSession();
+            }
+
+            // Input file is Torrent
+            else if (bInfo != null)
+                torrent.FillFromInfo(bInfo);
+
+            Setup();
         }
+        /// <summary>
+        /// Starts BitSwarm
+        /// </summary>
+        public void Start()
+        {
+            if (status == Status.RUNNING || (torrent.data.progress != null && torrent.data.progress.GetFirst0() == - 1)) return;
+            
+            wasPaused           = status == Status.PAUSED;
+            status              = Status.RUNNING;
+            Stats.EndGameMode   = false;
+            torrent.data.isDone = false;
+
+            Utils.EnsureThreadDoneNoAbort(beggar);
+
+            beggar = new Thread(() =>
+            {
+                Beggar();
+
+                if (torrent.data.isDone)
+                    StatusChanged?.Invoke(this, new StatusChangedArgs(0));
+                else
+                    StatusChanged?.Invoke(this, new StatusChangedArgs(1));
+            });
+
+            beggar.IsBackground = true;
+            beggar.Start();
+        }
+        /// <summary>
+        /// Pauses BitSwarm
+        /// </summary>
+        public void Pause()
+        {
+            if (status == Status.PAUSED) return;
+
+            status = Status.PAUSED;
+            Utils.EnsureThreadDoneNoAbort(beggar, 1500);
+            bstp.Dispose();
+        }
+        /// <summary>
+        /// Stops BitSwarm & Disposes
+        /// </summary>
+        /// <param name="force">To avoid waiting for proper disposing</param>
+        public void Dispose(bool force = false)
+        {
+            /* TODO
+             * In case of Stop and not Abort we could do an end game in the current working pieces to avoid loosing those bytes
+             *      Another solution would be to ensure proper dispose/close and serialize also working pieces (and load them back to session) | more possibilities for corrupted data but will be validated in SHA-1 validation
+             */
+
+            try
+            {
+                status = Status.STOPPED;
+
+                if (!force)
+                    Utils.EnsureThreadDoneNoAbort(beggar, 1500);
+                else
+                    bstp.Stop = true;
+
+                lock (lockerTorrent)
+                {
+                    if (torrent != null) torrent.Dispose();
+                    if (logDHT  != null) logDHT. Dispose();
+                    if (log     != null) log.    Dispose();
+                    bstp.Threads = null;
+                    peersStored?.Clear();
+                    peersForDispatch?.Clear();
+                }
+            } catch (Exception) { }
+        }
+        /// <summary>
+        /// Forces BitSwarm to download only the specified files (can be called at any time)
+        /// </summary>
+        /// <param name="includeFiles">Downloads only the specified files (from torrent.file.paths)</param>
         public void IncludeFiles(List<string> includeFiles)
         {
             if (!torrent.metadata.isDone) return;
 
-            BitField newProgress = new BitField(torrent.data.pieces);
+            Bitfield newProgress = new Bitfield(torrent.data.pieces);
             newProgress.SetAll();
 
             Stats.PiecesIncluded    = 0;
@@ -540,7 +436,7 @@ namespace SuRGeoNix
                 Stats.PiecesIncluded += (int) ((Stats.BytesIncluded/torrent.file.pieceLength) + 1);
             }
         }
-        public void CloneProgress()
+        internal void CloneProgress()
         {
             torrent.data.requests = torrent.data.progress.Clone();
 
@@ -549,141 +445,175 @@ namespace SuRGeoNix
                 pieceBlocks.requests = pieceBlocks.progress.Clone();
         }
 
-        #endregion
-
-
-        #region Start / Pause / Dispose
-        public void Start()
+        /// <summary>
+        /// Checks if the provided input could be handled by BitSwarm
+        /// </summary>
+        /// <param name="input">Torrent File, Magnet Link, SHA-1 Hex Hash, Base32 Hash or Saved Session File</param>
+        /// <returns>Identified InputType or InputType.Unknown</returns>
+        public static InputType ValidateInput(string input)
         {
-            if (status == Status.RUNNING || (torrent.data.progress != null && torrent.data.progress.GetFirst0() == - 1)) return;
-            
-            wasPaused           = status == Status.PAUSED;
-            status              = Status.RUNNING;
-            Stats.EndGameMode   = false;
-            torrent.data.isDone = false;
+            if (input == null || input.Trim() == "")        return InputType.Unkown;
 
-            Utils.EnsureThreadDoneNoAbort(beggar);
+            input = input.Trim();
 
-            beggar = new Thread(() =>
+            if (File.Exists(input))
             {
-                Beggar();
+                FileInfo fi = new FileInfo(input);
+                if (fi.Extension.ToLower() == ".bsf")       return InputType.Session;
+                if (fi.Extension.ToLower() == ".torrent")   return InputType.Torrent;
 
-                if (torrent.data.isDone)
-                    StatusChanged?.Invoke(this, new StatusChangedArgs(0));
-                else
-                    StatusChanged?.Invoke(this, new StatusChangedArgs(1));
-            });
+                return InputType.Unkown;
+            }
 
-            beggar.IsBackground = true;
-            beggar.Start();
+            if (Regex.IsMatch(input, @"^magnet:",       RegexOptions.IgnoreCase)) return InputType.Magnet;
+            if (Regex.IsMatch(input, @"^[0-9abcdef]+$", RegexOptions.IgnoreCase) && input.Length == 40) return InputType.Sha1;
+            if (Regex.IsMatch(input, @"^[a-z2-7]+$",    RegexOptions.IgnoreCase) && Utils.ArrayToStringHex(Utils.FromBase32String(input)).Length == 40) return InputType.Base32;
+
+            return InputType.Unkown;
         }
-        public void Pause()
+
+        public string DumpPeers(int sortBy = 2)
         {
-            if (status == Status.PAUSED) return;
+            Dictionary<string, string> peersDump = new Dictionary<string, string>();
 
-            status = Status.PAUSED;
-            Utils.EnsureThreadDoneNoAbort(beggar, 1500);
-            bstp.Dispose();
-        }
-        public void Dispose(bool force = false)
-        {
-            try
-            {
-                status = Status.STOPPED;
-
-
-                if (!force)
-                    Utils.EnsureThreadDoneNoAbort(beggar, 1500);
-                else
-                    bstp.Stop = true;
-
-                lock (lockerTorrent)
+            lock (peersForDispatch)
+                foreach (var thread in bstp.Threads)
                 {
-                    if (torrent != null) torrent.Dispose();
-                    if (logDHT  != null) logDHT. Dispose();
-                    if (log     != null) log.    Dispose();
-                    bstp.Threads = null;
-                    peersStored?.Clear();
-                    peersForDispatch?.Clear();
+                    if (!thread.isLongRun || thread.peer == null) continue;
+
+                    Peer peer = thread.peer;
+
+                    if (peer.status == Peer.Status.DOWNLOADING)
+                    {
+                        string verA = "";
+                        string verB = "";
+
+                        if (peer.stageYou != null && peer.stageYou.version != null)
+                        {
+                            int vPos = peer.stageYou.version.LastIndexOf('/');
+                            if (vPos == -1) vPos = peer.stageYou.version.LastIndexOf(' ');
+
+                            verA = vPos == -1 ? peer.stageYou.version : peer.stageYou.version.Substring(0, vPos); 
+                            verB = vPos == -1 ? "" : peer.stageYou.version.Substring(vPos + 1);
+
+                            if (verA.Length > 25) verA = verA.Substring(0, 25);
+                            if (verB.Length > 11) verA = verA.Substring(0, 11);
+                        }
+
+                        long   downRate =   peer.GetDownRate()/1024;
+                        string peerDump =   $"[{peer.host}".PadRight(40, ' ') + ":" + PadStats($"{peer.port}]", 6) + " " + 
+                                            $"[{verA}".PadRight(26, ' ') + PadStats($"{verB}]", 12) + " " + 
+                                            $"[{String.Format("{0:n0}", downRate).PadLeft(6, ' ')} KB/s]";
+
+                        //if (sortBy == 2)
+                        peersDump.Add(peerDump, downRate.ToString());
+                    }
                 }
-            } catch (Exception) { }
+
+            string dump = "";
+            //if (sortBy == 2)
+            foreach (var peerDump in peersDump.OrderBy(x => int.Parse(x.Value)))
+                dump += peerDump.Key + "             \r\n";
+
+            
+            dump += "\r\n" + ($"[{Stats.PeersDownloading}/{Stats.PeersChoked} D/W] [{String.Format("{0:n0}", Stats.DownRate/1024).PadLeft(6, ' ')} KB/s]").PadLeft(100, ' ') + "        \r\n";
+
+            return dump;
         }
+        public string DumpTorrent()
+        {
+            if (torrent == null || !torrent.metadata.isDone) return "Metadata not ready";
+
+            string str = "";
+            str += "=================\n";
+            str += "|Torrent Details|\n";
+            str += "=================\n";
+            str += $"Pieces/Blocks: {torrent.data.pieces}/{torrent.data.blocks} | Piece Size: {torrent.data.pieceSize}/{torrent.data.totalSize % torrent.data.pieceSize} | Block Size: {torrent.data.blockSize}/{torrent.data.blockLastSize}\n";
+            str += "\n";
+            str += torrent.file.name + " (" + Utils.BytesToReadableString(torrent.data.totalSize) + ")\n";
+            str += "\n";
+            str += "-------\n";
+            str += "|Files|\n";
+            str += "-------\n";
+
+            str += $"- {Options.FolderComplete}\n";
+
+            for (int i=0; i<torrent.file.paths.Count; i++)
+                str += $"+ {PadStats(Utils.BytesToReadableString(torrent.file.lengths[i]), 8)} | {torrent.file.paths[i]}\n";
+
+            return str;
+        }
+        public string DumpStats()
+        {
+            string mode = "NRM";
+            if (Stats.SleepMode)
+                mode = "SLP";
+            else if (Stats.BoostMode)
+                mode = "BST";
+            else if (Stats.EndGameMode)
+                mode = "END";
+
+            int alignCenter = torrent.file.name.Length + 2 + ((100 - torrent.file.name.Length) / 2);
+            string stats = $"{("[" + torrent.file.name + "]").PadLeft(alignCenter,'=').PadRight(100, '=')}\n";
+
+            string includedBytes = $" ({Utils.BytesToReadableString(Stats.BytesCurDownloaded)} / {Utils.BytesToReadableString(Stats.PiecesIncluded * torrent.data.pieceSize)})"; // Not the actual file sizes but pieces size (- first/last chunks)
+            stats += "\n";
+            stats += $"BitSwarm  " +
+                $"{PadStats(TimeSpan.FromSeconds(curSecond).ToString(@"hh\:mm\:ss"), 15)} | " + 
+                $"{PadStats("ETA " + TimeSpan.FromSeconds(Stats.AvgETA).ToString(@"hh\:mm\:ss"), 20)} | " +
+                $"{Utils.BytesToReadableString(Stats.BytesDownloaded + Stats.BytesDownloadedPrevSession)} / {Utils.BytesToReadableString(torrent.data.totalSize)}{(Stats.PiecesIncluded == torrent.data.pieces ? "" : includedBytes)}           ";
+                
+
+            stats += "\n";
+            stats += $"v{Version}".PadRight(9, ' ') +
+                $"{PadStats(String.Format("{0:n0}", Stats.DownRate/1024), 11)} KB/s | " +
+                $"{PadStats(String.Format("{0:n1}", ((Stats.DownRate * 8)/1000.0)/1000.0), 15)} Mbps | " +
+                $"Max: {String.Format("{0:n0}", Stats.MaxRate/1024)} KB/s, {String.Format("{0:n0}", ((Stats.MaxRate * 8)/1000.0)/1000.0)} Mbps            ";
+
+            stats += "\n";
+            stats += $"         " +
+                $"{PadStats($"Mode: {mode}", 15)}  | " +
+                $"{PadStats(" ", 20)} | " +
+                $"Avg: {String.Format("{0:n0}", Stats.AvgRate/1024)} KB/s, {String.Format("{0:n0}", ((Stats.AvgRate * 8)/1000.0)/1000.0)} Mbps            ";
+
+            int progressLen = Stats.Progress.ToString().Length;
+            stats += "\n";
+            for (int i=0; i<100; i++)
+            {
+                if (i == 50 - progressLen) { stats += Stats.Progress + "%"; i += progressLen + 1; }
+                stats += i < Stats.Progress ? "|" : "-";
+            }
+
+            stats += "\n";
+            stats += $"[PEERS ] " +
+                $"{PadStats($"{Stats.PeersDownloading}/{Stats.PeersChoked}", 11)} D/W  | " +
+                $"{PadStats($"{Stats.PeersConnecting}/{Stats.PeersInQueue}/{Stats.PeersTotal}", 14)} C/Q/T | " +
+                $"{Stats.PEXPeers}/{Stats.TRKPeers}/{Stats.DHTPeers} PEX/TRK/DHT {(dht.status == DHT.Status.RUNNING ? "(On)" : "(Off)")}                ";
+
+            stats += "\n";
+            stats += $"[PIECES] " +
+                $"{PadStats($"{torrent.data.progress.setsCounter}/{torrent.data.pieces}", 11)} D/T  | " +
+                $"{PadStats($"{torrent.data.requests.setsCounter}", 14)} REQ   | " +
+                $"{Utils.BytesToReadableString(Stats.BytesDropped)} / {Stats.AlreadyReceived} BLK (Drops)             ";
+
+
+            stats += "\n";
+            stats += $"[ERRORS] " +
+                $"{PadStats($"{Stats.PieceTimeouts}", 11)} TMO  | " +
+                $"{PadStats($"{Stats.Rejects}", 14)} RJS   | " +
+                $"{Stats.SHA1Failures} SHA                ";
+
+            stats += "\n";
+            for (int i=0; i<100; i++) stats += "=";
+            stats += "\n";
+
+            return stats;
+        }
+        static string PadStats(string str, int num) { return str.PadLeft(num, ' '); }
         #endregion
 
         #region Feeders [Torrent -> Trackers | Trackers -> Peers | DHT -> Peers | Client -> Stats]
-        private void  StartTrackers()
-        {
-            for (int i=0; i<trackers.Count; i++)
-            {
-                trackers[i].Announce(Options.PeersFromTracker);
-                if (i % 10 == 0) Thread.Sleep(25);
-            }
-        }
-        internal void FillPeers(Dictionary<string, int> newPeers, PeersStorage storage)
-        {
-            int countNew = 0;
-
-            lock (peersForDispatch)
-                foreach (KeyValuePair<string, int> peerKV in newPeers)
-                {
-                    if (!peersStored.ContainsKey(peerKV.Key) && !peersBanned.Contains(peerKV.Key))
-                    {
-                        peersStored.TryAdd(peerKV.Key, peerKV.Value);
-                        Peer peer = new Peer(peerKV.Key, peerKV.Value);
-                        peersForDispatch.Push(peer); //if (!bstp.Dispatch(peer)) peersForDispatch.Push(peer);
-                        countNew++;   
-                    }
-                }
-
-            if (peersForDispatch.Count > 0 && bstp.ShortRun < bstp.MinThreads)
-            {
-                for (int i=0; i< Math.Min(peersForDispatch.Count, bstp.MinThreads); i++)
-                    bstp.Dispatch(null);
-            }
-
-            if (storage == PeersStorage.TRACKER)
-                trackersPeers += countNew;
-            else if (storage == PeersStorage.DHT)
-                dhtPeers += countNew;
-            else if (storage == PeersStorage.PEX)
-                pexPeers += countNew;
-
-            if (Options.Verbosity > 0 && countNew > 0) Log($"[{storage.ToString()}] {countNew} Adding Peers");
-        }
-        internal void ReFillPeers()
-        {
-            lock (peersForDispatch)
-            {
-                if (peersForDispatch.Count > 0)
-                    Console.WriteLine("Peers queue not empty! -> " + peersStored.Count);
-
-                peersForDispatch.Clear();
-
-                HashSet<string> peersRunning = new HashSet<string>();
-
-                if (bstp.Threads != null)
-                foreach (var thread in bstp.Threads)
-                    if (thread.thread != null && thread.peer != null) peersRunning.Add(thread.peer.host);
-
-                foreach (var peerKV in peersStored)
-                {
-                    if (!peersRunning.Contains(peerKV.Key) && !peersBanned.Contains(peerKV.Key))
-                    {
-                        Peer peer = new Peer(peerKV.Key, peerKV.Value);
-                        peersForDispatch.Push(peer);
-                    }
-                }
-
-                if (peersForDispatch.Count > 0 && bstp.ShortRun < bstp.MinThreads)
-                {
-                    for (int i=0; i< Math.Min(peersForDispatch.Count, bstp.MinThreads); i++)
-                        bstp.Dispatch(null);
-                }
-
-            }
-        }
-        
-        private void  FillStats()
+        private  void FillStats()
         {
             try
             {
@@ -771,144 +701,95 @@ namespace SuRGeoNix
 
             } catch (Exception e) { Log($"[CRITICAL ERROR] Msg: {e.Message}\r\n{e.StackTrace}"); }
         }
-        public string DumpTorrent()
+        private  void FillTrackersFromTorrent()
         {
-            if (torrent == null || !torrent.metadata.isDone) return "Metadata not ready";
-
-            string str = "";
-            str += "=================\n";
-            str += "|Torrent Details|\n";
-            str += "=================\n";
-            str += $"Pieces/Blocks: {torrent.data.pieces}/{torrent.data.blocks} | Piece Size: {torrent.data.pieceSize}/{torrent.data.totalSize % torrent.data.pieceSize} | Block Size: {torrent.data.blockSize}/{torrent.data.blockLastSize}\n";
-            str += "\n";
-            str += torrent.file.name + " (" + Utils.BytesToReadableString(torrent.data.totalSize) + ")\n";
-            str += "\n";
-            str += "-------\n";
-            str += "|Files|\n";
-            str += "-------\n";
-
-            str += $"- {Options.DownloadPath}\n";
-
-            for (int i=0; i<torrent.file.paths.Count; i++)
-                str += $"+ {PadStats(Utils.BytesToReadableString(torrent.file.lengths[i]), 8)} | {torrent.file.paths[i]}\n";
-
-            return str;
-        }
-        public string DumpStats()
-        {
-            string mode = "NRM";
-            if (Stats.SleepMode)
-                mode = "SLP";
-            else if (Stats.BoostMode)
-                mode = "BST";
-            else if (Stats.EndGameMode)
-                mode = "END";
-            string stats = "";
-            for (int i=0; i<100; i++) stats += "=";
-
-            
-            string includedBytes = $" ({Utils.BytesToReadableString(Stats.BytesCurDownloaded)} / {Utils.BytesToReadableString(Stats.PiecesIncluded * torrent.data.pieceSize)})"; // Not the actual file sizes but pieces size (- first/last chunks)
-            stats += "\n";
-            stats += $"BitSwarm  " +
-                $"{PadStats(TimeSpan.FromSeconds(curSecond).ToString(@"hh\:mm\:ss"), 15)} | " + 
-                $"{PadStats("ETA " + TimeSpan.FromSeconds(Stats.AvgETA).ToString(@"hh\:mm\:ss"), 20)} | " +
-                $"{Utils.BytesToReadableString(Stats.BytesDownloaded)} / {Utils.BytesToReadableString(torrent.data.totalSize)}{(Stats.PiecesIncluded == torrent.data.pieces ? "" : includedBytes)}           ";
-                
-
-            stats += "\n";
-            stats += $"v{Version}".PadRight(9, ' ') +
-                $"{PadStats(String.Format("{0:n0}", Stats.DownRate/1024), 11)} KB/s | " +
-                $"{PadStats(String.Format("{0:n1}", ((Stats.DownRate * 8)/1000.0)/1000.0), 15)} Mbps | " +
-                $"Max: {String.Format("{0:n0}", Stats.MaxRate/1024)} KB/s, {String.Format("{0:n0}", ((Stats.MaxRate * 8)/1000.0)/1000.0)} Mbps            ";
-
-            stats += "\n";
-            stats += $"         " +
-                $"{PadStats($"Mode: {mode}", 15)}  | " +
-                $"{PadStats(" ", 20)} | " +
-                $"Avg: {String.Format("{0:n0}", Stats.AvgRate/1024)} KB/s, {String.Format("{0:n0}", ((Stats.AvgRate * 8)/1000.0)/1000.0)} Mbps            ";
-
-            int progressLen = Stats.Progress.ToString().Length;
-            stats += "\n";
-            for (int i=0; i<100; i++)
+            foreach (Uri uri in torrent.file.trackers)
             {
-                if (i == 50 - progressLen) { stats += Stats.Progress + "%"; i += progressLen + 1; }
-                stats += i < Stats.Progress ? "|" : "-";
+                if (uri.Scheme.ToLower() == "http" || uri.Scheme.ToLower() == "https" || uri.Scheme.ToLower() == "udp")
+                {
+                    bool found = false;
+                    foreach (var tracker in trackers)
+                        if (tracker.uri.Scheme == uri.Scheme && tracker.uri.DnsSafeHost == uri.DnsSafeHost && tracker.uri.Port == uri.Port) { found = true; break; }
+                    if (found) continue;
+
+                    if (Options.LogTracker) Log($"[Torrent] [Tracker] [ADD] {uri}");
+                    trackers.Add(new Tracker(uri, trackerOpt));
+                }
+                else
+                    if (Options.LogTracker) Log($"[Torrent] [Tracker] [ADD] {uri} Protocol not implemented");
             }
-
-            stats += "\n";
-            stats += $"[PEERS ] " +
-                $"{PadStats($"{Stats.PeersDownloading}/{Stats.PeersChoked}", 11)} D/W  | " +
-                $"{PadStats($"{Stats.PeersConnecting}/{Stats.PeersInQueue}/{Stats.PeersTotal}", 14)} C/Q/T | " +
-                $"{pexPeers}/{trackersPeers}/{dhtPeers} PEX/TRK/DHT {(dht.status == DHT.Status.RUNNING ? "(On)" : "(Off)")}                ";
-
-            stats += "\n";
-            stats += $"[PIECES] " +
-                $"{PadStats($"{torrent.data.progress.setsCounter}/{torrent.data.pieces}", 11)} D/T  | " +
-                $"{PadStats($"{torrent.data.requests.setsCounter}", 14)} REQ   | " +
-                $"{Utils.BytesToReadableString(Stats.BytesDropped)} / {Stats.AlreadyReceived} BLK (Drops)             ";
-
-
-            stats += "\n";
-            stats += $"[ERRORS] " +
-                $"{PadStats($"{Stats.PieceTimeouts}", 11)} TMO  | " +
-                $"{PadStats($"{Stats.Rejects}", 14)} RJS   | " +
-                $"{sha1Fails} SHA                ";
-
-            stats += "\n";
-            for (int i=0; i<100; i++) stats += "=";
-            stats += "\n";
-
-            return stats;
         }
-        public string DumpPeers(int sortBy = 2)
+        private  void StartTrackers()
         {
-            Dictionary<string, string> peersDump = new Dictionary<string, string>();
+            for (int i=0; i<trackers.Count; i++)
+            {
+                trackers[i].Announce(Options.PeersFromTracker);
+                if (i % 10 == 0) Thread.Sleep(25);
+            }
+        }
+        internal void FillPeers(Dictionary<string, int> newPeers, PeersStorage storage)
+        {
+            int countNew = 0;
 
             lock (peersForDispatch)
-                foreach (var thread in bstp.Threads)
+                foreach (KeyValuePair<string, int> peerKV in newPeers)
                 {
-                    if (!thread.isLongRun || thread.peer == null) continue;
-
-                    Peer peer = thread.peer;
-
-                    if (peer.status == Peer.Status.DOWNLOADING)
+                    if (!peersStored.ContainsKey(peerKV.Key) && !peersBanned.Contains(peerKV.Key))
                     {
-                        string verA = "";
-                        string verB = "";
-
-                        if (peer.stageYou != null && peer.stageYou.version != null)
-                        {
-                            int vPos = peer.stageYou.version.LastIndexOf('/');
-                            if (vPos == -1) vPos = peer.stageYou.version.LastIndexOf(' ');
-
-                            verA = vPos == -1 ? peer.stageYou.version : peer.stageYou.version.Substring(0, vPos); 
-                            verB = vPos == -1 ? "" : peer.stageYou.version.Substring(vPos + 1);
-
-                            if (verA.Length > 25) verA = verA.Substring(0, 25);
-                            if (verB.Length > 11) verA = verA.Substring(0, 11);
-                        }
-
-                        long   downRate =   peer.GetDownRate()/1024;
-                        string peerDump =   $"[{peer.host}".PadRight(40, ' ') + ":" + PadStats($"{peer.port}]", 6) + " " + 
-                                            $"[{verA}".PadRight(26, ' ') + PadStats($"{verB}]", 12) + " " + 
-                                            $"[{String.Format("{0:n0}", downRate).PadLeft(6, ' ')} KB/s]";
-
-                        //if (sortBy == 2)
-                        peersDump.Add(peerDump, downRate.ToString());
+                        peersStored.TryAdd(peerKV.Key, peerKV.Value);
+                        Peer peer = new Peer(peerKV.Key, peerKV.Value);
+                        peersForDispatch.Push(peer); //if (!bstp.Dispatch(peer)) peersForDispatch.Push(peer);
+                        countNew++;   
                     }
                 }
 
-            string dump = "";
-            //if (sortBy == 2)
-            foreach (var peerDump in peersDump.OrderBy(x => int.Parse(x.Value)))
-                dump += peerDump.Key + "             \r\n";
+            if (peersForDispatch.Count > 0 && bstp.ShortRun < bstp.MinThreads)
+            {
+                for (int i=0; i< Math.Min(peersForDispatch.Count, bstp.MinThreads); i++)
+                    bstp.Dispatch(null);
+            }
 
-            
-            dump += "\r\n" + ($"[{Stats.PeersDownloading}/{Stats.PeersChoked} D/W] [{String.Format("{0:n0}", Stats.DownRate/1024).PadLeft(6, ' ')} KB/s]").PadLeft(100, ' ') + "        \r\n";
+            if (storage == PeersStorage.TRACKER)
+                Stats.TRKPeers += countNew;
+            else if (storage == PeersStorage.DHT)
+                Stats.DHTPeers += countNew;
+            else if (storage == PeersStorage.PEX)
+                Stats.PEXPeers += countNew;
 
-            return dump;
+            if (Options.Verbosity > 0 && countNew > 0) Log($"[{storage.ToString()}] {countNew} Adding Peers");
         }
-        static string PadStats(string str, int num) { return str.PadLeft(num, ' '); }
+        internal void ReFillPeers()
+        {
+            lock (peersForDispatch)
+            {
+                if (peersForDispatch.Count > 0)
+                    Console.WriteLine("Peers queue not empty! -> " + peersStored.Count);
+
+                peersForDispatch.Clear();
+
+                HashSet<string> peersRunning = new HashSet<string>();
+
+                if (bstp.Threads != null)
+                foreach (var thread in bstp.Threads)
+                    if (thread.thread != null && thread.peer != null) peersRunning.Add(thread.peer.host);
+
+                foreach (var peerKV in peersStored)
+                {
+                    if (!peersRunning.Contains(peerKV.Key) && !peersBanned.Contains(peerKV.Key))
+                    {
+                        Peer peer = new Peer(peerKV.Key, peerKV.Value);
+                        peersForDispatch.Push(peer);
+                    }
+                }
+
+                if (peersForDispatch.Count > 0 && bstp.ShortRun < bstp.MinThreads)
+                {
+                    for (int i=0; i< Math.Min(peersForDispatch.Count, bstp.MinThreads); i++)
+                        bstp.Dispatch(null);
+                }
+
+            }
+        }
         #endregion
 
 
@@ -1147,7 +1028,7 @@ namespace SuRGeoNix
                 }
 
                 if (torrent.metadata.totalSize == 0)
-                {   
+                {
                     torrent.metadata.parallelRequests -= 2;
                     peer.RequestMetadata(0, 1);
                     Log($"[{peer.host.PadRight(15, ' ')}] [REQ ][M]\tPiece: 0, 1");
@@ -1379,12 +1260,18 @@ namespace SuRGeoNix
                 if (torrent.metadata.totalSize == 0)
                 {
                     torrent.metadata.totalSize  = totalSize;
-                    torrent.metadata.progress   = new BitField((totalSize/Peer.MAX_DATA_SIZE) + 1);
+                    torrent.metadata.progress   = new Bitfield((totalSize/Peer.MAX_DATA_SIZE) + 1);
                     torrent.metadata.pieces     = (totalSize/Peer.MAX_DATA_SIZE) + 1;
-                    if (torrent.file.name != null) 
-                        torrent.metadata.file       = new PartFile(Utils.FindNextAvailablePartFile(Path.Combine(Options.DownloadPath, string.Join("_", torrent.file.name.Split(Path.GetInvalidFileNameChars())) + ".torrent")), Peer.MAX_DATA_SIZE, totalSize, false);
-                    else
-                        torrent.metadata.file       = new PartFile(Utils.FindNextAvailablePartFile(Path.Combine(Options.DownloadPath, "metadata" + rnd.Next(10000) + ".torrent")), Peer.MAX_DATA_SIZE, totalSize, false);
+
+                    Partfiles.Options opt   = new Partfiles.Options();
+                    opt.Folder              = Options.FolderTorrents;
+                    opt.PartFolder          = Options.FolderTorrents;
+                    opt.AutoCreate          = false;
+                    opt.Overwrite           = true;
+                    opt.PartOverwrite       = true;
+
+                    string metadataFileName = torrent.file.name == null ? torrent.file.infoHash + ".torrent" : Utils.GetValidFileName(torrent.file.name) + ".torrent";
+                    torrent.metadata.file   = new Partfile(metadataFileName, Peer.MAX_DATA_SIZE, totalSize, opt);
                 }
 
                 if (torrent.metadata.progress.GetBit(piece)) { Log($"[{peer.host.PadRight(15, ' ')}] [RECV][M]\tPiece: {piece} Already received"); return; }
@@ -1403,9 +1290,8 @@ namespace SuRGeoNix
                 {
                     // TODO: Validate Torrent's SHA-1 Hash with Metadata Info
                     torrent.metadata.parallelRequests = -1000;
-                    Log($"Creating Metadata File {torrent.metadata.file.FileName}");
-                    torrent.metadata.file.CreateFile();
-                    torrent.metadata.file.Dispose();
+                    Log($"Creating Metadata File {torrent.metadata.file.Filename}");
+                    torrent.metadata.file.Create();
                     torrent.FillFromMetadata();
                     torrent.metadata.isDone = true;
                     Stats.PiecesIncluded    = torrent.data.pieces;
@@ -1503,7 +1389,7 @@ namespace SuRGeoNix
 
                     Stats.BytesDropped      += torrent.data.pieceProgress[piece].data.Length;
                     Stats.BytesDownloaded   -= torrent.data.pieceProgress[piece].data.Length;
-                    sha1Fails++;
+                    Stats.SHA1Failures++;
 
                     UnSetRequestsBit(piece);
                     torrent.data.pieceProgress.Remove(piece);
@@ -1608,13 +1494,16 @@ namespace SuRGeoNix
             long firstByte  = (long)piece * torrent.file.pieceLength;
             long ends       = firstByte + size;
             long sizeLeft   = size;
-            int writePos    = 0;
+            int  writePos   = 0;
             long curSize    = 0;
 
             for (int i=0; i<torrent.file.lengths.Count; i++)
             {
                 curSize += torrent.file.lengths[i];
+
                 if (firstByte < curSize) {
+                    if (torrent.data.files[i] == null) { Log("[SAVE] Null file:\t\t" + (i + 1)); return; }
+
 		            int writeSize 	= (int) Math.Min(sizeLeft, curSize - firstByte);
                     int chunkId     = (int) (((firstByte + torrent.file.pieceLength - 1) - (curSize - torrent.file.lengths[i]))/torrent.file.pieceLength);
 
@@ -1644,12 +1533,11 @@ namespace SuRGeoNix
         private void SetProgressBit(int piece)
         {
             torrent.data.progress    .SetBit(piece);
-            torrent.data.progressPrev.SetBit(piece);
+            torrent.data.progressPrev.SetBit(piece); // Ensures that if we receive a piece for an excluded file, if we included later we will not re-request it
         }
         private void SetRequestsBit(int piece)
         {
-            torrent.data.requests    .SetBit(piece);
-            //torrent.data.requestsPrev.SetBit(piece);
+            torrent.data.requests.SetBit(piece);
         }
         private void UnSetProgressBit(int piece)
         {
@@ -1658,7 +1546,7 @@ namespace SuRGeoNix
         }
         private void UnSetRequestsBit(int piece)
         {
-            torrent.data.requests    .UnSetBit(piece);
+            torrent.data.requests.UnSetBit(piece);
 
             // Ensures that we will re-request Focus Area pieces in case of rejects/fails
             if (focusArea == null && lastFocusArea != null && piece >= lastFocusArea.Item1 && piece <= lastFocusArea.Item2)
@@ -1689,7 +1577,7 @@ namespace SuRGeoNix
                     }
                 }
         }
-        class SHA1FailedPiece
+        private class SHA1FailedPiece
         {
             public int      piece;
             public byte[]   data;
@@ -1795,6 +1683,16 @@ namespace SuRGeoNix
                     if (thread != null && thread.peer != null && thread.peer.status == Peer.Status.DOWNLOADING)
                         thread.peer.CancelPieces();
                 }
+        }
+        internal void StopWithError(string Message, string StackTrace = "")
+        {
+            status = Status.STOPPED;
+
+            Log($"[CRITICAL ERROR] Msg: {Message}\r\n{StackTrace}"); StatusChanged?.Invoke(this, new StatusChangedArgs(2, Message + "\r\n"+ StackTrace));
+
+            Dispose();
+
+            throw new Exception(Message);
         }
         internal void Log(string msg) { if (Options.Verbosity > 0) log.Write($"[BitSwarm] {msg}"); }
         #endregion

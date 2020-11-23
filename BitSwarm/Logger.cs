@@ -39,14 +39,14 @@ namespace SuRGeoNix
         public void Write1(string txt)
         {
             byte[] data = Encoding.UTF8.GetBytes($"[{sw.Elapsed.ToString(@"hh\:mm\:ss\:fff")}] {txt}\r\n");
-            lock (locker) { if (disposed) return; fileStream.Write(data, 0, data.Length); }
+            lock (locker) { if (disposed) return; fileStream.Write(data, 0, data.Length); fileStream.Flush(); }
         }
         public void Write2(string txt)
         {
             if (disposed) return;
 
             byte[] data = Encoding.UTF8.GetBytes($"[{DateTime.Now.ToString("H.mm.ss.ffff")}] {txt}\r\n");
-            lock (locker) { if (disposed) return; fileStream.Write(data, 0, data.Length); }
+            lock (locker) { if (disposed) return; fileStream.Write(data, 0, data.Length); fileStream.Flush(); }
         }
 
         public void Dispose()

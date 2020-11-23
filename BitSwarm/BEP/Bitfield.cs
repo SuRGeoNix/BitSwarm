@@ -1,15 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace SuRGeoNix
-{
-    /* TODO: 
-     * 
-     * 1. locker will be removed for speed (let Beggar do the lock)
-     * 2. replace GetBit/SetBit directly within the methods for better performance
-     */
-    
-    public class BitField
+namespace SuRGeoNix.BitSwarmLib.BEP
+{   
+    public class Bitfield
     {
         public byte[]   bitfield    { get; private set; }
         public int      size        { get; private set; }
@@ -17,13 +11,13 @@ namespace SuRGeoNix
 
         readonly object locker = new object();
 
-        public BitField(int size)
+        public Bitfield(int size)
         {
             bitfield        = new byte[((size-1)/8) + 1];
             this.size       = size;
             setsCounter     = 0;
         }
-        public BitField(byte[] bitfield, int size)
+        public Bitfield(byte[] bitfield, int size)
         {
             if (size > (bitfield.Length * 8) || size <= ((bitfield.Length-1) * 8)) throw new Exception("Out of range");
 
@@ -67,7 +61,6 @@ namespace SuRGeoNix
             return true;
         }
 
-        // TODO: Review locking
         public int GetFirst0()
         {
             int bytePos = 0;
@@ -107,7 +100,7 @@ namespace SuRGeoNix
 
             return -1;
         }
-        public int GetFirst01(BitField bitfield)
+        public int GetFirst01(Bitfield bitfield)
         {
             if (bitfield == null) 
                 return -2;
@@ -124,7 +117,7 @@ namespace SuRGeoNix
             
             return -1;
         }
-        public int GetFirst01(BitField bitfield, int from, int to = -1)
+        public int GetFirst01(Bitfield bitfield, int from, int to = -1)
         {
             to = to == -1 ? size - 1 : to;
 
@@ -173,7 +166,7 @@ namespace SuRGeoNix
 
             return -1;
         }
-        public int GetFirst01Reversed(BitField bitfield, int from = 0, int to = -1)
+        public int GetFirst01Reversed(Bitfield bitfield, int from = 0, int to = -1)
         {
             to = to == -1 ? size - 1 : to;
 
@@ -208,7 +201,6 @@ namespace SuRGeoNix
 
             List<int> ret = new List<int>();
             int cur = -1;
-            //int from = 0;
 
             while (from <= to && (cur = GetFirst0(from, to)) >= 0)
             {
@@ -218,7 +210,7 @@ namespace SuRGeoNix
 
             return ret;
         }
-        public List<int> GetAll0(BitField bitfield, int from = 0, int to = -1)
+        public List<int> GetAll0(Bitfield bitfield, int from = 0, int to = -1)
         {
             to = to == -1 ? size - 1 : to;
 
@@ -326,16 +318,16 @@ namespace SuRGeoNix
             }
         }
 
-        public BitField Clone()
+        public Bitfield Clone()
         {
-            BitField clone = new BitField(size);
+            Bitfield clone = new Bitfield(size);
 
             Buffer.BlockCopy(bitfield, 0, clone.bitfield, 0, bitfield.Length);
             clone.setsCounter = setsCounter;
 
             return clone;
         }
-        public bool CopyFrom(BitField bitfield)
+        public bool CopyFrom(Bitfield bitfield)
         {
             lock (locker)
             {
@@ -349,7 +341,7 @@ namespace SuRGeoNix
 
             return true;
         }
-        public bool CopyFrom(BitField bitfield, int from, int to =-1)
+        public bool CopyFrom(Bitfield bitfield, int from, int to =-1)
         {
             to = to == -1 ? size - 1 : to;
 

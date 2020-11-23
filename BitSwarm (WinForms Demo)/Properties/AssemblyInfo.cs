@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
 [assembly: AssemblyTitle("BitSwarm")]
-[assembly: AssemblyDescription("BitTorrent Client WinForms Demo")]
+[assembly: AssemblyDescription("Bittorrent Client")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("SuRGeoNix")]
 [assembly: AssemblyProduct("BitSwarm")]
@@ -32,5 +32,5 @@ using System.Runtime.InteropServices;
 // You can specify all the values or you can default the Build and Revision Numbers
 // by using the '*' as shown below:
 // [assembly: AssemblyVersion("1.0.*")]
-[assembly: AssemblyVersion("2.2.7.0")]
-[assembly: AssemblyFileVersion("2.2.7.0")]
+[assembly: AssemblyVersion("2.3.0.0")]
+[assembly: AssemblyFileVersion("2.3.0.0")]

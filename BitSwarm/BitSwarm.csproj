@@ -14,12 +14,19 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>bitswarm bittorrent torrent client streaming dht</PackageTags>
     <Copyright>© SuRGeoNix 2020</Copyright>
-    <Version>2.2.8</Version>
-    <PackageReleaseNotes>- Adding peer download rate stats
-- Changing default download path from %temp% to %current%
-- Organizing logs &amp; clean-up of part files</PackageReleaseNotes>
-    <FileVersion>2.2.8.0</FileVersion>
-    <AssemblyVersion>2.2.8.0</AssemblyVersion>
+    <Version>2.3.0</Version>
+    <PackageReleaseNotes>- Implementing Save &amp; Load/Restore Session (with Autonomous Advanced Part Files - APF)
+- Implementing Export &amp; Load Configuration (for BitSwarm's Options)
+- Implementing Single Open for all BitSwarm's supported inputs (Torrent, Magnet, SHA1 Hash, Base32 Hash &amp; Session)
+- Organizing Folder/Files - Adding more folder paths options (Completed, Incompleted .apf, .Torrent, Session .bsf)
+- Adding support for Env variables to be used with paths (format %var% even for unix platforms)
+- Namespaces, Assemblies &amp; Code Clean-up</PackageReleaseNotes>
+    <FileVersion>2.3.0.0</FileVersion>
+    <AssemblyVersion>2.3.0.0</AssemblyVersion>
+    <RootNamespace>SuRGeoNix.BitSwarmLib</RootNamespace>
+    <Product>BitSwarm</Product>
+    <AssemblyName>BitSwarmLib</AssemblyName>
+    <PackageId>BitSwarm</PackageId>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -31,6 +38,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="APF" Version="1.1.0" />
     <PackageReference Include="BencodeNET" Version="3.1.4" />
   </ItemGroup>
 

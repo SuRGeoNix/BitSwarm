@@ -20,7 +20,7 @@ using System.Threading;
 using BencodeNET.Objects;
 using BencodeNET.Parsing;
 
-namespace SuRGeoNix.BEP
+namespace SuRGeoNix.BitSwarmLib.BEP
 {
     public class DHT
     {
@@ -454,7 +454,7 @@ namespace SuRGeoNix.BEP
                 {
                     Node node = bucketNodesPointer[curNodeKey];
 
-                    ThreadPool.QueueUserWorkItem(new WaitCallback(x =>
+                    System.Threading.ThreadPool.QueueUserWorkItem(new WaitCallback(x =>
                     {
                         GetPeers(node);
                         Interlocked.Decrement(ref curThreads);
