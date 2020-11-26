@@ -1,37 +1,83 @@
-# BitSwarm
-<p align="center"><img src="Images/readme1.png"/></p>
+# BitSwarm: Bittorrent library (.net standard) for clients & streaming purposes
 
-## Introduction
-I've always found P2P architectures a very exciting and interesting field but I've never actually mess with it. That was the main reason that I decided to design and develop a Torrent Client. Another good reason was to later combine it with my other AV player project (<a href="https://github.com/SuRGeoNix/MediaRouter">MediaRouter</a>) for torrent streaming.
+## [Introduction]
+BitSwarm implements __Bittorrent Protocol v2__ from scratch to achieve best performance and to expose low-level parameters for customization. It uses a custom thread pool and part files (<a href="https://github.com/SuRGeoNix/APF">APF</a>) for fast resume from previous incomplete session.
 
-## Design
+## [Supports]
+* Inputs (torrent file, magnet link, SHA1/Base32 hash & session file)
+* Automatic Save & Load from a previous incomplete session
+* XML Import/Export Options for Timing/Feeding & Logging Configuration
+* Feeders (DHT, PEX, Trackers & External Trackers File)
+* Peers Communication (autonomous life-cycle with minimal dropped bytes)
+* Piece SHA1 validation & phony packets / broken clients protection
+* Start/End Game modes (fast metadata retrieval, initial boosting & closure)
+* Sleep mode for minimal resources usage (disables feeders & uses half threads based on specify download rate)
+* Focus Areas to bypass normal pieces selection (for streaming)
+* Dynamic change of options (eg) for streaming - useful for changing timeouts/retries during seeking/buffering for fast resets on requested pieces)
 
-BitSwarm implements __Bittorrent Protocol v2__ (<a href="http://bittorrent.org/beps/bep_0052.html">bep_0052</a>) to achieve the following: -
+## [Todo]
+* uTP
+* IPv6 DHT/Trackers
+* Download / Upload Rate Limits
+* Uploading / Seeding
+* VPN / Proxy / Encryption
+* NAT Traversal / PnP / Hole-punching
 
-1) Properly read input of a __Torrent File__ or __Magnet Link__ and extract all the required information for the P2P communication. If you enable __DHT__ (<a href="http://bittorrent.org/beps/bep_0005.html">bep_0005</a>) requires only a Magnet Link with a Hash.
-<br/>(such as *Info-Hash, Name, Size, Trackers, Paths/Sizes, Piece Length, Piece Hashes*)
-<br/>*See Torrent.cs*
-		
-2) Communicate periodically (when and if required) with the __Trackers__ to collect more __Peers__ (Scrape / Announce) and let __DHT__ feed more Peers when it has.
-<br/>*See Tracker.cs, DHT.cs*
+## [Examples]
 
-3) Communicate with the collected __Peers__ and start downloading __Metadata__ (if required) and __Torrent data__
-<br/>*See Peer.cs, BitField.cs*
+### 1. Library Overview
+``` c#
+// Step 0: Prepare BitSwarm's Options (Timeouts/Feeders/Logging etc.)
 
-4) Saves received data to __Part Files__ and creates the completed files when done
-<br/>*See BitSwarm.cs, PartFile.cs*
+Options opt = new Options();
+	//opt.X = Y; check Options.cs for all available options
 
-## Limitations
+// Step 1: Create BitSwarm Instance
 
-What BitSwarm does and what it doesn't: -
+	// With Default Options
+BitSwarm bitSwarm = new BitSwarm();
+	// With Custom Options
+BitSwarm bitSwarm = new BitSwarm(opt);
 
-1) __Peer__ communication is implemented over common __TCP Protocol__ (doesn't currently support *uTP, NAT Traversal, PnP, Hole-punching* etc.)
+// Step 2: Subscribe events
 
-2) Peer messages communication supports __Core Protocol__ (<a href="http://bittorrent.org/beps/bep_0052.html">bep_0052</a>), __Fast Extension__ (<a href="http://bittorrent.org/beps/bep_0006.html">bep_0006</a>) and for the __Extension Protocol__ (<a href="http://bittorrent.org/beps/bep_0010.html">bep_0010</a>) it supports __Metadata Extension__ (<a href="http://bittorrent.org/beps/bep_0009.html">bep_0009</a>). It does not support *PEX (<a href="http://bittorrent.org/beps/bep_0011.html">bep_0011</a>)*.
-   
-3) The whole implementation supports __Multi-Threading__ with a number of __Parametrized Options__, __Logging__ and __Statistics__. It does not currently support setting *Download & Upload Limits*.
+	// Receives torrent data (on torrent file/session will fire directly, on magnetlink/hash will fire on metadata received - notify user with torrent detail and optionally choose which files to include)
+bitSwarm.MetadataReceived   += BitSwarm_MetadataReceived; 	// e.Torrent
+	// Receives statistics (refresh every 2 seconds - notify user with the current connections/bytes/speed of downloading)
+bitSwarm.StatsUpdated       += BitSwarm_StatsUpdated;		// e.Stats
+	// Notifies with the new status (notify user with 0: Finished, 1: Stopped, 2: Error)
+bitSwarm.StatusChanged      += BitSwarm_StatusChanged;		// e.Status
+	// Notifies that is going to stop (user can prevent it from finishing, by including other previously excluded files)
+bitSwarm.OnFinishing        += BitSwarm_OnFinishing;		// e.Cancel
 
-4) __It does not currently support Pausing a current session or Loading an existing one!__
+// Step 3: Open input (Current BitSwarm's valid inputs Torrent File/Magnet Link/SHA1 Hash/Base32 Hash/Session File)
+
+	// Open Torrent File
+bitSwarm.Open("/home/surgeonix/ubuntu.torrent");
+	// Open Magnet Link
+bitSwarm.Open("magnet:?xt=urn:btih:D1101A2B9D202811A05E8C57C557A20BF974DC8A");
+	// Open SHA1 Hash
+bitSwarm.Open("D1101A2B9D202811A05E8C57C557A20BF974DC8A");
+	// Open Base32 (SHA1) Hash
+bitSwarm.Open("RX46NCATYQRS3MCQNSEXVZGCCDNKTASQ");
+	// Open BitSwarm's .bsf Session File (BitSwarm will search automatically when you provide other inputs for an existing session file based on SHA1 hash)
+bitSwarm.Open("/home/surgeonix/.bitswarm/.sessions/D1101A2B9D202811A05E8C57C557A20BF974DC8A.bsf");
+
+// Step 4: Start downloading
+bitSwarm.Start();
+
+// Step 5: Dispose when you are done
+bitSwarm.Dispose();
+```
+
+### 2. <a href="https://github.com/SuRGeoNix/BitSwarm/blob/master/BitSwarm%20(Console%20Core%20Demo)/Program.cs">BitSwarm</a>: Console Client (.NET Core)
+<p align="center"><img src="Images/bitswarm.gif"/></p>
+
+### 3. <a href="https://github.com/SuRGeoNix/BitSwarm/blob/master/BitSwarm%20(WinForms%20Demo)/frmMain.cs">BitSwarm</a>: GUI Client (.NET Framework Winforms)
+<p align="center"><img src="Images/bitswarm_gui.png"/></p>
+
+### 4. <a href="https://github.com/SuRGeoNix/Flyleaf">Flyleaf</a>: Video Player & Torrent Streamer (.NET Framework Winforms)
+<p align="center"><img src="Images/flyleaf.png"/></p>
 
 ## Remarks
 

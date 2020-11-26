@@ -27,15 +27,16 @@ namespace SuRGeoNix.BitSwarmLib
         public int      ConnectionTimeout   { get; set; } =  600;
         public int      HandshakeTimeout    { get; set; } =  800;
         public int      MetadataTimeout     { get; set; } = 1600;
-        public int      PieceTimeout        { get; set; } = 1500;   // Large timeouts without resets will cause more working pieces (more memory/more lost bytes on force stop)
-        public int      PieceRetries        { get; set; } =    3;
+        public int      PieceTimeout        { get; set; } = 5000;   // Large timeouts without resets will cause more working pieces (more memory/more lost bytes on force stop)
+        public int      PieceRetries        { get; set; } =    0;   // Retries should be used only for specific time periods, otherwise will let the same peers to timeout and not drop them with the result of too many drop bytes / already received
 
         public bool     EnablePEX           { get; set; } = true;
         public bool     EnableDHT           { get; set; } = true;
         public bool     EnableTrackers      { get; set; } = true;
         public int      PeersFromTracker    { get; set; } = -1;
 
-        public int      BlockRequests       { get; set; } =  9;     // Blocks that we request at once for each peer (should be small on streaming to avoid delayed resets on timeouts)
+        public int      BlockRequests       { get; set; } =  9;     // Blocks that we request at once for each peer (large for better speed / small on streaming to avoid delayed resets on timeouts)
+                                                                    // TODO: Should be based on peer's downRate (slow downRates less blocks to avoid dropped bytes) | Related also with peer's Receive() timeouts
 
         public int      Verbosity           { get; set; } =  0;     // [0 - 4]
         public bool     LogTracker          { get; set; } = false;  // Verbosity 1

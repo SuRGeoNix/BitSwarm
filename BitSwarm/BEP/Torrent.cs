@@ -22,7 +22,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
         [NonSerialized]
         private static  BencodeParser   bParser = new BencodeParser();
         [NonSerialized]
-        public  static  SHA1            sha1    = new SHA1Managed();
+        private static  SHA1            sha1    = new SHA1Managed();
 
         public TorrentFile  file;
         public TorrentData  data;
@@ -120,12 +120,10 @@ namespace SuRGeoNix.BitSwarmLib.BEP
 
         public Torrent (BitSwarm bitSwarm) 
         {
-            this.bitSwarm = bitSwarm;
-
+            this.bitSwarm       = bitSwarm;
             file                = new TorrentFile();
             data                = new TorrentData();
             metadata            = new MetaData();
-
             file.trackers       = new List<Uri>();
         }
 
@@ -142,20 +140,10 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             file.length     = nvc.Get("xl") == null ? 0     : (int) UInt32.Parse(nvc.GetValues("xl")[0]);
             file.infoHash   = xt[2];
 
-            // Base32 Hash
-            if (file.infoHash.Length != 40)
-            {
-                if (Regex.IsMatch(file.infoHash,@"[QAZ2WSX3EDC4RFV5TGB6YHN7UJM8K9LP]+"))
-                {
-                    try
-                    {
-                        file.infoHash = Utils.ArrayToStringHex(Utils.FromBase32String(file.infoHash));
-                        if (file.infoHash.Length != 40) throw new Exception("[Magnet][xt] No valid hash found " + magnetLink);
-                    } catch (Exception) { throw new Exception("[Magnet][xt] No valid hash found " + magnetLink); }   
-                } else { throw new Exception("[Magnet][xt] No valid hash found " + magnetLink); }
-            }
+            if (Regex.IsMatch(file.infoHash,@"^[2-7a-z]+=*$", RegexOptions.IgnoreCase)) file.infoHash = Utils.ArrayToStringHex(Utils.FromBase32String(file.infoHash));
+            if (file.infoHash.Length != 40 || !Regex.IsMatch(file.infoHash, @"^[0-9a-f]+$", RegexOptions.IgnoreCase)) throw new Exception("[Magnet][xt] No valid hash found " + magnetLink);
 
-            string[] tr = nvc.Get("tr") == null ? null  : nvc.GetValues("tr");
+            string[] tr = nvc.Get("tr") == null ? null : nvc.GetValues("tr");
             if (tr == null) return;
 
             for (int i=0; i<tr.Length; i++)

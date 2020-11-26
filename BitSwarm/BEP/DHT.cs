@@ -22,7 +22,7 @@ using BencodeNET.Parsing;
 
 namespace SuRGeoNix.BitSwarmLib.BEP
 {
-    public class DHT
+    internal class DHT
     {
         public struct Options
         {
@@ -35,9 +35,6 @@ namespace SuRGeoNix.BitSwarmLib.BEP
 
             public int      Verbosity           { get; set; }
             public Logger   LogFile             { get; set; }
-
-
-            public Action<ConcurrentDictionary<string, int>, bool>  NewPeersClbk;
 
             internal BitSwarm Beggar            { get; set; }
 
@@ -76,8 +73,6 @@ namespace SuRGeoNix.BitSwarmLib.BEP
         private int     havePeers, requested, responded, inBucket;
         private bool    isWeirdStrategy;
         private int     minBucketDistance;
-
-        public long     lastRootsAskedAt;
         private int     weirdPeers;
         private int     normalPeers;
 

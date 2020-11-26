@@ -281,13 +281,13 @@ namespace SuRGeoNix.BitSwarmLib
             {
                 if (Regex.IsMatch(input, @"^magnet:", RegexOptions.IgnoreCase))
                     torrent.FillFromMagnetLink(new Uri(input));
-                else if (Regex.IsMatch(input, @"^[0-9abcdef]+$", RegexOptions.IgnoreCase))
+                else if (Regex.IsMatch(input, @"^[0-9a-f]+$", RegexOptions.IgnoreCase))
                 {
                     torrent.file.infoHash = input;
                     if (torrent.file.infoHash.Length != 40) throw new Exception("[SHA-1] No valid hash found");
 
                 }
-                else if (Regex.IsMatch(input, @"^[a-z2-7]+$", RegexOptions.IgnoreCase))
+                else if (Regex.IsMatch(input, @"^[2-7a-z]+=*$", RegexOptions.IgnoreCase))
                 {
                     torrent.file.infoHash = Utils.ArrayToStringHex(Utils.FromBase32String(input));
                     if (torrent.file.infoHash.Length != 40) throw new Exception("[BASE32] No valid hash found");
@@ -342,7 +342,7 @@ namespace SuRGeoNix.BitSwarmLib
             beggar.Start();
         }
         /// <summary>
-        /// Pauses BitSwarm
+        /// Pauses BitSwarm &amp; Disposes Threadpool
         /// </summary>
         public void Pause()
         {
@@ -353,7 +353,7 @@ namespace SuRGeoNix.BitSwarmLib
             bstp.Dispose();
         }
         /// <summary>
-        /// Stops BitSwarm & Disposes
+        /// Stops BitSwarm &amp; Disposes
         /// </summary>
         /// <param name="force">To avoid waiting for proper disposing</param>
         public void Dispose(bool force = false)
@@ -525,16 +525,18 @@ namespace SuRGeoNix.BitSwarmLib
             if (torrent == null || !torrent.metadata.isDone) return "Metadata not ready";
 
             string str = "";
-            str += "=================\n";
-            str += "|Torrent Details|\n";
-            str += "=================\n";
-            str += $"Pieces/Blocks: {torrent.data.pieces}/{torrent.data.blocks} | Piece Size: {torrent.data.pieceSize}/{torrent.data.totalSize % torrent.data.pieceSize} | Block Size: {torrent.data.blockSize}/{torrent.data.blockLastSize}\n";
+            str += "===============\n";
+            str += "Torrent Details\n";
+            str += "===============\n";
+            str += $"(Pieces/Blocks: {torrent.data.pieces}/{torrent.data.blocks} | Piece Size: {torrent.data.pieceSize}/{torrent.data.totalSize % torrent.data.pieceSize} | Block Size: {torrent.data.blockSize}/{torrent.data.blockLastSize})\n";
             str += "\n";
-            str += torrent.file.name + " (" + Utils.BytesToReadableString(torrent.data.totalSize) + ")\n";
+            str += $"Torrent Hash : {torrent.file.infoHash}\n";
+            str += $"Torrent Name : {torrent.file.name}\n";
+            str += $"Torrent Size : {Utils.BytesToReadableString(torrent.data.totalSize)}\n";
             str += "\n";
-            str += "-------\n";
-            str += "|Files|\n";
-            str += "-------\n";
+            str += "-----\n";
+            str += "Files\n";
+            str += "-----\n";
 
             str += $"- {Options.FolderComplete}\n";
 

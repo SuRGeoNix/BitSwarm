@@ -1,0 +1,54 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>BitSwarmLib</name>
+    </assembly>
+    <members>
+        <member name="M:SuRGeoNix.BitSwarmLib.BitSwarm.#ctor(SuRGeoNix.BitSwarmLib.Options)">
+            <summary>
+            Creates a new instance of BitSwarm (subscribe to events before Open/Start)
+            </summary>
+            <param name="opt">BitSwarm's main options (can be changed later)</param>
+        </member>
+        <member name="M:SuRGeoNix.BitSwarmLib.BitSwarm.Open(System.String)">
+            <summary>
+            Opens a Torrent File, Magnet Link, SHA-1 Hex Hash, Base32 Hash or a previously Saved Session (.bsf)
+            </summary>
+            <param name="input">Torrent File, Magnet Link, SHA-1 Hex Hash, Base32 Hash or Saved Session File</param>
+        </member>
+        <member name="M:SuRGeoNix.BitSwarmLib.BitSwarm.Start">
+            <summary>
+            Starts BitSwarm
+            </summary>
+        </member>
+        <member name="M:SuRGeoNix.BitSwarmLib.BitSwarm.Pause">
+            <summary>
+            Pauses BitSwarm &amp; Disposes Threadpool
+            </summary>
+        </member>
+        <member name="M:SuRGeoNix.BitSwarmLib.BitSwarm.Dispose(System.Boolean)">
+            <summary>
+            Stops BitSwarm &amp; Disposes
+            </summary>
+            <param name="force">To avoid waiting for proper disposing</param>
+        </member>
+        <member name="M:SuRGeoNix.BitSwarmLib.BitSwarm.IncludeFiles(System.Collections.Generic.List{System.String})">
+            <summary>
+            Forces BitSwarm to download only the specified files (can be called at any time)
+            </summary>
+            <param name="includeFiles">Downloads only the specified files (from torrent.file.paths)</param>
+        </member>
+        <member name="M:SuRGeoNix.BitSwarmLib.BitSwarm.ValidateInput(System.String)">
+            <summary>
+            Checks if the provided input could be handled by BitSwarm
+            </summary>
+            <param name="input">Torrent File, Magnet Link, SHA-1 Hex Hash, Base32 Hash or Saved Session File</param>
+            <returns>Identified InputType or InputType.Unknown</returns>
+        </member>
+        <member name="T:SuRGeoNix.BitSwarmLib.ThreadPool">
+            <summary>
+            BitSwarm's Thread Pool For Peers Dispatching [Short/Long Run]
+            </summary>
+        </member>
+    </members>
+</doc>
