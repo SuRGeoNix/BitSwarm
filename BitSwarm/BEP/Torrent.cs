@@ -14,6 +14,9 @@ using SuRGeoNix.Partfiles;
 
 namespace SuRGeoNix.BitSwarmLib.BEP
 {
+    /// <summary>
+    /// BitSwarm's Torrent
+    /// </summary>
     [Serializable]
     public class Torrent : IDisposable
     {
@@ -24,60 +27,158 @@ namespace SuRGeoNix.BitSwarmLib.BEP
         [NonSerialized]
         private static  SHA1            sha1    = new SHA1Managed();
 
+        /// <summary>
+        /// Fields of .torrent file (extracted from bencoded data)
+        /// </summary>
         public TorrentFile  file;
+
+        /// <summary>
+        /// Torrent data
+        /// </summary>
         public TorrentData  data;
+
+        /// <summary>
+        /// Metadata
+        /// </summary>
         public MetaData     metadata;
 
+        /// <summary>
+        /// Fields of .torrent file (extracted from bencoded data)
+        /// </summary>
         [Serializable]
         public struct TorrentFile
         {
-            // SHA-1 of 'info'
+            /// <summary>
+            /// SHA1 Hash computation of 'info' part
+            /// </summary>
             public string           infoHash        { get; set; }
 
-            // 'announce' | 'announce-list'
+            /// <summary>
+            /// List of trackers extracted from 'announce' | 'announce-list'
+            /// </summary>
             public List<Uri>        trackers        { get; set; }
 
-            // 'info'
-
-            // 'name' | 'length'
+            /// <summary>
+            /// Torrent name and file name in case of single file
+            /// </summary>
             public string           name            { get; set; }
+
+            /// <summary>
+            /// Torrent size (bytes) and file size in case of single file
+            /// </summary>
             public long             length          { get; set; }
 
             // ['path' | 'length']
+
+            /// <summary>
+            /// List of relative paths (in case of multi-file)
+            /// </summary>
             public List<string>     paths           { get; set; }
+
+            /// <summary>
+            /// List of sizes (bytes) for paths with the same array index (in case of multi-file)
+            /// </summary>
             public List<long>       lengths         { get; set; }
 
+            /// <summary>
+            /// Piece size (bytes)
+            /// </summary>
             public int              pieceLength     { get; set; }
 
+            /// <summary>
+            /// List of SHA1 Hashes for all torrent pieces
+            /// </summary>
             public List<byte[]>     pieces;
         }
 
+        /// <summary>
+        /// Torrent data
+        /// </summary>
         [Serializable]
         public struct TorrentData
         {
+            /// <summary>
+            /// Whether the torrent data have been completed successfully
+            /// </summary>
             public bool             isDone          { get; set; }
 
+            /// <summary>
+            /// List of APF incomplete / part files that required to create the completed files
+            /// </summary>
             [NonSerialized]
             public Partfile[]       files;
 
+            /// <summary>
+            /// List of curerent included files
+            /// </summary>
             public List<string>     filesIncludes   { get; set; }
+
+            /// <summary>
+            /// Folder where the completed files will be saved (Same as Options.FolderComplete in case of single file, otherwise Options.FolderComplete + Torrent.Name)
+            /// </summary>
             public string           folder          { get; set; }
+
+            /// <summary>
+            /// Folder where the incomplete / part files will be saved (Same as Options.FolderIncomplete in case of single file, otherwise Options.FolderIncomplete + Torrent.Name)
+            /// </summary>
             public string           folderTemp      { get; set; }
+
+            /// <summary>
+            /// Total torrent size (bytes)
+            /// </summary>
             public long             totalSize       { get; set; }
 
+            /// <summary>
+            /// Total pieces
+            /// </summary>
             public int              pieces          { get; set; }
+
+            /// <summary>
+            /// Piece size (bytes)
+            /// </summary>
             public int              pieceSize       { get; set; }
+
+            /// <summary>
+            /// Last piece size (bytes)
+            /// </summary>
             public int              pieceLastSize   { get; set; } // NOTE: it can be 0, it should be equals with pieceSize in case of totalSize % pieceSize = 0
 
+            /// <summary>
+            /// Total blocks
+            /// </summary>
             public int              blocks          { get; set; }
+
+            /// <summary>
+            /// Block size (bytes)
+            /// </summary>
             public int              blockSize       { get; set; }
+
+            /// <summary>
+            /// Last block size (bytes)
+            /// </summary>
             public int              blockLastSize   { get; set; }
+
+            /// <summary>
+            /// Blocks of last piece
+            /// </summary>
             public int              blocksLastPiece { get; set; }
 
+            /// <summary>
+            /// Progress bitfield (received pieces)
+            /// </summary>
             [NonSerialized]
             public Bitfield         progress;
+
+            /// <summary>
+            /// Requests bitfield (requested pieces)
+            /// </summary>
             [NonSerialized]
             public Bitfield         requests;
+
+            /// <summary>
+            /// Previous progress bitfield (received pieces).
+            /// Required for include / exclude files cases
+            /// </summary>
             [NonSerialized]
             public Bitfield         progressPrev;
 
@@ -102,22 +203,41 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             }
         }
 
+        /// <summary>
+        /// Metadata
+        /// </summary>
         [Serializable]
         public struct MetaData
         {
+            /// <summary>
+            /// Whether the metadata have been received successfully
+            /// </summary>
             public bool             isDone          { get; set; }
 
+            /// <summary>
+            /// Incomplete / part file for .torrent
+            /// </summary>
             [NonSerialized]
             public Partfile         file;
+
+            /// <summary>
+            /// Total pieces
+            /// </summary>
             public int              pieces          { get; set; }
+
+            /// <summary>
+            /// Total size (bytes)
+            /// </summary>
             public long             totalSize       { get; set; }
 
+            /// <summary>
+            /// Progress bitfield (received pieces)
+            /// </summary>
             [NonSerialized]
             public Bitfield         progress;
-
-            public int              parallelRequests;
         }
 
+        #pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
         public Torrent (BitSwarm bitSwarm) 
         {
             this.bitSwarm       = bitSwarm;
@@ -490,4 +610,5 @@ namespace SuRGeoNix.BitSwarmLib.BEP
         public void Dispose() { Dispose(true); }
         #endregion
     }
+    #pragma warning restore CS1591 // Missing XML comment for publicly visible type or member
 }

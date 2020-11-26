@@ -13,6 +13,7 @@ using BencodeNET.Objects;
 
 namespace SuRGeoNix
 {
+    #pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
     public partial class Utils
     {
         public static bool IsWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
@@ -338,4 +339,5 @@ namespace SuRGeoNix
         [DllImport("Kernel32.dll")]
         public static extern bool QueryPerformanceFrequency(out long lpFrequency);
     }
+    #pragma warning restore CS1591 // Missing XML comment for publicly visible type or member
 }

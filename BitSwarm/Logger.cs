@@ -5,7 +5,7 @@ using System.Text;
 
 namespace SuRGeoNix
 {
-    public class Logger
+    internal class Logger
     {
         public string       FileName        { get; private set; }
         

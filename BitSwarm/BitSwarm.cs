@@ -17,20 +17,30 @@ using static SuRGeoNix.BitSwarmLib.BEP.Torrent.TorrentData;
 
 namespace SuRGeoNix.BitSwarmLib
 {
+    /// <summary>
+    /// Bittorrent protocol v2 implementation
+    /// </summary>
     public class BitSwarm
     {
+        /// <summary>
+        /// Library version
+        /// </summary>
         public static string Version { get; private set; } = Regex.Replace(Assembly.GetExecutingAssembly().GetName().Version.ToString(), @"\.0$", "");
 
         #region Enums
-
+        /// <summary>
+        /// BitSwarm's valid input types otherwise unknown
+        /// </summary>
         public enum InputType
         {
+#pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
             Torrent,
             Magnet,
             Sha1,
             Base32,
             Session,
             Unkown
+#pragma warning restore CS1591 // Missing XML comment for publicly visible type or member
         }
         private enum SleepModeState
         {
@@ -54,6 +64,11 @@ namespace SuRGeoNix.BitSwarmLib
         #endregion
 
         #region Event Handlers
+        #pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
+
+        /// <summary>
+        /// Fires when all included pieces have been received and allows to include more incomplete files and prevent it from finishing (e.Cancel = true)
+        /// </summary>
         public event FinishingHandler OnFinishing;
         public delegate void FinishingHandler(object source, FinishingArgs e);
         public class FinishingArgs
@@ -65,6 +80,9 @@ namespace SuRGeoNix.BitSwarmLib
             }
         }
 
+        /// <summary>
+        /// Fires when metadata are available (e.Torrent). If input is a torrent or session file will fire direclty after Open. Can be used to specify included files
+        /// </summary>
         public event MetadataReceivedHandler MetadataReceived;
         public delegate void MetadataReceivedHandler(object source, MetadataReceivedArgs e);
         public class MetadataReceivedArgs
@@ -75,7 +93,10 @@ namespace SuRGeoNix.BitSwarmLib
                 Torrent = torrent;
             }
         }
-
+        
+        /// <summary>
+        /// Fires when finished (e.Status). If Status is 0 the download has been completed, if Status is 1 the sessions has been stopped and if Status is 2 an error has been occurred (e.ErrorMsg)
+        /// </summary>
         public event StatusChangedHandler StatusChanged;
         public delegate void StatusChangedHandler(object source, StatusChangedArgs e);
         public class StatusChangedArgs : EventArgs
@@ -89,6 +110,9 @@ namespace SuRGeoNix.BitSwarmLib
             }
         }
 
+        /// <summary>
+        /// Fires after receiving metdata, every 2 seconds with the fresh stats for connections/bytes/speed (e.Stats)
+        /// </summary>
         public event StatsUpdatedHandler StatsUpdated;
         public delegate void StatsUpdatedHandler(object source, StatsUpdatedArgs e);
         public class StatsUpdatedArgs : EventArgs
@@ -99,6 +123,8 @@ namespace SuRGeoNix.BitSwarmLib
                 Stats = stats;
             }
         }
+
+        #pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
         #endregion
 
         #region Public Properties Exposed
@@ -149,6 +175,9 @@ namespace SuRGeoNix.BitSwarmLib
         private int                     curSecond           = 0;
         private int                     prevSecond          = 0;
         internal long                   prevStatsTicks      = 0;
+
+        private long                    totalBytesDownloaded;
+        private long                    totalBytesDownloadedPrev;
         #endregion
 
         #region Initiliaze | Setup
@@ -181,7 +210,7 @@ namespace SuRGeoNix.BitSwarmLib
             torrent                         = new Torrent(this);
             torrent.metadata.progress       = new Bitfield(20); // Max Metadata Pieces
             torrent.metadata.pieces         =  2;                // Consider 2 Pieces Until The First Response
-            torrent.metadata.parallelRequests=14;               // How Many Peers We Will Ask In Parallel (firstPieceTries/2)
+            //Options.MetadataParallelReq=14;               // How Many Peers We Will Ask In Parallel (firstPieceTries/2)
 
             if (Options.Verbosity > 0)
             {
@@ -249,7 +278,8 @@ namespace SuRGeoNix.BitSwarmLib
         public BitSwarm(Options opt = null) { Options = (opt == null) ? new Options() : opt; }
 
         /// <summary>
-        /// Opens a Torrent File, Magnet Link, SHA-1 Hex Hash, Base32 Hash or a previously Saved Session (.bsf)
+        /// Opens a Torrent File, Magnet Link, SHA-1 Hex Hash, Base32 Hash or a previously Saved Session (.bsf).
+        /// Searches for -infoHash-.bsf file in Options.FolderSessions and restores it automatically
         /// </summary>
         /// <param name="input">Torrent File, Magnet Link, SHA-1 Hex Hash, Base32 Hash or Saved Session File</param>
         public void Open(string input)
@@ -630,8 +660,8 @@ namespace SuRGeoNix.BitSwarmLib
 
                 // Rates
                 double secondsDiff          = ((Stats.CurrentTime - prevStatsTicks) / 10000000.0); // For more accurancy
-                long totalBytesDownloaded   = Stats.BytesDownloaded + Stats.BytesDropped; // Included or Not?
-                Stats.DownRate              = (int) ((totalBytesDownloaded - Stats.BytesDownloadedPrev) / secondsDiff); // Change this (2 seconds) if you change scheduler
+                totalBytesDownloaded        = Stats.BytesDownloaded + Stats.BytesDropped; // Included or Not?
+                Stats.DownRate              = (int) ((totalBytesDownloaded - totalBytesDownloadedPrev) / secondsDiff); // Change this (2 seconds) if you change scheduler
                 Stats.AvgRate               = (int) ( totalBytesDownloaded / curSecond);
                 if (Stats.DownRate > Stats.MaxRate) Stats.MaxRate = Stats.DownRate;
 
@@ -649,10 +679,10 @@ namespace SuRGeoNix.BitSwarmLib
                     } 
                     else
                     {
-                        if (Stats.BytesDownloaded - Stats.BytesDownloadedPrev == 0)
+                        if (Stats.BytesDownloaded - totalBytesDownloadedPrev == 0)
                             Stats.ETA  *= 2; // Kind of infinite | int overflow nice
                         else 
-                            Stats.ETA   = (int) ( (torrent.data.totalSize - Stats.BytesDownloaded) / ((Stats.BytesDownloaded - Stats.BytesDownloadedPrev) / secondsDiff) );
+                            Stats.ETA   = (int) ( (torrent.data.totalSize - Stats.BytesDownloaded) / ((Stats.BytesDownloaded - totalBytesDownloadedPrev) / secondsDiff) );
 
                         if (Stats.BytesDownloaded != 0 && curSecond > 0 && Stats.BytesDownloaded > 1)
                             Stats.AvgETA = (int) ( (torrent.data.totalSize - Stats.BytesDownloaded) / (Stats.BytesDownloaded / curSecond ) );
@@ -660,7 +690,7 @@ namespace SuRGeoNix.BitSwarmLib
                 }
 
                 // Save Cur to Prev
-                Stats.BytesDownloadedPrev   = totalBytesDownloaded;
+                totalBytesDownloadedPrev    = totalBytesDownloaded;
                 prevStatsTicks              = Stats.CurrentTime;
 
                 // Stats & Clean-up
@@ -671,10 +701,6 @@ namespace SuRGeoNix.BitSwarmLib
                 Stats.PeersChoked       = 0;
                 Stats.PeersUnChoked     = 0;
                 Stats.PeersDownloading  = 0;
-
-                Stats.PeersDropped      = 0; // NOT SET
-                Stats.PeersFailed1      = 0; // NOT SET
-                Stats.PeersFailed2      = 0; // NOT SET
 
                 lock (peersForDispatch)
                     foreach (var thread in bstp.Threads)
@@ -816,6 +842,7 @@ namespace SuRGeoNix.BitSwarmLib
 
                 curSecond               = 0;
                 prevSecond              = 0;
+                totalBytesDownloadedPrev= 0;
                 Stats.MaxRate           = 0;
                 Stats.StartTime         = DateTime.UtcNow.Ticks;
                 Stats.CurrentTime       = Stats.StartTime;
@@ -853,7 +880,7 @@ namespace SuRGeoNix.BitSwarmLib
                         if (!torrent.metadata.isDone)
                         {
                             // Every 1 Second [Check Request Timeouts (Metadata)]
-                            if (metadataLastRequested != -1 && Stats.CurrentTime - metadataLastRequested > Options.MetadataTimeout * 10000) { torrent.metadata.parallelRequests += 2; Log($"[REQ ] [M] Timeout"); }
+                            if (metadataLastRequested != -1 && Stats.CurrentTime - metadataLastRequested > Options.MetadataTimeout * 10000) { Options.MetadataParallelReq += 2; Log($"[REQ ] [M] Timeout"); }
                         }
                         else
                         {
@@ -1022,16 +1049,16 @@ namespace SuRGeoNix.BitSwarmLib
                 }
 
                 // Ugly Prison TBR | Start Game with Unknown Bitfield Size So they can start and not be prisoned here
-                else if (torrent.metadata.parallelRequests < 1)
+                else if (Options.MetadataParallelReq < 1)
                 {
-                    while(isRunning && !torrent.metadata.isDone && torrent.metadata.parallelRequests < 1) Thread.Sleep(25);
+                    while(isRunning && !torrent.metadata.isDone && Options.MetadataParallelReq < 1) Thread.Sleep(25);
                     RequestPiece(peer);
                     return;
                 }
 
                 if (torrent.metadata.totalSize == 0)
                 {
-                    torrent.metadata.parallelRequests -= 2;
+                    Options.MetadataParallelReq -= 2;
                     peer.RequestMetadata(0, 1);
                     Log($"[{peer.host.PadRight(15, ' ')}] [REQ ][M]\tPiece: 0, 1");
                 }
@@ -1046,12 +1073,12 @@ namespace SuRGeoNix.BitSwarmLib
 
                     if (piece2 >= 0)
                     {
-                        torrent.metadata.parallelRequests -= 2;
+                        Options.MetadataParallelReq -= 2;
                         peer.RequestMetadata(piece, piece2);
                     }
                     else
                     {
-                        torrent.metadata.parallelRequests--;
+                        Options.MetadataParallelReq--;
                         peer.RequestMetadata(piece);
                     }
 
@@ -1256,7 +1283,7 @@ namespace SuRGeoNix.BitSwarmLib
 
             lock (lockerMetadata)
             {
-                torrent.metadata.parallelRequests  += 2;
+                Options.MetadataParallelReq  += 2;
                 peer.stageYou.metadataRequested     = false;
 
                 if (torrent.metadata.totalSize == 0)
@@ -1291,7 +1318,7 @@ namespace SuRGeoNix.BitSwarmLib
                 if (torrent.metadata.progress.setsCounter == torrent.metadata.pieces)
                 {
                     // TODO: Validate Torrent's SHA-1 Hash with Metadata Info
-                    torrent.metadata.parallelRequests = -1000;
+                    Options.MetadataParallelReq = -1000;
                     Log($"Creating Metadata File {torrent.metadata.file.Filename}");
                     torrent.metadata.file.Create();
                     torrent.FillFromMetadata();
@@ -1306,7 +1333,7 @@ namespace SuRGeoNix.BitSwarmLib
         }
         internal void MetadataPieceRejected(int piece, string src)
         {
-            torrent.metadata.parallelRequests += 2;
+            Options.MetadataParallelReq += 2;
             Log($"[{src.PadRight(15, ' ')}] [RECV][M]\tPiece: {piece} Rejected");
         }
 

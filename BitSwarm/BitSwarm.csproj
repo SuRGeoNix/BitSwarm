@@ -27,16 +27,15 @@
     <Product>BitSwarm</Product>
     <AssemblyName>BitSwarmLib</AssemblyName>
     <PackageId>BitSwarm</PackageId>
+	<GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <DocumentationFile>BitSwarmLib.xml</DocumentationFile>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <DocumentationFile>BitSwarmLib.xml</DocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>

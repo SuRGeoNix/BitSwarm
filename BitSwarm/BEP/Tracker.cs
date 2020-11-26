@@ -17,7 +17,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
      * 2. TCP: Not tested yet
      */
 
-    public class Tracker
+    internal class Tracker
     {
         public Uri      uri                         { get; private set; }
         public string   host                        { get; private set; }
