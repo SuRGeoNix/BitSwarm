@@ -5,37 +5,37 @@ using System.Xml.Serialization;
 namespace SuRGeoNix.BitSwarmLib
 {
     /// <summary>
-    /// BitSwarm's Options
+    /// BitSwarm's Options ([CP] stands for copy, that changes will not affect bitswarm's running session)
     /// </summary>
-    public class Options
+    public class Options : ICloneable
     {
         /// <summary>
-        /// Folder where the completed files will be saved
+        /// [CP] Folder where the completed files will be saved
         /// </summary>
         public string   FolderComplete      { get; set; } = Directory.GetCurrentDirectory();
 
         /// <summary>
-        /// Folder where the incomplete (part) files will be saved
+        /// [CP] Folder where the incomplete (part) files will be saved
         /// </summary>
         public string   FolderIncomplete    { get; set; } = Path.Combine(Path.GetTempPath(), "BitSwarm", ".data");
 
         /// <summary>
-        /// Folder where the .torrent files will be saved
+        /// [CP] Folder where the .torrent files will be saved
         /// </summary>
         public string   FolderTorrents      { get; set; } = Path.Combine(Path.GetTempPath(), "BitSwarm", ".torrents");
 
         /// <summary>
-        /// Folder where the .bsf BitSwarm's Session Files will be saved
+        /// [CP] Folder where the .bsf BitSwarm's Session Files will be saved
         /// </summary>
         public string   FolderSessions      { get; set; } = Path.Combine(Path.GetTempPath(), "BitSwarm", ".sessions");
 
         /// <summary>
-        /// Trackers file to include (Format: udp://host:port , one tracker per line)
+        /// [CP] Trackers file to include (Format: udp://host:port , one tracker per line)
         /// </summary>
         public string   TrackersPath        { get; set; } = "";
 
         /// <summary>
-        /// Max number of threads for total connections (Shortrun + Longrun)
+        /// [CP] Max number of threads for total connections (Shortrun + Longrun)
         /// </summary>
         public int      MaxThreads          { get; set; } =  150;   // Max Total  Connection Threads  | Short-Run + Long-Run
 
@@ -45,7 +45,7 @@ namespace SuRGeoNix.BitSwarmLib
         public int      MinThreads          { get; set; } =   15;   // Max New    Connection Threads  | Short-Run
 
         /// <summary>
-        /// Max number of threads for new connections during initial boosting (Shortrun)
+        /// [CP] Max number of threads for new connections during initial boosting (Shortrun)
         /// </summary>
         public int      BoostThreads        { get; set; } =   60;   // Max New    Connection Threads  | Boot Boost
 
@@ -79,7 +79,7 @@ namespace SuRGeoNix.BitSwarmLib
         public int      MetadataTimeout     { get; set; } = 1600;
 
         /// <summary>
-        /// Metadata parallel requests from peers (2 from each, must be multiple of 2)
+        /// [CP] Metadata parallel requests from peers (2 from each, must be multiple of 2)
         /// </summary>
         public int      MetadataParallelReq { get; set; } = 14;
 
@@ -217,5 +217,11 @@ namespace SuRGeoNix.BitSwarmLib
 
             return null;
         }
+
+        /// <summary>
+        /// Options clone to seperate live changes from the ones that are not allowed / require restart
+        /// </summary>
+        /// <returns></returns>
+        public object Clone() { return MemberwiseClone(); }
     }
 }

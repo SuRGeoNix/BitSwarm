@@ -308,23 +308,11 @@ namespace SuRGeoNix.BitSwarmLib.BEP
 
                 string torrentName  = Utils.GetValidFileName(file.name) + ".torrent";
 
-                if (!File.Exists(Path.Combine(curPath, torrentName))) File.Move(curFilePath, Path.Combine(bitSwarm.Options.FolderTorrents, torrentName));
+                if (!File.Exists(Path.Combine(curPath, torrentName))) File.Move(curFilePath, Path.Combine(bitSwarm.OptionsClone.FolderTorrents, torrentName));
 
                 FillFromInfo(bInfo);
             } catch (Exception e) { bitSwarm.StopWithError($"FillFromMetadata(): {e.Message} - {e.StackTrace}"); }
             
-        }
-        public void FillTrackersFromTrackersPath(string fileName)
-        {
-            try
-            {
-                if (fileName == null || fileName.Trim() == "" || !File.Exists(fileName)) return;
-
-                string[] trackers = File.ReadAllLines(fileName);
-
-                foreach (var tracker in trackers)
-                    try { file.trackers.Add(new Uri(tracker)); } catch (Exception) { }
-            } catch (Exception) { }
         }
         public void FillTrackersFromInfo(BDictionary torrent)
         {
@@ -346,7 +334,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
         }
         public void FillFromInfo(BDictionary bInfo)
         {
-            if (bitSwarm.Options.FolderComplete == null) bitSwarm.StopWithError("[CRITICAL] Folder Complete cannot be empty");
+            if (bitSwarm.OptionsClone.FolderComplete == null) bitSwarm.StopWithError("[CRITICAL] Folder Complete cannot be empty");
 
             bool isMultiFile    = (BList) bInfo["files"] == null ? false : true;
 
@@ -365,8 +353,8 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                 file.lengths    = GetFileLengthsFromInfo(bInfo, out long tmpTotalSize);
                 data.totalSize  = tmpTotalSize;
 
-                data.folder     = Path.Combine(bitSwarm.Options.FolderComplete  , Utils.GetValidPathName(file.name));
-                data.folderTemp = Path.Combine(bitSwarm.Options.FolderIncomplete, Utils.GetValidPathName(file.name));
+                data.folder     = Path.Combine(bitSwarm.OptionsClone.FolderComplete  , Utils.GetValidPathName(file.name));
+                data.folderTemp = Path.Combine(bitSwarm.OptionsClone.FolderIncomplete, Utils.GetValidPathName(file.name));
 
                 if (Directory.Exists(data.folder))      bitSwarm.StopWithError($"Torrent folder already exists! {data.folder}");
                 if (Directory.Exists(data.folderTemp))  Directory.Delete(data.folderTemp, true);
@@ -386,11 +374,11 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                 data.totalSize  = file.length;
                 data.files      = new Partfile[1];
 
-                string filePath = Path.Combine(bitSwarm.Options.FolderComplete  , Utils.GetValidFileName(file.name));
+                string filePath = Path.Combine(bitSwarm.OptionsClone.FolderComplete  , Utils.GetValidFileName(file.name));
                 if (File.Exists(filePath)) bitSwarm.StopWithError($"Torrent file already exists! {filePath}");
 
-                opt.Folder          = bitSwarm.Options.FolderComplete;
-                opt.PartFolder      = bitSwarm.Options.FolderIncomplete;
+                opt.Folder          = bitSwarm.OptionsClone.FolderComplete;
+                opt.PartFolder      = bitSwarm.OptionsClone.FolderIncomplete;
                 opt.PartOverwrite   = true;
 
                 data.files[0]       = new Partfile(Utils.GetValidFileName(file.name), file.pieceLength, file.length, opt);
@@ -428,8 +416,8 @@ namespace SuRGeoNix.BitSwarmLib.BEP
 
             if (data.folder != null)
             {
-                data.folder     = Path.Combine(bitSwarm.Options.FolderComplete  , Utils.GetValidPathName(file.name));
-                data.folderTemp = Path.Combine(bitSwarm.Options.FolderIncomplete, Utils.GetValidPathName(file.name));
+                data.folder     = Path.Combine(bitSwarm.OptionsClone.FolderComplete  , Utils.GetValidPathName(file.name));
+                data.folderTemp = Path.Combine(bitSwarm.OptionsClone.FolderIncomplete, Utils.GetValidPathName(file.name));
 
                 opt.Folder      = data.folder;
 
@@ -443,12 +431,12 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             }
             else
             {
-                opt.Folder = bitSwarm.Options.FolderComplete;
+                opt.Folder = bitSwarm.OptionsClone.FolderComplete;
 
                 string validFilename = Utils.GetValidFileName(file.name);
 
-                if (!File.Exists(Path.Combine(bitSwarm.Options.FolderComplete, validFilename)) && File.Exists(Path.Combine(bitSwarm.Options.FolderIncomplete, validFilename + opt.PartExtension)))
-                    data.files[0] = new Partfile(Path.Combine(bitSwarm.Options.FolderIncomplete, validFilename + opt.PartExtension), true, opt);
+                if (!File.Exists(Path.Combine(bitSwarm.OptionsClone.FolderComplete, validFilename)) && File.Exists(Path.Combine(bitSwarm.OptionsClone.FolderIncomplete, validFilename + opt.PartExtension)))
+                    data.files[0] = new Partfile(Path.Combine(bitSwarm.OptionsClone.FolderIncomplete, validFilename + opt.PartExtension), true, opt);
                 data.filesIncludes.Add(file.name);
             }
 
@@ -506,7 +494,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             try
             {
                 BinaryFormatter formatter = new BinaryFormatter();
-                string sessionFilePath = Path.Combine(bitSwarm.Options.FolderSessions, file.infoHash.ToUpper() + ".bsf");
+                string sessionFilePath = Path.Combine(bitSwarm.OptionsClone.FolderSessions, file.infoHash.ToUpper() + ".bsf");
                 fs = new FileStream(sessionFilePath, FileMode.Create);
                 formatter.Serialize(fs, this);
             }

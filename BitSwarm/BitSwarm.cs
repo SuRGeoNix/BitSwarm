@@ -128,7 +128,9 @@ namespace SuRGeoNix.BitSwarmLib
         #endregion
 
         #region Public Properties Exposed
-        public Options          Options;
+        public   Options        Options;        // Live Changes
+        internal Options        OptionsClone;   // Live Changes not allowed (will be reloaded on restart if required)
+
         public Stats            Stats;
         public bool             isRunning       => status == Status.RUNNING;
         public bool             isPaused        => status == Status.PAUSED;
@@ -152,14 +154,14 @@ namespace SuRGeoNix.BitSwarmLib
         internal byte[]                 peerID;
 
         // Main [Torrent / Trackers / Peers / Options]
-
         ThreadPool bstp;
         internal ConcurrentDictionary<string, int>  peersStored         {get; private set; }
         internal ConcurrentStack<Peer>              peersForDispatch    {get; private set; }
 
-        internal Torrent                torrent;
+        public Torrent                  torrent;
 
         private List<Tracker>           trackers;
+        private List<Uri>               trackersUnsorted;
         private Tracker.Options         trackerOpt;
         
         private DHT                     dht;                            
@@ -183,20 +185,22 @@ namespace SuRGeoNix.BitSwarmLib
         #region Initiliaze | Setup
         private void Initiliaze()
         {
+            OptionsClone = (Options) Options.Clone();
+
             // https://github.com/dotnet/runtime/issues/25792 ?
 
-            Options.FolderComplete      = Environment.ExpandEnvironmentVariables(Options.FolderComplete);
-            Options.FolderIncomplete    = Environment.ExpandEnvironmentVariables(Options.FolderIncomplete);
-            Options.FolderTorrents      = Environment.ExpandEnvironmentVariables(Options.FolderTorrents);
-            Options.FolderSessions      = Environment.ExpandEnvironmentVariables(Options.FolderSessions);
+            OptionsClone.FolderComplete      = Environment.ExpandEnvironmentVariables(OptionsClone.FolderComplete);
+            OptionsClone.FolderIncomplete    = Environment.ExpandEnvironmentVariables(OptionsClone.FolderIncomplete);
+            OptionsClone.FolderTorrents      = Environment.ExpandEnvironmentVariables(OptionsClone.FolderTorrents);
+            OptionsClone.FolderSessions      = Environment.ExpandEnvironmentVariables(OptionsClone.FolderSessions);
 
-            if (Options.TrackersPath != null)
-            Options.TrackersPath        = Environment.ExpandEnvironmentVariables(Options.TrackersPath);
+            if (OptionsClone.TrackersPath != null)
+            OptionsClone.TrackersPath        = Environment.ExpandEnvironmentVariables(OptionsClone.TrackersPath);
 
-            if (!Directory.Exists(Options.FolderComplete))  Directory.CreateDirectory(Options.FolderComplete);
-            if (!Directory.Exists(Options.FolderIncomplete))Directory.CreateDirectory(Options.FolderIncomplete);
-            if (!Directory.Exists(Options.FolderTorrents))  Directory.CreateDirectory(Options.FolderTorrents);
-            if (!Directory.Exists(Options.FolderSessions))  Directory.CreateDirectory(Options.FolderSessions);
+            if (!Directory.Exists(OptionsClone.FolderComplete))  Directory.CreateDirectory(OptionsClone.FolderComplete);
+            if (!Directory.Exists(OptionsClone.FolderIncomplete))Directory.CreateDirectory(OptionsClone.FolderIncomplete);
+            if (!Directory.Exists(OptionsClone.FolderTorrents))  Directory.CreateDirectory(OptionsClone.FolderTorrents);
+            if (!Directory.Exists(OptionsClone.FolderSessions))  Directory.CreateDirectory(OptionsClone.FolderSessions);
 
             bstp    = new ThreadPool();
             Stats   = new Stats();
@@ -210,13 +214,12 @@ namespace SuRGeoNix.BitSwarmLib
             torrent                         = new Torrent(this);
             torrent.metadata.progress       = new Bitfield(20); // Max Metadata Pieces
             torrent.metadata.pieces         =  2;                // Consider 2 Pieces Until The First Response
-            //Options.MetadataParallelReq=14;               // How Many Peers We Will Ask In Parallel (firstPieceTries/2)
 
             if (Options.Verbosity > 0)
             {
-                log                         = new Logger(Path.Combine(Options.FolderComplete, "Logs", "session" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".log"    ), true);
+                log                         = new Logger(Path.Combine(OptionsClone.FolderComplete, "Logs", "session" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".log"    ), true);
                 if (Options.EnableDHT && Options.LogDHT)
-                    logDHT                  = new Logger(Path.Combine(Options.FolderComplete, "Logs", "session" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + "_DHT.log"), true);
+                    logDHT                  = new Logger(Path.Combine(OptionsClone.FolderComplete, "Logs", "session" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + "_DHT.log"), true);
             }
         }
         private void Setup()
@@ -252,7 +255,6 @@ namespace SuRGeoNix.BitSwarmLib
             Peer.Beggar                     = this;
 
             // Fill from TorrentFile | MagnetLink + TrackersPath to Trackers
-            torrent.FillTrackersFromTrackersPath(Options.TrackersPath);
             FillTrackersFromTorrent();
 
             // TODO: Local ISP SRV _bittorrent-tracker.<> http://bittorrent.org/beps/bep_0022.html
@@ -279,7 +281,7 @@ namespace SuRGeoNix.BitSwarmLib
 
         /// <summary>
         /// Opens a Torrent File, Magnet Link, SHA-1 Hex Hash, Base32 Hash or a previously Saved Session (.bsf).
-        /// Searches for -infoHash-.bsf file in Options.FolderSessions and restores it automatically
+        /// Searches for -infoHash-.bsf file in OptionsStatic.FolderSessions and restores it automatically
         /// </summary>
         /// <param name="input">Torrent File, Magnet Link, SHA-1 Hex Hash, Base32 Hash or Saved Session File</param>
         public void Open(string input)
@@ -326,7 +328,7 @@ namespace SuRGeoNix.BitSwarmLib
                     throw new Exception("Unknown string input has been provided");
             }
 
-            string sessionFilePath = Path.Combine(Options.FolderSessions, torrent.file.infoHash.ToUpper() + ".bsf"); //  string.Join("_", torrent.file.name.Split(Path.GetInvalidFileNameChars()));
+            string sessionFilePath = Path.Combine(OptionsClone.FolderSessions, torrent.file.infoHash.ToUpper() + ".bsf"); //  string.Join("_", torrent.file.name.Split(Path.GetInvalidFileNameChars()));
 
             // Input file is Session or a saved Session found in temp (for provided hash)
             if (isSessionFile || File.Exists(sessionFilePath))
@@ -568,7 +570,7 @@ namespace SuRGeoNix.BitSwarmLib
             str += "Files\n";
             str += "-----\n";
 
-            str += $"- {Options.FolderComplete}\n";
+            str += $"- {OptionsClone.FolderComplete}\n";
 
             for (int i=0; i<torrent.file.paths.Count; i++)
                 str += $"+ {PadStats(Utils.BytesToReadableString(torrent.file.lengths[i]), 8)} | {torrent.file.paths[i]}\n";
@@ -731,7 +733,20 @@ namespace SuRGeoNix.BitSwarmLib
         }
         private  void FillTrackersFromTorrent()
         {
-            foreach (Uri uri in torrent.file.trackers)
+            trackersUnsorted = new List<Uri>();
+
+            for (int i=0; i<torrent.file.trackers.Count; i++)
+                trackersUnsorted.Add(torrent.file.trackers[i]);
+
+            if (OptionsClone.TrackersPath != null && File.Exists(OptionsClone.TrackersPath))
+            {
+                string[] trackersExternal = File.ReadAllLines(OptionsClone.TrackersPath);
+
+                foreach (var tracker in trackersExternal)
+                    try { trackersUnsorted.Add(new Uri(tracker)); } catch (Exception) { }
+            }
+
+            foreach (Uri uri in trackersUnsorted)
             {
                 if (uri.Scheme.ToLower() == "http" || uri.Scheme.ToLower() == "https" || uri.Scheme.ToLower() == "udp")
                 {
@@ -751,8 +766,12 @@ namespace SuRGeoNix.BitSwarmLib
         {
             for (int i=0; i<trackers.Count; i++)
             {
-                trackers[i].Announce(Options.PeersFromTracker);
-                if (i % 10 == 0) Thread.Sleep(25);
+                int cacheI = i;
+
+                System.Threading.ThreadPool.QueueUserWorkItem(new WaitCallback(x =>
+                {
+                    trackers[cacheI].Announce(Options.PeersFromTracker);
+                }), null);
             }
         }
         internal void FillPeers(Dictionary<string, int> newPeers, PeersStorage storage)
@@ -828,6 +847,7 @@ namespace SuRGeoNix.BitSwarmLib
             {
                 if (Utils.IsWindows) Utils.TimeBeginPeriod(5);
 
+                // BoostThreads & MaxThreads should be OptionsStatic however we dont use them anywhere else (using just Options to allow change after pause/start)
                 bstp.Initialize(Math.Max(Options.MinThreads, Math.Min(Options.BoostThreads, Options.MaxThreads)), Options.MaxThreads, peersForDispatch);
                 if (Options.BoostThreads > Options.MinThreads) { Stats.BoostMode = true; if (Options.Verbosity > 0) Log($"[MODE] Boost Activated"); }
 
@@ -848,7 +868,6 @@ namespace SuRGeoNix.BitSwarmLib
                 Stats.CurrentTime       = Stats.StartTime;
                 prevStatsTicks          = Stats.StartTime;
                 metadataLastRequested   = -1;
-                bool isAutoSleepMode    = Options.SleepModeLimit == -1;
                 int queueEmptySec       = -1;
 
                 log?.RestartTime();
@@ -880,7 +899,7 @@ namespace SuRGeoNix.BitSwarmLib
                         if (!torrent.metadata.isDone)
                         {
                             // Every 1 Second [Check Request Timeouts (Metadata)]
-                            if (metadataLastRequested != -1 && Stats.CurrentTime - metadataLastRequested > Options.MetadataTimeout * 10000) { Options.MetadataParallelReq += 2; Log($"[REQ ] [M] Timeout"); }
+                            if (metadataLastRequested != -1 && Stats.CurrentTime - metadataLastRequested > Options.MetadataTimeout * 10000) { OptionsClone.MetadataParallelReq += 2; Log($"[REQ ] [M] Timeout"); }
                         }
                         else
                         {
@@ -905,7 +924,7 @@ namespace SuRGeoNix.BitSwarmLib
                                 FillStats();
 
                                 // [Sleep Mode Auto = MaxRate x 3/4]
-                                if (isAutoSleepMode && curSecond > Options.BoostTime * 2 && Stats.MaxRate > 0)
+                                if (Options.SleepModeLimit == -1 && curSecond > Options.BoostTime * 2 && Stats.MaxRate > 0)
                                 {
                                     int curLimit = ((Stats.MaxRate * 3)/4) / 1024;
                                     if (Options.SleepModeLimit != curLimit)
@@ -1049,16 +1068,17 @@ namespace SuRGeoNix.BitSwarmLib
                 }
 
                 // Ugly Prison TBR | Start Game with Unknown Bitfield Size So they can start and not be prisoned here
-                else if (Options.MetadataParallelReq < 1)
+                else if (OptionsClone.MetadataParallelReq < 1)
                 {
-                    while(isRunning && !torrent.metadata.isDone && Options.MetadataParallelReq < 1) Thread.Sleep(25);
+                    while(isRunning && !torrent.metadata.isDone && OptionsClone.MetadataParallelReq < 1) Thread.Sleep(25);
                     RequestPiece(peer);
                     return;
                 }
 
+                //lock (lockerMetadata)
                 if (torrent.metadata.totalSize == 0)
                 {
-                    Options.MetadataParallelReq -= 2;
+                    OptionsClone.MetadataParallelReq -= 2;
                     peer.RequestMetadata(0, 1);
                     Log($"[{peer.host.PadRight(15, ' ')}] [REQ ][M]\tPiece: 0, 1");
                 }
@@ -1073,12 +1093,12 @@ namespace SuRGeoNix.BitSwarmLib
 
                     if (piece2 >= 0)
                     {
-                        Options.MetadataParallelReq -= 2;
+                        OptionsClone.MetadataParallelReq -= 2;
                         peer.RequestMetadata(piece, piece2);
                     }
                     else
                     {
-                        Options.MetadataParallelReq--;
+                        OptionsClone.MetadataParallelReq--;
                         peer.RequestMetadata(piece);
                     }
 
@@ -1283,7 +1303,7 @@ namespace SuRGeoNix.BitSwarmLib
 
             lock (lockerMetadata)
             {
-                Options.MetadataParallelReq  += 2;
+                OptionsClone.MetadataParallelReq  += 2;
                 peer.stageYou.metadataRequested     = false;
 
                 if (torrent.metadata.totalSize == 0)
@@ -1293,8 +1313,8 @@ namespace SuRGeoNix.BitSwarmLib
                     torrent.metadata.pieces     = (totalSize/Peer.MAX_DATA_SIZE) + 1;
 
                     Partfiles.Options opt   = new Partfiles.Options();
-                    opt.Folder              = Options.FolderTorrents;
-                    opt.PartFolder          = Options.FolderTorrents;
+                    opt.Folder              = OptionsClone.FolderTorrents;
+                    opt.PartFolder          = OptionsClone.FolderTorrents;
                     opt.AutoCreate          = false;
                     opt.Overwrite           = true;
                     opt.PartOverwrite       = true;
@@ -1318,7 +1338,7 @@ namespace SuRGeoNix.BitSwarmLib
                 if (torrent.metadata.progress.setsCounter == torrent.metadata.pieces)
                 {
                     // TODO: Validate Torrent's SHA-1 Hash with Metadata Info
-                    Options.MetadataParallelReq = -1000;
+                    OptionsClone.MetadataParallelReq = -1000;
                     Log($"Creating Metadata File {torrent.metadata.file.Filename}");
                     torrent.metadata.file.Create();
                     torrent.FillFromMetadata();
@@ -1333,7 +1353,7 @@ namespace SuRGeoNix.BitSwarmLib
         }
         internal void MetadataPieceRejected(int piece, string src)
         {
-            Options.MetadataParallelReq += 2;
+            OptionsClone.MetadataParallelReq += 2;
             Log($"[{src.PadRight(15, ' ')}] [RECV][M]\tPiece: {piece} Rejected");
         }
 

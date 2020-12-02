@@ -154,18 +154,25 @@ namespace SuRGeoNix.BitSwarmConsole
             lock (lockRefresh)
             {
                 torrent = e.Torrent;
-
-                view = View.Torrent;
+                view    = View.Torrent;
                 Console.Clear();
                 Console.WriteLine(bitSwarm.DumpTorrent());
                 PrintMenu();
-
-                System.Threading.Thread.Sleep(3000);
-                Console.Clear();
-                Console.WriteLine(bitSwarm.DumpStats());
-                PrintMenu();
-                view = View.Stats;
             }
+
+            System.Threading.Thread tmp = new System.Threading.Thread(() =>
+            {
+                lock (lockRefresh)
+                {
+                    System.Threading.Thread.Sleep(3000);
+                    Console.Clear();
+                    Console.WriteLine(bitSwarm.DumpStats());
+                    PrintMenu();
+                    view = View.Stats;
+                }
+            });
+            tmp.IsBackground = true;
+            tmp.Start();
         }
         private static void BitSwarm_StatsUpdated(object source, BitSwarm.StatsUpdatedArgs e)
         {

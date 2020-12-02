@@ -14,15 +14,15 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>bitswarm bittorrent torrent client streaming dht</PackageTags>
     <Copyright>© SuRGeoNix 2020</Copyright>
-    <Version>2.3.1</Version>
-    <PackageReleaseNotes>- Implementing Save &amp; Load/Restore Session (with Autonomous Advanced Part Files - APF)
-- Implementing Export &amp; Load Configuration (for BitSwarm's Options)
-- Implementing Single Open for all BitSwarm's supported inputs (Torrent, Magnet, SHA1 Hash, Base32 Hash &amp; Session)
-- Organizing Folder/Files - Adding more folder paths options (Completed, Incompleted .apf, .Torrent, Session .bsf)
-- Adding support for Env variables to be used with paths (format %var% even for unix platforms)
-- Namespaces, Assemblies &amp; Code Clean-up</PackageReleaseNotes>
-    <FileVersion>2.3.1.0</FileVersion>
-    <AssemblyVersion>2.3.1.0</AssemblyVersion>
+    <Version>2.3.2</Version>
+    <PackageReleaseNotes>Fixing minor issues found during Flyleaf's update (for streaming)
+
+- It wouldn't process TrackersPath on loaded session
+- It wouldn't process SleepMode back to Auto
+- Options seperating live changes while running with not allowed ones / that require restart
+- Delay issue with StartTrackers (was not using threading)</PackageReleaseNotes>
+    <FileVersion>2.3.2.0</FileVersion>
+    <AssemblyVersion>2.3.2.0</AssemblyVersion>
     <RootNamespace>SuRGeoNix.BitSwarmLib</RootNamespace>
     <Product>BitSwarm</Product>
     <AssemblyName>BitSwarmLib</AssemblyName>

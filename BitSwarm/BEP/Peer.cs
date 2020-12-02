@@ -203,7 +203,12 @@ namespace SuRGeoNix.BitSwarmLib.BEP
         public bool Connect()
         {
             /* NOTES (TCP Socket)
+             * -----
+             * Issue: TCPClient .NET Standard -> .NET Framework (Dual mode IPv4/IPv6 fails?)
+             * [2601:1c0:c801:9060:f995:8e8e:af94:4210] Exception -> None of the discovered or specified addresses match the socket address family.
+             * https://github.com/dotnet/runtime/issues/26036
              * 
+             * -----
              * TCP Performance based on current OS
              * 
              * Increase TCP dynamic ports avaiable & Reduce Close (TIME_WAIT) Delay (eg. on Windows -> https://docs.microsoft.com/en-us/biztalk/technical-guides/settings-that-can-be-modified-to-improve-network-performance)

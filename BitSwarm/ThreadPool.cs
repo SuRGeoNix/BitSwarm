@@ -45,7 +45,18 @@ namespace SuRGeoNix.BitSwarmLib
                 }
             }
         }
-        public void SetMinThreads(int minThreads) { lock (lockerThreads) MinThreads = minThreads; }
+        public void SetMinThreads(int minThreads)
+        {
+            lock (lockerThreads)
+            {
+                if (minThreads > MaxThreads)
+                    MinThreads = MaxThreads;
+                else if (minThreads < 0)
+                    MinThreads = 0;
+                else
+                    MinThreads = minThreads;
+            }
+        }
         private void StartThread(int i)
         {
             int cacheI = i;
