@@ -404,6 +404,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             data.pieceProgress  = new Dictionary<int, TorrentData.PieceProgress>();
 
             SaveSession();
+            PrepareStreamFiles();
         }
         
         public void FillFromSession()
@@ -487,6 +488,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             }
 
             data.requests = data.progress.Clone();
+            PrepareStreamFiles();
         }
         public void SaveSession()
         {
@@ -597,6 +599,77 @@ namespace SuRGeoNix.BitSwarmLib.BEP
         }
         public void Dispose() { Dispose(true); }
         #endregion
+
+        #region Preparing Stream Support
+        public static List<string> MovieExts = new List<string>() { "mp4", "m4v", "m4e", "mkv", "mpg", "mpeg" , "mpv", "mp4p", "mpe" , "m1v", "m2ts", "m2p", "m2v", "movhd", "moov", "movie", "movx", "mjp", "mjpeg", "mjpg", "amv" , "asf", "m4v", "3gp", "ogm", "ogg", "vob", "ts", "rm", "3gp", "3gp2", "3gpp", "3g2", "f4v", "f4a", "f4p", "f4b", "mts", "m2ts", "gifv", "avi", "mov", "flv", "wmv", "qt", "avchd", "swf", "cam", "nsv", "ram", "rm", "x264", "xvid", "wmx", "wvx", "wx", "video", "viv", "vivo", "vid", "dat", "bik", "bix", "dmf", "divx" };
+        public Dictionary<string, TorrentStream> StreamFiles = new Dictionary<string, TorrentStream>();
+        public class TorrentStream
+        {
+            public Partfile Stream      { get; set; }
+            public long     StartPos    { get; set; }
+            public long     EndPos      { get; set; }
+
+            public TorrentStream(Partfile pf, long distance) { Stream = pf; StartPos = distance; EndPos = StartPos + pf.Size; }
+        }
+        public void PrepareStreamFiles()
+        {
+            /* TODO
+             * 
+             * 1. Alphanumeric sorting
+             * 2. Add FirstFilePiece / LastFilePiece ?
+             */
+            long startPos = 0;
+
+            for (int i=0; i<file.paths.Count; i++)
+            {
+                string ext = Path.GetExtension(file.paths[i]);
+                if (ext == null || ext.Trim() == "") { startPos += file.lengths[i]; continue; }
+
+                if (MovieExts.Contains(ext.Substring(1,ext.Length-1)))
+                {
+                    StreamFiles.Add(file.paths[i], new TorrentStream(data.files[i], startPos));
+                    data.files[i].BeforeReading += Torrent_BeforeReading;
+                }
+
+                startPos += file.lengths[i];
+            }
+        }
+        private void Torrent_BeforeReading(Partfile pf, Partfile.BeforeReadingEventArgs e)
+        {
+            /* TODO
+             * 
+             * 1. Open/Seek Piece Timeouts for faster buffering
+             * 2. Cancellation support?
+             * 3. Review insist on Focus Area
+             * 4. Open/Seek timeouts | When FA changes to different areas we should use a different timeout (for few reads?)
+             */
+            TorrentStream curStream = StreamFiles[pf.Filename];
+
+            int startPiece  = FilePosToPiece(curStream, curStream.StartPos + e.Position);
+            int endPiece    = FilePosToPiece(curStream, curStream.StartPos + e.Position + e.Count);
+            int lastPiece   = FilePosToPiece(curStream, curStream.StartPos + pf.Size);
+
+            if (data.progress.GetFirst0(startPiece, endPiece) != -1)
+            {
+                Console.WriteLine($"[FA: {startPiece} - {endPiece}] Buffering");
+                while (data.progress.GetFirst0(startPiece, endPiece) != -1)
+                {
+                    bitSwarm.FocusArea = new Tuple<int, int>(startPiece, lastPiece);
+
+                    System.Threading.Thread.Sleep(40);
+                }
+                Console.WriteLine($"[FA: {startPiece} - {endPiece}] Done");
+            }
+        }
+
+        private int FilePosToPiece(TorrentStream ts, long filePos)
+        {
+            int piece = (int)((ts.StartPos + filePos) / file.pieceLength);
+            if (piece >= data.pieces) piece = data.pieces - 1;
+
+            return piece;
+        }
+        #endregion
     }
-    #pragma warning restore CS1591 // Missing XML comment for publicly visible type or member
+#pragma warning restore CS1591 // Missing XML comment for publicly visible type or member
 }

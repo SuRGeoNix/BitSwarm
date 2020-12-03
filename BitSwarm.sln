@@ -17,6 +17,11 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BitSwarm (Console Core Demo)", "BitSwarm (Console Core Demo)\BitSwarm (Console Core Demo).csproj", "{273CC3F2-7767-42D4-9275-C1A75307002D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LibVLCStreaming", "LibVLCStreaming\LibVLCStreaming.csproj", "{7446326E-05D3-48B4-8D46-54F78C4EA84D}"
+	ProjectSection(ProjectDependencies) = postProject
+		{373AC16D-9FB0-4215-B09B-E576516932D0} = {373AC16D-9FB0-4215-B09B-E576516932D0}
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -59,6 +64,18 @@ Global
 		{273CC3F2-7767-42D4-9275-C1A75307002D}.Release|x64.Build.0 = Release|Any CPU
 		{273CC3F2-7767-42D4-9275-C1A75307002D}.Release|x86.ActiveCfg = Release|Any CPU
 		{273CC3F2-7767-42D4-9275-C1A75307002D}.Release|x86.Build.0 = Release|Any CPU
+		{7446326E-05D3-48B4-8D46-54F78C4EA84D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7446326E-05D3-48B4-8D46-54F78C4EA84D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7446326E-05D3-48B4-8D46-54F78C4EA84D}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{7446326E-05D3-48B4-8D46-54F78C4EA84D}.Debug|x64.Build.0 = Debug|Any CPU
+		{7446326E-05D3-48B4-8D46-54F78C4EA84D}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{7446326E-05D3-48B4-8D46-54F78C4EA84D}.Debug|x86.Build.0 = Debug|Any CPU
+		{7446326E-05D3-48B4-8D46-54F78C4EA84D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7446326E-05D3-48B4-8D46-54F78C4EA84D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7446326E-05D3-48B4-8D46-54F78C4EA84D}.Release|x64.ActiveCfg = Release|Any CPU
+		{7446326E-05D3-48B4-8D46-54F78C4EA84D}.Release|x64.Build.0 = Release|Any CPU
+		{7446326E-05D3-48B4-8D46-54F78C4EA84D}.Release|x86.ActiveCfg = Release|Any CPU
+		{7446326E-05D3-48B4-8D46-54F78C4EA84D}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
