@@ -645,9 +645,9 @@ namespace SuRGeoNix.BitSwarmLib.BEP
              */
             TorrentStream curStream = StreamFiles[pf.Filename];
 
-            int startPiece  = FilePosToPiece(curStream, curStream.StartPos + e.Position);
-            int endPiece    = FilePosToPiece(curStream, curStream.StartPos + e.Position + e.Count);
-            int lastPiece   = FilePosToPiece(curStream, curStream.StartPos + pf.Size);
+            int startPiece  = FilePosToPiece(curStream, e.Position);
+            int endPiece    = FilePosToPiece(curStream, e.Position + e.Count);
+            int lastPiece   = FilePosToPiece(curStream, pf.Size);
 
             if (data.progress.GetFirst0(startPiece, endPiece) != -1)
             {

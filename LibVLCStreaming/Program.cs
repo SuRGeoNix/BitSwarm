@@ -27,8 +27,12 @@ namespace LibVLCStreaming
 
             // Initialize BitSwarm
             Options opt = new Options();
+            opt.BlockRequests   = 2;    // To avoid timeouts for large byte ranges
+            opt.PieceTimeout    = 1000; // It will reset the requested blocks after 1sec of timeout (this means that we might get them twice or more) | More drop bytes vs Faster streaming (should be set only during open/seek)
+            opt.PieceRetries    = 5;    // To avoid disconnecting the peer (reset pieces on first retry but keep the peer alive) 
             //opt.Verbosity = 2;
             //opt.LogStats = true;
+
             bitSwarm    = new BitSwarm(opt);
             bitSwarm.MetadataReceived   += BitSwarm_MetadataReceived;
             bitSwarm.StatsUpdated       += BitSwarm_StatsUpdated;
