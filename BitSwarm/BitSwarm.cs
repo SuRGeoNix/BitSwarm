@@ -328,7 +328,7 @@ namespace SuRGeoNix.BitSwarmLib
                     throw new Exception("Unknown string input has been provided");
             }
 
-            string sessionFilePath = Path.Combine(OptionsClone.FolderSessions, torrent.file.infoHash.ToUpper() + ".bsf"); //  string.Join("_", torrent.file.name.Split(Path.GetInvalidFileNameChars()));
+            string sessionFilePath = !isSessionFile ? Path.Combine(OptionsClone.FolderSessions, torrent.file.infoHash.ToUpper() + ".bsf") : ""; //  string.Join("_", torrent.file.name.Split(Path.GetInvalidFileNameChars()));
 
             // Input file is Session or a saved Session found in temp (for provided hash)
             if (isSessionFile || File.Exists(sessionFilePath))
@@ -1342,10 +1342,13 @@ namespace SuRGeoNix.BitSwarmLib
                     Log($"Creating Metadata File {torrent.metadata.file.Filename}");
                     torrent.metadata.file.Create();
                     torrent.FillFromMetadata();
-                    torrent.metadata.isDone = true;
+                    torrent.metadata.isDone = true; // Should be before (DumpTorrent & Invoke -> includeFiles etc)
+
                     Stats.PiecesIncluded    = torrent.data.pieces;
                     Stats.BytesIncluded     = torrent.data.totalSize;
+
                     Log("Dumping Torrent\r\n" + DumpTorrent());
+
                     // Invoke? hm...
                     MetadataReceived?.Invoke(this, new MetadataReceivedArgs(torrent));
                 }
@@ -1421,11 +1424,12 @@ namespace SuRGeoNix.BitSwarmLib
                     {
                         if (Options.Verbosity > 0) Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P]\tPiece: {piece} Block: {block} Offset: {offset} Size: {data.Length} Size2: {torrent.data.pieceProgress[piece].data.Length} SHA-1 failed | Doing Diff (both)");
                         SHA1FailedPiece sfp = new SHA1FailedPiece(piece, torrent.data.pieceProgress[piece].data, recvBlocksTracking, torrent.data.blocks);
-                        List<string> responsiblePeers = SHA1FailedPiece.FindDiffs(sha1FailedPieces[piece], sfp, true);
+                        List<string> responsiblePeers = SHA1FailedPiece.FindDiffs(sha1FailedPieces[piece], sfp, torrent, true);
 
                         // We will probably ban also good peers here
-                        foreach(string host in responsiblePeers)
-                            BanPeer(host);
+                        if (responsiblePeers != null)
+                            foreach(string host in responsiblePeers)
+                                BanPeer(host);
                     }
 
                     // Failure first time | Keep piece data for later review
@@ -1451,10 +1455,11 @@ namespace SuRGeoNix.BitSwarmLib
                 {
                     if (Options.Verbosity > 0) Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P]\tPiece: {piece} Block: {block} Offset: {offset} Size: {data.Length} Size2: {torrent.data.pieceProgress[piece].data.Length} SHA-1 Success | Doing Diff");
                     SHA1FailedPiece sfp = new SHA1FailedPiece(piece, torrent.data.pieceProgress[piece].data, recvBlocksTracking, torrent.data.blocks);
-                    List<string> responsiblePeers = SHA1FailedPiece.FindDiffs(sha1FailedPieces[piece], sfp);
+                    List<string> responsiblePeers = SHA1FailedPiece.FindDiffs(sha1FailedPieces[piece], sfp, torrent);
 
-                    foreach(string host in responsiblePeers)
-                        BanPeer(host);
+                    if (responsiblePeers != null)
+                        foreach(string host in responsiblePeers)
+                            BanPeer(host);
 
                     // Clean-up
                     sha1FailedPieces.TryRemove(piece, out SHA1FailedPiece tmp01);
@@ -1648,55 +1653,72 @@ namespace SuRGeoNix.BitSwarmLib
                     
             }
 
-            public static List<string> FindDiffs(SHA1FailedPiece sfp1, SHA1FailedPiece sfp2, bool bothSide = true)
+            public static List<string> FindDiffs(SHA1FailedPiece sfp1, SHA1FailedPiece sfp2, Torrent torrent, bool bothSide = true)
             {
-                // Will not check the LastPiece / LastBlock
-                if (sfp1 == null || sfp2 == null || sfp1.piece != sfp2.piece || sfp1.data.Length != sfp2.data.Length || sfp1.data.Length % Peer.MAX_DATA_SIZE != 0)
-                    return null;
-
-                List<string> responsiblePeers = new List<string>();
-
-                Dictionary<string, int> famousCounter = new Dictionary<string, int>();
-
-                // Creates the list with responsible peers (diff blocks sent)
-                for(int i=0; i<=sfp1.data.Length % Peer.MAX_DATA_SIZE; i++)
+                try
                 {
-                    if (!famousCounter.ContainsKey(sfp1.recvBlocksTracking[$"{sfp1.piece}|{i}"])) famousCounter.Add(sfp1.recvBlocksTracking[$"{sfp1.piece}|{i}"], 0);
-                    if (!famousCounter.ContainsKey(sfp2.recvBlocksTracking[$"{sfp2.piece}|{i}"])) famousCounter.Add(sfp2.recvBlocksTracking[$"{sfp2.piece}|{i}"], 0);
+                    if (sfp1 == null || sfp2 == null || sfp1.piece != sfp2.piece || sfp1.data.Length != sfp2.data.Length)
+                        return null;
 
-                    famousCounter[sfp1.recvBlocksTracking[$"{sfp1.piece}|{i}"]]++;
-                    famousCounter[sfp2.recvBlocksTracking[$"{sfp2.piece}|{i}"]]++;
+                    List<string> responsiblePeers = new List<string>();
 
-                    byte[] block1 = Utils.ArraySub(ref sfp1.data, i, Peer.MAX_DATA_SIZE);
-                    byte[] block2 = Utils.ArraySub(ref sfp2.data, i, Peer.MAX_DATA_SIZE);
-                    
-                    if (!Utils.ArrayComp(block1, block2))
+                    Dictionary<string, int> famousCounter = new Dictionary<string, int>();
+
+                    // Creates the list with responsible peers (diff blocks sent)
+                    int blocks = sfp1.piece == torrent.data.pieces - 1 ? torrent.data.blocksLastPiece : torrent.data.blocks;
+                    int blockLastSize = sfp1.piece == torrent.data.pieces - 1 ? torrent.data.blockLastSize : torrent.data.blockLastSize2;
+
+                    for(int i=0; i<blocks; i++)
                     {
-                        if (!responsiblePeers.Contains(sfp1.recvBlocksTracking[$"{sfp1.piece}|{i}"]))
-                            responsiblePeers.Add(sfp1.recvBlocksTracking[$"{sfp1.piece}|{i}"]);
+                        if (!famousCounter.ContainsKey(sfp1.recvBlocksTracking[$"{sfp1.piece}|{i}"])) famousCounter.Add(sfp1.recvBlocksTracking[$"{sfp1.piece}|{i}"], 0);
+                        if (!famousCounter.ContainsKey(sfp2.recvBlocksTracking[$"{sfp2.piece}|{i}"])) famousCounter.Add(sfp2.recvBlocksTracking[$"{sfp2.piece}|{i}"], 0);
 
-                        if (bothSide && !responsiblePeers.Contains(sfp2.recvBlocksTracking[$"{sfp2.piece}|{i}"]))
-                            responsiblePeers.Add(sfp2.recvBlocksTracking[$"{sfp2.piece}|{i}"]);
-                    }
-                }
+                        famousCounter[sfp1.recvBlocksTracking[$"{sfp1.piece}|{i}"]]++;
+                        famousCounter[sfp2.recvBlocksTracking[$"{sfp2.piece}|{i}"]]++;
 
-                // Same invalid blocks probably from same peer (let's gamble with posibilities)
-                if (responsiblePeers.Count == 0)
-                {
-                    string  mostFamous  = "";
-                    int     curMin      = 0;
-                    foreach (var famous in famousCounter)
-                    {
-                        if (famous.Value > curMin)
+                        byte[] block1, block2;
+                        int offset = i * torrent.data.blockSize;
+
+                        if (i == blocks - 1)
                         {
-                            curMin      = famous.Value;
-                            mostFamous  = famous.Key;
+                            block1 = Utils.ArraySub(ref sfp1.data, offset, blockLastSize);
+                            block2 = Utils.ArraySub(ref sfp2.data, offset, blockLastSize);
+                        }
+                        else
+                        {
+                            block1 = Utils.ArraySub(ref sfp1.data, offset, torrent.data.blockSize);
+                            block2 = Utils.ArraySub(ref sfp2.data, offset, torrent.data.blockSize);
+                        }
+
+                        if (!Utils.ArrayComp(block1, block2))
+                        {
+                            if (!responsiblePeers.Contains(sfp1.recvBlocksTracking[$"{sfp1.piece}|{i}"]))
+                                responsiblePeers.Add(sfp1.recvBlocksTracking[$"{sfp1.piece}|{i}"]);
+
+                            if (bothSide && !responsiblePeers.Contains(sfp2.recvBlocksTracking[$"{sfp2.piece}|{i}"]))
+                                responsiblePeers.Add(sfp2.recvBlocksTracking[$"{sfp2.piece}|{i}"]);
                         }
                     }
-                    if (mostFamous != "") responsiblePeers.Add(mostFamous);
-                }
+
+                    // Same invalid blocks probably from same peer (let's gamble with posibilities)
+                    if (responsiblePeers.Count == 0)
+                    {
+                        string  mostFamous  = "";
+                        int     curMin      = 0;
+                        foreach (var famous in famousCounter)
+                        {
+                            if (famous.Value > curMin)
+                            {
+                                curMin      = famous.Value;
+                                mostFamous  = famous.Key;
+                            }
+                        }
+                        if (mostFamous != "") responsiblePeers.Add(mostFamous);
+                    }
                 
-                return responsiblePeers;
+                    return responsiblePeers;
+                }
+                catch (Exception) { return null; }
             }
         }
         HashSet<string> peersBanned = new HashSet<string>();
@@ -1720,6 +1742,8 @@ namespace SuRGeoNix.BitSwarmLib
         {
             if (piece == torrent.data.pieces - 1 && block == torrent.data.blocksLastPiece - 1)
                 return torrent.data.blockLastSize;
+            else if (block == torrent.data.blocks - 1)
+                return torrent.data.blockLastSize2;
             else
                 return torrent.data.blockSize;
         }

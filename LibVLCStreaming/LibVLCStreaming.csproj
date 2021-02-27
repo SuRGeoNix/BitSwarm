@@ -6,7 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="APF" Version="1.1.1" />
+    <PackageReference Include="APF" Version="1.2.0" />
     <PackageReference Include="LibVLCSharp" Version="3.4.9" />
     <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.11" />
   </ItemGroup>

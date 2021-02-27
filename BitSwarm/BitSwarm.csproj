@@ -14,15 +14,15 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>bitswarm bittorrent torrent client streaming dht</PackageTags>
     <Copyright>© SuRGeoNix 2020</Copyright>
-    <Version>2.3.2</Version>
-    <PackageReleaseNotes>Fixing minor issues found during Flyleaf's update (for streaming)
-
-- It wouldn't process TrackersPath on loaded session
-- It wouldn't process SleepMode back to Auto
-- Options seperating live changes while running with not allowed ones / that require restart
-- Delay issue with StartTrackers (was not using threading)</PackageReleaseNotes>
-    <FileVersion>2.3.2.0</FileVersion>
-    <AssemblyVersion>2.3.2.0</AssemblyVersion>
+    <Version>2.3.3</Version>
+    <PackageReleaseNotes>- Adding support for torrents that the size of Last Block of each Piece is not divided by 16384
+- Fixing an issue with SHA-1 failures and ban (blocks diff)
+- Fixing an issue with Peers that disconnect wouldn't reset the requested pieces
+- Fixing a crashing issue by opening a session file (.bsf)
+- Minor changes on Stream files
+- Updating APF library</PackageReleaseNotes>
+    <FileVersion>2.3.3.0</FileVersion>
+    <AssemblyVersion>2.3.3.0</AssemblyVersion>
     <RootNamespace>SuRGeoNix.BitSwarmLib</RootNamespace>
     <Product>BitSwarm</Product>
     <AssemblyName>BitSwarmLib</AssemblyName>
@@ -39,7 +39,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="APF" Version="1.1.1" />
+    <PackageReference Include="APF" Version="1.2.0" />
     <PackageReference Include="BencodeNET" Version="3.1.4" />
   </ItemGroup>
 

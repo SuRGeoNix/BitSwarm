@@ -346,7 +346,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
 
                 catch (Exception e)
                 {
-                    if (Beggar.Options.Verbosity > 0 && e.Message != "CUSTOM Connection closed") Log(4, "[ERROR] " + e.Message + "\n" + e.StackTrace);
+                    if (Beggar.Options.Verbosity > 0 && e.Message != "CUSTOM Connection closed") Log(1, "[ERROR] " + e.Message + "\n" + e.StackTrace);
 
                     Disconnect();
                     break;
@@ -911,17 +911,16 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                 {
                     //if (!tcpClient.Connected) { Disconnect(); return; }
 
-                    status      = Status.DOWNLOADING;
-                    sendBuff    = new byte[0];
+                    status          = Status.DOWNLOADING;
+                    sendBuff        = new byte[0];
+                    lastPieces      = pieces;
+                    piecesRequested+= pieces.Count;
+                    blockRequestedAt= DateTime.UtcNow.Ticks;
 
                     foreach (Tuple<int, int, int> piece in pieces)
                         sendBuff = Utils.ArrayMerge(sendBuff, PrepareMessage(Messages.REQUEST, false, Utils.ArrayMerge(Utils.ToBigEndian((Int32) piece.Item1), Utils.ToBigEndian((Int32) piece.Item2), Utils.ToBigEndian((Int32) piece.Item3))));
 
                     tcpStream.Write(sendBuff, 0, sendBuff.Length);
-
-                    lastPieces      = pieces;
-                    piecesRequested+= pieces.Count;
-                    blockRequestedAt= DateTime.UtcNow.Ticks;
                 }
             }
             catch (Exception e)
