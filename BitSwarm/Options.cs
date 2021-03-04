@@ -95,6 +95,22 @@ namespace SuRGeoNix.BitSwarmLib
         public int      PieceRetries        { get; set; } =    0;   // Retries should be used only for specific time periods, otherwise will let the same peers to timeout and not drop them with the result of too many drop bytes / already received
 
         /// <summary>
+        /// Peer's Piece Timeout (ms) during reading/buffering - Re-requests timed out piece
+        /// </summary>
+        public int      PieceBufferTimeout  { get; set; } = 1000;
+
+        /// <summary>
+        /// Peer's Piece Timeout Retries during reading/buffering - Resets happens on first timeout.
+        /// Used mainly for streaming with smaller timeouts and more retries for fast piece retrieval and without dropping the slow download rated peers
+        /// </summary>
+        public int      PieceBufferRetries  { get; set; } =    4;
+
+        /// <summary>
+        /// Peers will use PieceBufferTimeout/PieceBufferRetries if focus area data are not available
+        /// </summary>
+        public bool     EnableBuffering     { get; set; } = false;
+
+        /// <summary>
         /// Enable/Disable PEX
         /// </summary>
         public bool     EnablePEX           { get; set; } = true;

@@ -725,6 +725,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             long startedAt  = 0;
             long diffMs;
             int  lenAvailable;
+            bool bufferTimeoutUsed = false;
 
             while ((lenAvailable = tcpClient.Client.Available) < len)
             {
@@ -733,15 +734,16 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                 curLoop++;
 
                 // Piece Timeouts
-                if (status == Status.DOWNLOADING && curLoop % (Beggar.Options.PieceTimeout / 40) == 0)
+                if (status == Status.DOWNLOADING && (((!Beggar.FocusAreInUse || !Beggar.Options.EnableBuffering) && curLoop % (Beggar.Options.PieceTimeout / 40) == 0) || (Beggar.FocusAreInUse && Beggar.Options.EnableBuffering && curLoop % (Beggar.Options.PieceBufferTimeout / 40) == 0)))
                 {
-                    PieceTimeouts++;
+                    if (Beggar.FocusAreInUse && Beggar.Options.EnableBuffering) bufferTimeoutUsed = true;
 
-                    if (PieceTimeouts == 1 && Beggar.Options.PieceRetries > 0 && lastPieces != null && lastPieces.Count > 0) Beggar.ResetRequests(this, lastPieces);
+                    PieceTimeouts++;
+                    if (PieceTimeouts == 1 && ((bufferTimeoutUsed && Beggar.Options.PieceBufferRetries > 0) || (!bufferTimeoutUsed && Beggar.Options.PieceRetries > 0)) && lastPieces != null && lastPieces.Count > 0) Beggar.ResetRequests(this, lastPieces);
 
                     if (Beggar.Options.Verbosity > 0) Log(4, $"[TIMEOUT] {PieceTimeouts} ({lenAvailable} < {len} , Requests: {PiecesRequested}, Pieces: {lastPieces.Count}, Timeouts: {PieceTimeouts})");
 
-                    if (PieceTimeouts > Beggar.Options.PieceRetries)
+                    if ((bufferTimeoutUsed && PieceTimeouts > Beggar.Options.PieceBufferRetries) || (!bufferTimeoutUsed && PieceTimeouts > Beggar.Options.PieceRetries))
                     {
                         if (Beggar.Options.Verbosity > 0) Log(4, $"[DROP] Piece Timeout ({lenAvailable} < {len} , Requests: {PiecesRequested}, Pieces: {lastPieces.Count}, Timeouts: {PieceTimeouts})");
 
@@ -768,10 +770,10 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                             throw new Exception("CUSTOM Connection closed");
                         }
 
-                        // Drop Choked (after 30 seconds)
+                        // Drop Choked (after 40 seconds with enough downloaders)
                         else if (!stageYou.unchoked)
                         {
-                            if (diffMs > 30 * 1000)
+                            if (diffMs > 40 * 1000 && Beggar.Stats.PeersDownloading > Beggar.Options.MaxThreads / 3)
                             {
                                 if (Beggar.Options.Verbosity > 0) Log(4, $"[DROP] Choked Peer ({lenAvailable} < {len} , Requests: {PiecesRequested}), Pieces: {lastPieces.Count}, Timeouts: {PieceTimeouts})");
                                 status = Status.FAILED2;

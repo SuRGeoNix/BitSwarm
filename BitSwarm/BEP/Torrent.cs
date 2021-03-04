@@ -5,6 +5,7 @@ using System.IO;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Web;
 
 using BencodeNET.Parsing;
@@ -89,6 +90,50 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             /// List of SHA1 Hashes for all torrent pieces
             /// </summary>
             public List<byte[]>     pieces;
+
+            /// <summary>
+            /// Gets the array index of the specified file
+            /// </summary>
+            /// <param name="filename"></param>
+            /// <returns></returns>
+            public int GetFileIndex(string filename)
+            {
+                for (int i=0; i<paths.Count; i++)
+                    if (paths[i].ToLower() == filename.ToLower()) return i;
+
+                return -1;
+            }
+
+            /// <summary>
+            /// Gets the size of the specified file
+            /// </summary>
+            /// <param name="filename"></param>
+            /// <returns></returns>
+            public long GetLength(string filename)
+            {
+                int ret = GetFileIndex(filename);
+                if (ret == -1) return -1;
+
+                return lengths[ret];
+            }
+
+            /// <summary>
+            /// Gets file position in the torrent
+            /// </summary>
+            /// <param name="filename"></param>
+            /// <returns></returns>
+            public long GetStartPosition(string filename)
+            {
+                long startPos = 0;
+
+                for (int i=0; i<paths.Count; i++)
+                {
+                    if (paths[i].ToLower() == filename.ToLower()) return startPos;
+                    startPos += lengths[i];
+                }
+
+                return -1;
+            }
         }
 
         /// <summary>
@@ -252,6 +297,15 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             file.trackers       = new List<Uri>();
         }
 
+        public TorrentStream GetTorrentStream(string filename)
+        {
+            int fileIndex = file.GetFileIndex(filename);
+            if (fileIndex == -1 || data.files[file.GetFileIndex(filename)] == null) return null;
+            
+
+            return new TorrentStream(this, data.files[file.GetFileIndex(filename)], file.GetStartPosition(filename));
+        }
+
         public void FillFromMagnetLink(Uri magnetLink)
         {
             // TODO: Check v2 Magnet Link
@@ -350,7 +404,6 @@ namespace SuRGeoNix.BitSwarmLib.BEP
 
             Partfiles.Options opt = new Partfiles.Options();
             opt.AutoCreate      = true;
-            StreamFiles         = new Dictionary<string, TorrentStream>();
             long startPos       = 0;
 
             if (isMultiFile)
@@ -373,13 +426,6 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                 {
                     data.files[i] = new Partfile(file.paths[i], file.pieceLength, file.lengths[i], opt);
                     data.filesIncludes.Add(file.paths[i]);
-
-                    string ext = Path.GetExtension(file.paths[i]);
-                    if (MovieExts.Contains(ext.Substring(1,ext.Length-1)))
-                    {
-                        StreamFiles.Add(file.paths[i], new TorrentStream(data.files[i], startPos));
-                        data.files[i].BeforeReading += Torrent_BeforeReading;
-                    }
                     startPos += file.lengths[i];
                 }
             }
@@ -397,13 +443,6 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                 opt.PartOverwrite   = true;
 
                 data.files[0]       = new Partfile(Utils.GetValidFileName(file.name), file.pieceLength, file.length, opt);
-                string ext = Path.GetExtension(file.name);
-                if (MovieExts.Contains(ext.Substring(1,ext.Length-1)))
-                {
-                    StreamFiles.Add(file.name, new TorrentStream(data.files[0], 0));
-                    data.files[0].BeforeReading += Torrent_BeforeReading;
-                }
-
                 file.paths          = new List<string>()    { file.name     };
                 file.lengths        = new List<long>()      { file.length   };
 
@@ -430,7 +469,6 @@ namespace SuRGeoNix.BitSwarmLib.BEP
         
         public void FillFromSession()
         {
-            StreamFiles         = new Dictionary<string, TorrentStream>();
             data.files          = new Partfile[file.paths == null ? 1 : file.paths.Count];
             data.filesIncludes  = new List<string>();
             
@@ -449,16 +487,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                 for (int i=0; i<file.paths.Count; i++)
                 {
                     if (!File.Exists(Path.Combine(data.folder, file.paths[i])) && File.Exists(Path.Combine(data.folderTemp, file.paths[i] + opt.PartExtension)))
-                    {
                         data.files[i] = new Partfile(Path.Combine(data.folderTemp, file.paths[i] + opt.PartExtension), true, opt);
-
-                        string ext = Path.GetExtension(file.paths[i]);
-                        if (MovieExts.Contains(ext.Substring(1,ext.Length-1)))
-                        {
-                            StreamFiles.Add(file.paths[i], new TorrentStream(data.files[i], startPos));
-                            data.files[i].BeforeReading += Torrent_BeforeReading;
-                        }
-                    }
 
                     data.filesIncludes.Add(file.paths[i]);
                     startPos += file.lengths[i];
@@ -471,15 +500,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                 string validFilename = Utils.GetValidFileName(file.name);
 
                 if (!File.Exists(Path.Combine(bitSwarm.OptionsClone.FolderComplete, validFilename)) && File.Exists(Path.Combine(bitSwarm.OptionsClone.FolderIncomplete, validFilename + opt.PartExtension)))
-                {
                     data.files[0] = new Partfile(Path.Combine(bitSwarm.OptionsClone.FolderIncomplete, validFilename + opt.PartExtension), true, opt);
-                    string ext = Path.GetExtension(file.name);
-                    if (MovieExts.Contains(ext.Substring(1,ext.Length-1)))
-                    {
-                        StreamFiles.Add(file.name, new TorrentStream(data.files[0], 0));
-                        data.files[0].BeforeReading += Torrent_BeforeReading;
-                    }
-                }
                     
                 data.filesIncludes.Add(file.name);
             }
@@ -625,6 +646,8 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                             foreach (Partfile file in data.files)
                                 file?.Dispose();
 
+                        if (data.pieceProgress != null) data.pieceProgress.Clear();
+
                         // Delete Completed Folder (If Empty)
                         if (data.folder != null && Directory.Exists(data.folder) && Directory.GetFiles(data.folder, "*", SearchOption.AllDirectories).Length == 0)
                             Directory.Delete(data.folder, true);
@@ -632,8 +655,8 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                         // Delete Temp Folder (If Empty)
                         if (data.folderTemp != null && Directory.Exists(data.folderTemp) && Directory.GetFiles(data.folderTemp, "*", SearchOption.AllDirectories).Length == 0)
                             Directory.Delete(data.folderTemp, true);
-                    } catch (Exception) { }
-                    
+
+                    } catch (Exception)  { }
                 }
 
                 disposedValue = true;
@@ -641,90 +664,79 @@ namespace SuRGeoNix.BitSwarmLib.BEP
         }
         public void Dispose() { Dispose(true); }
         #endregion
+    }
 
-        #region Preparing Stream Support
-        [NonSerialized]
-        public static List<string> MovieExts = new List<string>() { "mp4", "m4v", "m4e", "mkv", "mpg", "mpeg" , "mpv", "mp4p", "mpe" , "m1v", "m2ts", "m2p", "m2v", "movhd", "moov", "movie", "movx", "mjp", "mjpeg", "mjpg", "amv" , "asf", "m4v", "3gp", "ogm", "ogg", "vob", "ts", "rm", "3gp", "3gp2", "3gpp", "3g2", "f4v", "f4a", "f4p", "f4b", "mts", "m2ts", "gifv", "avi", "mov", "flv", "wmv", "qt", "avchd", "swf", "cam", "nsv", "ram", "rm", "x264", "xvid", "wmx", "wvx", "wx", "video", "viv", "vivo", "vid", "dat", "bik", "bix", "dmf", "divx" };
+    public class TorrentStream : PartStream
+    {
+        public long     StartPos    { get; set; }
+        public long     EndPos      { get; set; }
+        public int      LastPiece   { get; set; }
 
-        [NonSerialized]
-        public Dictionary<string, TorrentStream> StreamFiles = new Dictionary<string, TorrentStream>();
+        Torrent  torrent;
+        bool cancel;
 
-        public class TorrentStream
+        public TorrentStream(Torrent torrent, Partfile pf, long distance) : base(pf)
         {
-            public Partfile Stream      { get; set; }
-            public long     StartPos    { get; set; }
-            public long     EndPos      { get; set; }
-
-            public TorrentStream(Partfile pf, long distance) { Stream = pf; StartPos = distance; EndPos = StartPos + pf.Size; }
-        }
-        public void PrepareStreamFiles()
-        {
-            /* TODO
-             * 
-             * 1. Alphanumeric sorting
-             * 2. Add FirstFilePiece / LastFilePiece ?
-             */
-            long startPos = 0;
-            if (StreamFiles == null) StreamFiles = new Dictionary<string, TorrentStream>();
-
-            for (int i=0; i<file.paths.Count; i++)
-            {
-                string ext = Path.GetExtension(file.paths[i]);
-                if (ext == null || ext.Trim() == "") { startPos += file.lengths[i]; continue; }
-
-                if (MovieExts.Contains(ext.Substring(1,ext.Length-1)))
-                {
-                    StreamFiles.Add(file.paths[i], new TorrentStream(data.files[i], startPos));
-                    data.files[i].BeforeReading += Torrent_BeforeReading;
-                }
-
-                startPos += file.lengths[i];
-            }
+            this.torrent = torrent;
+            StartPos = torrent.file.GetStartPosition(pf.Filename);
+            EndPos = StartPos + Length;
+            LastPiece = FilePosToPiece(Length);
         }
 
-        private void Torrent_BeforeReading(Partfile pf, Partfile.BeforeReadingEventArgs e)
+        public void Cancel() { cancel = true; }
+
+        /// <summary>
+        /// Reads the specified actual bytes from the part file until they are available or cancel
+        /// </summary>
+        /// <param name="buffer"></param>
+        /// <param name="offset"></param>
+        /// <param name="count"></param>
+        /// <returns>Bytes read size | -2 on Error | -1 on Cancel</returns>
+        public override int Read(byte[] buffer, int offset, int count)
         {
-            /* TODO
-             * 
-             * 1. Open/Seek Piece Timeouts for faster buffering
-             * 2. Cancellation support?
-             * 3. Review insist on Focus Area
-             * 4. Open/Seek timeouts | When FA changes to different areas we should use a different timeout (for few reads?)
-             */
-            TorrentStream curStream = StreamFiles[pf.Filename];
+            int startPiece  = FilePosToPiece(Position);
+            int endPiece    = FilePosToPiece(Position + count);
 
-            int startPiece  = FilePosToPiece(curStream, e.Position);
-            int endPiece    = FilePosToPiece(curStream, e.Position + e.Count);
-            int lastPiece   = FilePosToPiece(curStream, pf.Size);
+            if (!torrent.bitSwarm.FocusAreInUse)
+                torrent.bitSwarm.FocusArea = new Tuple<int, int>(startPiece, LastPiece); // Set every time to follow the decoder?
 
-            bitSwarm.FocusArea = new Tuple<int, int>(startPiece, lastPiece); // Set in every seek?
-
-            if (data.progress.GetFirst0(startPiece, endPiece) != -1)
+            if (torrent.data.progress.GetFirst0(startPiece, endPiece) != -1)
             {
-                try
+                lock(torrent) // Only one FA can be active
                 {
-                    Console.WriteLine($"[FA: {startPiece} - {endPiece}] Buffering");
-                    while (data.progress.GetFirst0(startPiece, endPiece) != -1)
+                    cancel = false;
+                    torrent.bitSwarm.FocusAreInUse = true;
+                    torrent.bitSwarm.Log($"[FOCUS {startPiece} - {endPiece}] Buffering Started");
+
+                    while (torrent.data.progress.GetFirst0(startPiece, endPiece) != -1 && !cancel)
                     {
-                        bitSwarm.FocusArea = new Tuple<int, int>(startPiece, lastPiece);
-
-                        System.Threading.Thread.Sleep(25);
+                        torrent.bitSwarm.FocusArea = new Tuple<int, int>(startPiece, LastPiece);
+                        Thread.Sleep(25);
                     }
 
-                    Console.WriteLine($"[FA: {startPiece} - {endPiece}] Done");
+                    torrent.bitSwarm.FocusAreInUse = false;
+
+                    if (cancel)
+                    {
+                        torrent.bitSwarm.Log($"[FOCUS {startPiece} - {endPiece}] Buffering Cancel");
+                        return -1;
+                    }
+                    else
+                        torrent.bitSwarm.Log($"[FOCUS {startPiece} - {endPiece}] Buffering Done");
                 }
-                catch (Exception e2) { Console.WriteLine("[Torrent] Error " + e2.Message); }
             }
+
+            return base.Read(buffer, offset, count);
         }
 
-        private int FilePosToPiece(TorrentStream ts, long filePos)
+        public int FilePosToPiece(long filePos)
         {
-            int piece = (int)((ts.StartPos + filePos) / file.pieceLength);
-            if (piece >= data.pieces) piece = data.pieces - 1;
+            int piece = (int)((StartPos + filePos) / torrent.file.pieceLength);
+            if (piece >= torrent.data.pieces) piece = torrent.data.pieces - 1;
 
             return piece;
         }
-        #endregion
+
     }
 #pragma warning restore CS1591 // Missing XML comment for publicly visible type or member
 }

@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.Threading;
 
+using SuRGeoNix;
 using SuRGeoNix.BitSwarmLib;
 using LibVLCSharp.Shared;
 
@@ -46,17 +47,21 @@ namespace LibVLCStreaming
         {
             string selectedFile = null;
 
+            List<string> movieFiles = Utils.GetMoviesSorted(e.Torrent.file.paths);
+
             // Choose file from available video files
-            WriteLine($"======= Available files ({e.Torrent.StreamFiles.Count}) =======");
-            foreach (var file in e.Torrent.StreamFiles.Values)
+            WriteLine($"======= Available files ({movieFiles.Count}) =======");
+            foreach (var file in movieFiles)
             {
-                if (selectedFile == null) selectedFile = file.Stream.Filename; // Choose first one
-                WriteLine(" + " + file.Stream.Filename);
+
+                selectedFile = file;
+                WriteLine(" + " + selectedFile);
+                break;
             }
 
             // Prepare BitSwarm & LibVLC for the selected file
             bitSwarm.IncludeFiles(new List<string>() { selectedFile});
-            using var media = new Media(libVLC, new StreamMediaInput(e.Torrent.StreamFiles[selectedFile].Stream));
+            using var media = new Media(libVLC, new StreamMediaInput(e.Torrent.GetTorrentStream(selectedFile)));
             mediaPlayer = new MediaPlayer(media);
 
             // Start VLC Player

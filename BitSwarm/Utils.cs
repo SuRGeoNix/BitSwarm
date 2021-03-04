@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Diagnostics.CodeAnalysis;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -324,12 +325,45 @@ namespace SuRGeoNix
             if (t != null && t.IsAlive)
                 Debug.WriteLine("Thread X didn't finish properly!");
         }
+
+        public static List<string> MovieExts = new List<string>() { "mp4", "m4v", "m4e", "mkv", "mpg", "mpeg" , "mpv", "mp4p", "mpe" , "m1v", "m2ts", "m2p", "m2v", "movhd", "moov", "movie", "movx", "mjp", "mjpeg", "mjpg", "amv" , "asf", "m4v", "3gp", "ogm", "ogg", "vob", "ts", "rm", "3gp", "3gp2", "3gpp", "3g2", "f4v", "f4a", "f4p", "f4b", "mts", "m2ts", "gifv", "avi", "mov", "flv", "wmv", "qt", "avchd", "swf", "cam", "nsv", "ram", "rm", "x264", "xvid", "wmx", "wvx", "wx", "video", "viv", "vivo", "vid", "dat", "bik", "bix", "dmf", "divx" };
+        public static List<string> GetMoviesSorted(List<string> movies)
+        {
+            List<string> moviesSorted = new List<string>();
+
+            for (int i=0; i<movies.Count; i++)
+            {
+                string ext = Path.GetExtension(movies[i]);
+                if (ext == null || ext.Trim() == "") continue;
+
+                if (MovieExts.Contains(ext.Substring(1,ext.Length-1))) moviesSorted.Add(movies[i]);
+            }
+
+            moviesSorted.Sort(CompareStrings);
+
+            return moviesSorted;
+        }
+        public static int CompareStrings(string aStr, string bStr)
+        {
+            char[] a = aStr.ToLower().ToCharArray();
+            char[] b = bStr.ToLower().ToCharArray();
+
+            for (int i=0; i<Math.Min(a.Length, b.Length); i++)
+            {
+                if (a[i] > b[i]) 
+                    return 1;
+                else if (a[i] < b[i]) 
+                    return -1;
+            }
+
+            return 0;
+        }
         
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Interoperability", "CA1401:PInvokesShouldNotBeVisible"), System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Security", "CA2118:ReviewSuppressUnmanagedCodeSecurityUsage"), SuppressUnmanagedCodeSecurity]
+        [SuppressMessage("Microsoft.Interoperability", "CA1401:PInvokesShouldNotBeVisible"), SuppressMessage("Microsoft.Security", "CA2118:ReviewSuppressUnmanagedCodeSecurityUsage"), SuppressUnmanagedCodeSecurity]
         [DllImport("winmm.dll", EntryPoint = "timeBeginPeriod", SetLastError = true)]
         public static extern uint TimeBeginPeriod(uint uMilliseconds);
 
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Interoperability", "CA1401:PInvokesShouldNotBeVisible"), System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Security", "CA2118:ReviewSuppressUnmanagedCodeSecurityUsage"), SuppressUnmanagedCodeSecurity]
+        [SuppressMessage("Microsoft.Interoperability", "CA1401:PInvokesShouldNotBeVisible"), SuppressMessage("Microsoft.Security", "CA2118:ReviewSuppressUnmanagedCodeSecurityUsage"), SuppressUnmanagedCodeSecurity]
         [DllImport("winmm.dll", EntryPoint = "timeEndPeriod", SetLastError = true)]
         public static extern uint TimeEndPeriod(uint uMilliseconds);
 

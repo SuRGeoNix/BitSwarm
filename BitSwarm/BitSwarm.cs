@@ -137,6 +137,8 @@ namespace SuRGeoNix.BitSwarmLib
         public bool             isStopped       => status == Status.STOPPED;
         public bool             isDHTRunning    => dht.status == DHT.Status.RUNNING;
         public string           LoadedSessionFile   { get; set; }
+
+        public bool             FocusAreInUse       { get; set; }
         public Tuple<int, int>  FocusArea           { get { lock (lockerTorrent) return focusArea; } set { lock (lockerTorrent) focusArea = value; } }
 
         internal Tuple<int, int> focusArea;
@@ -149,7 +151,7 @@ namespace SuRGeoNix.BitSwarmLib
         readonly object  lockerMetadata      = new object();
 
         // Generators (Hash / Random)
-        private static SHA1             sha1                = new SHA1Managed();
+        private SHA1                    sha1                = new SHA1Managed();
         private static Random           rnd                 = new Random();
         internal byte[]                 peerID;
 
