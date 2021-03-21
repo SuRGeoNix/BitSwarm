@@ -725,7 +725,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             long startedAt  = 0;
             long diffMs;
             int  lenAvailable;
-            bool bufferTimeoutUsed = false;
+            bool bufferTimeoutUsed = Beggar.Options.EnableBuffering && Beggar.FocusAreInUse;
 
             while ((lenAvailable = tcpClient.Client.Available) < len)
             {
@@ -736,8 +736,6 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                 // Piece Timeouts
                 if (status == Status.DOWNLOADING && (((!Beggar.FocusAreInUse || !Beggar.Options.EnableBuffering) && curLoop % (Beggar.Options.PieceTimeout / 40) == 0) || (Beggar.FocusAreInUse && Beggar.Options.EnableBuffering && curLoop % (Beggar.Options.PieceBufferTimeout / 40) == 0)))
                 {
-                    if (Beggar.FocusAreInUse && Beggar.Options.EnableBuffering) bufferTimeoutUsed = true;
-
                     PieceTimeouts++;
                     if (PieceTimeouts == 1 && ((bufferTimeoutUsed && Beggar.Options.PieceBufferRetries > 0) || (!bufferTimeoutUsed && Beggar.Options.PieceRetries > 0)) && lastPieces != null && lastPieces.Count > 0) Beggar.ResetRequests(this, lastPieces);
 

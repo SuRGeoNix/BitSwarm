@@ -8,7 +8,7 @@
   <ItemGroup>
     <PackageReference Include="APF" Version="1.3.0" />
     <PackageReference Include="LibVLCSharp" Version="3.4.9" />
-    <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.11" />
+    <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.12" />
   </ItemGroup>
 
   <ItemGroup>

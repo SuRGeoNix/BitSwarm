@@ -710,7 +710,8 @@ namespace SuRGeoNix.BitSwarmLib.BEP
 
                     while (torrent.data.progress.GetFirst0(startPiece, endPiece) != -1 && !cancel)
                     {
-                        torrent.bitSwarm.FocusArea = new Tuple<int, int>(startPiece, LastPiece);
+                        if (torrent.bitSwarm.focusArea != null && torrent.bitSwarm.focusArea.Item1 != startPiece && torrent.data.requests.GetFirst0(startPiece, endPiece) != -1)
+                            torrent.bitSwarm.FocusArea = new Tuple<int, int>(startPiece, LastPiece);
                         Thread.Sleep(25);
                     }
 
