@@ -1008,7 +1008,7 @@ namespace SuRGeoNix.BitSwarmLib
                         }
 
                         // Every 31 Seconds [Re-request Trackers]
-                        if (curSecond % 31 == 0)
+                        if (trackers.Count != 0 && curSecond % (31+trackers.Count) == 0)
                         {
                             if (Options.EnableTrackers && ((!Stats.SleepMode && Stats.PeersInQueue < 100) || Stats.BoostMode))
                             {

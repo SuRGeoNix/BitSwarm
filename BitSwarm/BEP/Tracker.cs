@@ -189,7 +189,9 @@ namespace SuRGeoNix.BitSwarmLib.BEP
 
                     headers += Convert.ToChar(recvBuff[0]);
 
-                } while (newLines != 2);
+                } while (newLines != 2 && recvBuff[0] != '\0');
+
+                if (newLines != 2) return false;
 
                 int len = int.Parse(Regex.Match(headers, @"Content-Length: ([0-9]+)").Groups[1].Value);
 

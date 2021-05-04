@@ -14,11 +14,10 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>bitswarm bittorrent torrent client streaming dht</PackageTags>
     <Copyright>© SuRGeoNix 2021</Copyright>
-    <Version>2.3.5</Version>
-    <PackageReleaseNotes>- Fixing a minor issue with piece retries / rejects
-- Updating BEncode / LibVLC dependencies</PackageReleaseNotes>
-    <FileVersion>2.3.5.0</FileVersion>
-    <AssemblyVersion>2.3.5.0</AssemblyVersion>
+    <Version>2.3.7</Version>
+    <PackageReleaseNotes>Fixes a rare but critical performance issue with trackers</PackageReleaseNotes>
+    <FileVersion>2.3.7.0</FileVersion>
+    <AssemblyVersion>2.3.7.0</AssemblyVersion>
     <RootNamespace>SuRGeoNix.BitSwarmLib</RootNamespace>
     <Product>BitSwarm</Product>
     <AssemblyName>BitSwarmLib</AssemblyName>
