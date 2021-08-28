@@ -26,9 +26,8 @@ namespace SuRGeoNix.BitSwarmClient
             Options opt = new Options();
 
             downPath.Text           = opt.FolderComplete;
-            maxCon.Text             = opt.MaxThreads.ToString();
-            maxThreads.Text         = opt.MinThreads.ToString();
-            sleepLimit.Text         = opt.SleepModeLimit.ToString();
+            maxCon.Text             = opt.MaxTotalConnections.ToString();
+            maxThreads.Text         = opt.MaxNewConnections.ToString();
             peersFromTrackers.Text  = opt.PeersFromTracker.ToString();
             conTimeout.Text         = opt.ConnectionTimeout.ToString();
             handTimeout.Text        = opt.HandshakeTimeout.ToString();
@@ -49,9 +48,8 @@ namespace SuRGeoNix.BitSwarmClient
 
                     opt.FolderComplete      = downPath.Text;
 
-                    opt.MaxThreads          = int.Parse(maxCon.Text);
-                    opt.MinThreads          = int.Parse(maxThreads.Text);
-                    opt.SleepModeLimit      = int.Parse(sleepLimit.Text);
+                    opt.MaxTotalConnections = int.Parse(maxCon.Text);
+                    opt.MaxNewConnections   = int.Parse(maxThreads.Text);
                     opt.PeersFromTracker    = int.Parse(peersFromTrackers.Text);
                     opt.ConnectionTimeout   = int.Parse(conTimeout.Text);
                     opt.HandshakeTimeout    = int.Parse(handTimeout.Text);

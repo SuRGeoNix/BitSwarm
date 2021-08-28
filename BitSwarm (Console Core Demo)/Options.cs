@@ -20,19 +20,11 @@ namespace SuRGeoNix.BitSwarmConsole
         [Option("fs",           HelpText = "Folder for .bsf session files (Default: %temp%/BitSwarm/.sessions)")]
         public string   FolderSessions  { get; set; }
 
-        [Option("mc",           HelpText = "Max new connection threads")]
-        public int      MinThreads      { get; set; } = NOT_SET;
+        [Option("mc",           HelpText = "Max number of new TCP connections")]
+        public int      MaxNewConnections   { get; set; } = NOT_SET;
 
-        [Option("mt",           HelpText = "Max total threads")]
-        public int      MaxThreads      { get; set; } = NOT_SET;
-
-        [Option("boostmin",     HelpText = "Boost new connection threads")]
-        public int      BoostThreads    { get; set; } = NOT_SET;
-
-        [Option("boostsecs",    HelpText = "Boost time in seconds")]
-        public int      BoostTime       { get; set; } = NOT_SET;
-        [Option("sleep",        HelpText = "Sleep activation at this down rate KB/s (-1: Automatic | 0: Disabled)")]
-        public int      SleepModeLimit  { get; set; } = NOT_SET;
+        [Option("mt",           HelpText = "Max number of total TCP connections")]
+        public int      MaxTotalConnections { get; set; } = NOT_SET;
 
         [Option("no-dht",       HelpText = "Disable DHT")]
         public bool     DisableDHT      { get; set; }
@@ -99,17 +91,10 @@ namespace SuRGeoNix.BitSwarmConsole
             if (userOptions.TrackersPath        != null)
                 bitSwarmOptions.TrackersPath        = userOptions.TrackersPath;
 
-            if (userOptions.MinThreads          != NOT_SET)
-                bitSwarmOptions.MinThreads          = userOptions.MinThreads;
-            if (userOptions.MaxThreads          != NOT_SET)
-                bitSwarmOptions.MaxThreads          = userOptions.MaxThreads;
-
-            if (userOptions.BoostThreads        != NOT_SET)
-                bitSwarmOptions.BoostThreads        = userOptions.BoostThreads;
-            if (userOptions.BoostTime           != NOT_SET)
-                bitSwarmOptions.BoostTime           = userOptions.BoostTime;
-            if (userOptions.SleepModeLimit      != NOT_SET)
-                bitSwarmOptions.SleepModeLimit      = userOptions.SleepModeLimit;
+            if (userOptions.MaxNewConnections   != NOT_SET)
+                bitSwarmOptions.MaxNewConnections   = userOptions.MaxNewConnections;
+            if (userOptions.MaxTotalConnections != NOT_SET)
+                bitSwarmOptions.MaxTotalConnections = userOptions.MaxTotalConnections;
 
             if (userOptions.ConnectionTimeout   != NOT_SET)
                 bitSwarmOptions.ConnectionTimeout   = userOptions.ConnectionTimeout;
@@ -120,9 +105,9 @@ namespace SuRGeoNix.BitSwarmConsole
             if (userOptions.PieceRetries        != NOT_SET)
                 bitSwarmOptions.PieceRetries        = userOptions.PieceRetries;
             
-            if (userOptions.SleepModeLimit      != NOT_SET)
+            if (userOptions.PeersFromTracker    != NOT_SET)
                 bitSwarmOptions.PeersFromTracker    = userOptions.PeersFromTracker;
-            
+
             if (userOptions.DisableDHT)
                 bitSwarmOptions.EnableDHT           = !userOptions.DisableDHT;
             if (userOptions.DisablePEX)

@@ -1,35 +1,39 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <Company>SuRGeoNix</Company>
+    <TargetFrameworks>net5.0;netstandard2.0</TargetFrameworks>
     <Authors>SuRGeoNix</Authors>
-    <PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
+    <Company>SuRGeoNix</Company>
     <Description>Bittorrent library for clients &amp; streaming purposes</Description>
-    <PackageLicenseFile></PackageLicenseFile>
+    <Version>2.4.0</Version>
+    <Copyright>© SuRGeoNix 2021</Copyright>
+    <PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/SuRGeoNix/BitSwarm</PackageProjectUrl>
     <PackageIcon>BitSwarm.png</PackageIcon>
+    <PackageIconUrl />
     <RepositoryUrl>https://github.com/SuRGeoNix/BitSwarm</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>bitswarm bittorrent torrent client streaming dht</PackageTags>
-    <Copyright>© SuRGeoNix 2021</Copyright>
-    <Version>2.3.7</Version>
-    <PackageReleaseNotes>Fixes a rare but critical performance issue with trackers</PackageReleaseNotes>
-    <FileVersion>2.3.7.0</FileVersion>
-    <AssemblyVersion>2.3.7.0</AssemblyVersion>
     <RootNamespace>SuRGeoNix.BitSwarmLib</RootNamespace>
-    <Product>BitSwarm</Product>
     <AssemblyName>BitSwarmLib</AssemblyName>
-    <PackageId>BitSwarm</PackageId>
-	<GenerateDocumentationFile>true</GenerateDocumentationFile>
-  </PropertyGroup>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PackageReleaseNotes>New implementation without threading for each peer (should give better performance with same or even better speed)
 
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+Generaly keeps threads and .NET threadpool's to minimal so parent projects will not require to increase them
+
+- Converting the solution to .NET 5 (still supports .NET standard 2.0)
+- Converting BitSwarm's Threadpool (BSTP) with Min/Max Threads to a single thread with MaxNewConnections/MaxTotalConnections
+- Dropping support for SleepModeLimit, BoostThreads, BoostTime
+- Faster resume from pause</PackageReleaseNotes>
+    <PackageId>BitSwarm</PackageId>
+    <Product>BitSwarm</Product>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 

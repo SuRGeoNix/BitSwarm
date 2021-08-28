@@ -9,8 +9,8 @@ using System.Threading;
 using System.Security.Cryptography;
 
 using BencodeNET.Objects;
-using SuRGeoNix.Partfiles;
 
+using SuRGeoNix.Partfiles;
 using SuRGeoNix.BitSwarmLib.BEP;
 
 using static SuRGeoNix.BitSwarmLib.BEP.Torrent.TorrentData;
@@ -33,14 +33,12 @@ namespace SuRGeoNix.BitSwarmLib
         /// </summary>
         public enum InputType
         {
-#pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
             Torrent,
             Magnet,
             Sha1,
             Base32,
             Session,
             Unkown
-#pragma warning restore CS1591 // Missing XML comment for publicly visible type or member
         }
         private enum SleepModeState
         {
@@ -64,7 +62,6 @@ namespace SuRGeoNix.BitSwarmLib
         #endregion
 
         #region Event Handlers
-        #pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
 
         /// <summary>
         /// Fires when all included pieces have been received and allows to include more incomplete files and prevent it from finishing (e.Cancel = true)
@@ -123,8 +120,6 @@ namespace SuRGeoNix.BitSwarmLib
                 Stats = stats;
             }
         }
-
-        #pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
         #endregion
 
         #region Public Properties Exposed
@@ -156,8 +151,9 @@ namespace SuRGeoNix.BitSwarmLib
         internal byte[]                 peerID;
 
         // Main [Torrent / Trackers / Peers / Options]
-        ThreadPool bstp;
         internal ConcurrentDictionary<string, int>  peersStored         {get; private set; }
+        internal List<Peer> peersConnect    { get; private set; }
+        internal List<Peer> peersConnected  { get; private set; }
         internal ConcurrentStack<Peer>              peersForDispatch    {get; private set; }
 
         public Torrent                  torrent;
@@ -204,12 +200,13 @@ namespace SuRGeoNix.BitSwarmLib
             if (!Directory.Exists(OptionsClone.FolderTorrents))  Directory.CreateDirectory(OptionsClone.FolderTorrents);
             if (!Directory.Exists(OptionsClone.FolderSessions))  Directory.CreateDirectory(OptionsClone.FolderSessions);
 
-            bstp    = new ThreadPool();
             Stats   = new Stats();
             status  = Status.STOPPED;
 
             peerID                          = new byte[20]; rnd.NextBytes(peerID);
             peersStored                     = new ConcurrentDictionary<string, int>();
+            peersConnect                    = new List<Peer>();
+            peersConnected                  = new List<Peer>();
             peersForDispatch                = new ConcurrentStack<Peer>();
             trackers                        = new List<Tracker>();
 
@@ -354,22 +351,25 @@ namespace SuRGeoNix.BitSwarmLib
         public void Start()
         {
             if (status == Status.RUNNING || (torrent.data.progress != null && torrent.data.progress.GetFirst0() == - 1)) return;
-            
+            Utils.EnsureThreadDoneNoAbort(beggar);
+
             wasPaused           = status == Status.PAUSED;
             status              = Status.RUNNING;
             Stats.EndGameMode   = false;
             torrent.data.isDone = false;
 
-            Utils.EnsureThreadDoneNoAbort(beggar);
-
             beggar = new Thread(() =>
             {
                 Beggar();
 
-                if (torrent.data.isDone)
-                    StatusChanged?.Invoke(this, new StatusChangedArgs(0));
-                else
-                    StatusChanged?.Invoke(this, new StatusChangedArgs(1));
+                Thread tmp = new Thread(() =>
+                {
+                    if (torrent.data.isDone)
+                        StatusChanged?.Invoke(this, new StatusChangedArgs(0));
+                    else
+                        StatusChanged?.Invoke(this, new StatusChangedArgs(1));
+                });
+                tmp.Start();
             });
 
             beggar.IsBackground = true;
@@ -384,7 +384,6 @@ namespace SuRGeoNix.BitSwarmLib
 
             status = Status.PAUSED;
             Utils.EnsureThreadDoneNoAbort(beggar, 1500);
-            bstp.Dispose();
         }
         /// <summary>
         /// Stops BitSwarm &amp; Disposes
@@ -402,18 +401,30 @@ namespace SuRGeoNix.BitSwarmLib
                 status = Status.STOPPED;
 
                 if (!force)
+                {
                     Utils.EnsureThreadDoneNoAbort(beggar, 1500);
+                }
                 else
-                    bstp.Stop = true;
+                {
+                    foreach (var peer in peersConnect)
+                        peer.Dispose();
+
+                    foreach (var peer in peersConnected)
+                        peer.Dispose();
+                }
+
+                peersBeforePause.Clear();
+                peersConnected.Clear();
+                peersConnect.Clear();
+                peersForDispatch.Clear();
+                peersStored.Clear();
+                peersBanned.Clear();
 
                 lock (lockerTorrent)
                 {
-                    if (torrent != null) torrent.Dispose();
-                    if (logDHT  != null) logDHT. Dispose();
-                    if (log     != null) log.    Dispose();
-                    bstp.Threads = null;
-                    peersStored?.Clear();
-                    peersForDispatch?.Clear();
+                    torrent?.Dispose(); torrent = null;
+                    logDHT?. Dispose(); logDHT = null;
+                    log?.    Dispose(); log = null;
                 }
             } catch (Exception) { }
         }
@@ -510,13 +521,9 @@ namespace SuRGeoNix.BitSwarmLib
         {
             Dictionary<string, string> peersDump = new Dictionary<string, string>();
 
-            lock (peersForDispatch)
-                foreach (var thread in bstp.Threads)
+            lock (peersConnected)
+                foreach (var peer in peersConnected)
                 {
-                    if (!thread.isLongRun || thread.peer == null) continue;
-
-                    Peer peer = thread.peer;
-
                     if (peer.status == Peer.Status.DOWNLOADING)
                     {
                         string verA = "";
@@ -527,7 +534,7 @@ namespace SuRGeoNix.BitSwarmLib
                             int vPos = peer.stageYou.version.LastIndexOf('/');
                             if (vPos == -1) vPos = peer.stageYou.version.LastIndexOf(' ');
 
-                            verA = vPos == -1 ? peer.stageYou.version : peer.stageYou.version.Substring(0, vPos); 
+                            verA = vPos == -1 ? peer.stageYou.version : peer.stageYou.version.Substring(0, vPos);
                             verB = vPos == -1 ? "" : peer.stageYou.version.Substring(vPos + 1);
 
                             if (verA.Length > 25) verA = verA.Substring(0, 25);
@@ -653,8 +660,30 @@ namespace SuRGeoNix.BitSwarmLib
         {
             try
             {
-                // Stats
-                Stats.CurrentTime           = DateTime.UtcNow.Ticks;
+                Stats.CurrentTime = DateTime.UtcNow.Ticks;
+
+                // Drop Peers
+                lock (peersConnected)
+                {
+                    for (int i=peersConnected.Count-1; i>=0; i--)
+                    {
+                        if (Stats.PeersConnecting + peersConnected.Count >= (Options.MaxTotalConnections * 3) / 4 && Stats.CurrentTime - peersConnected[i].lastDownloadAt > 20 * 1000 * 10000)
+                        {
+                            if (NoPiecesPeer(peersConnected[i]))
+                            {
+                                if (Options.Verbosity > 0) peersConnected[i].Log(3, $"[DROP] No Pieces Peer | Requests: {peersConnected[i].PiecesRequested}), Pieces: {peersConnected[i].lastPieces.Count}, Timeouts: {peersConnected[i].PieceTimeouts})");
+                                peersConnected[i].Dispose();
+                                peersConnected.RemoveAt(i);
+                            }
+                            else if (!peersConnected[i].stageYou.unchoked)
+                            {
+                                if (Options.Verbosity > 0) peersConnected[i].Log(3, $"[DROP] Choked Peer | Requests: {peersConnected[i].PiecesRequested}), Pieces: {peersConnected[i].lastPieces.Count}, Timeouts: {peersConnected[i].PieceTimeouts})");
+                                peersConnected[i].Dispose();
+                                peersConnected.RemoveAt(i);
+                            }
+                        }
+                    }
+                }
 
                 // Progress
                 int includedSetsCounter     = torrent.data.progress.setsCounter - (torrent.data.pieces - Stats.PiecesIncluded);            
@@ -698,32 +727,29 @@ namespace SuRGeoNix.BitSwarmLib
                 prevStatsTicks              = Stats.CurrentTime;
 
                 // Stats & Clean-up
-                Stats.PeersTotal        = peersStored.Count;
+                Stats.PeersConnected    = peersConnected.Count;
                 Stats.PeersInQueue      = peersForDispatch.Count;
-                Stats.PeersConnecting   = bstp.ShortRun;
-                Stats.PeersConnected    = bstp.LongRun;
+                Stats.PeersTotal        = peersStored.Count;
                 Stats.PeersChoked       = 0;
                 Stats.PeersUnChoked     = 0;
                 Stats.PeersDownloading  = 0;
 
-                lock (peersForDispatch)
-                    foreach (var thread in bstp.Threads)
+                lock (peersConnected)
+                {
+                    Stats.PeersDownloading = 0;
+                    for (int i=peersConnected.Count-1; i>=0; i--)
                     {
-                        if (thread.isLongRun && thread.peer != null)
+                        if (peersConnected[i].status == Peer.Status.DOWNLOADING)
+                            Stats.PeersDownloading++;
+                        else if (peersConnected[i].status == Peer.Status.READY)
                         {
-                            if (thread.peer.status == Peer.Status.READY)
-                            {
-                                if (thread.peer.stageYou.unchoked)
-                                    Stats.PeersUnChoked++;
-                                else
-                                    Stats.PeersChoked++;
-                            }
-                            else if (thread.peer.status == Peer.Status.DOWNLOADING)
-                            {
-                                Stats.PeersDownloading++;
-                            }
+                            if (peersConnected[i].stageYou.unchoked)
+                                Stats.PeersUnChoked++;
+                            else
+                                Stats.PeersChoked++;
                         }
                     }
+                }
 
                 // Stats -> UI
                 StatsUpdated?.Invoke(this, new StatsUpdatedArgs(Stats));
@@ -764,39 +790,39 @@ namespace SuRGeoNix.BitSwarmLib
                     if (Options.LogTracker) Log($"[Torrent] [Tracker] [ADD] {uri} Protocol not implemented");
             }
         }
+
+        int curTracker = -1;
         private  void StartTrackers()
         {
-            for (int i=0; i<trackers.Count; i++)
+            for (int i=0; i<Math.Min(5, trackers.Count); i++)
             {
-                int cacheI = i;
+                curTracker++;
+                if (curTracker > trackers.Count - 1) curTracker = 0;
+                int cacheI = curTracker;
 
-                System.Threading.ThreadPool.QueueUserWorkItem(new WaitCallback(x =>
+                Thread thread = new Thread(() =>
                 {
                     trackers[cacheI].Announce(Options.PeersFromTracker);
-                }), null);
+                });
+                thread.IsBackground = true;
+                thread.Start();
             }
         }
         internal void FillPeers(Dictionary<string, int> newPeers, PeersStorage storage)
         {
             int countNew = 0;
 
-            lock (peersForDispatch)
+            lock (peersStored)
                 foreach (KeyValuePair<string, int> peerKV in newPeers)
                 {
                     if (!peersStored.ContainsKey(peerKV.Key) && !peersBanned.Contains(peerKV.Key))
                     {
                         peersStored.TryAdd(peerKV.Key, peerKV.Value);
                         Peer peer = new Peer(peerKV.Key, peerKV.Value);
-                        peersForDispatch.Push(peer); //if (!bstp.Dispatch(peer)) peersForDispatch.Push(peer);
-                        countNew++;   
+                        peersForDispatch.Push(peer);
+                        countNew++;
                     }
                 }
-
-            if (peersForDispatch.Count > 0 && bstp.ShortRun < bstp.MinThreads)
-            {
-                for (int i=0; i< Math.Min(peersForDispatch.Count, bstp.MinThreads); i++)
-                    bstp.Dispatch(null);
-            }
 
             if (storage == PeersStorage.TRACKER)
                 Stats.TRKPeers += countNew;
@@ -807,37 +833,30 @@ namespace SuRGeoNix.BitSwarmLib
 
             if (Options.Verbosity > 0 && countNew > 0) Log($"[{storage.ToString()}] {countNew} Adding Peers");
         }
-        internal void ReFillPeers()
+
+        Dictionary<string, int> peersBeforePause = new Dictionary<string, int>();
+        private void ReFillPeers(bool wasPaused = false)
         {
-            lock (peersForDispatch)
-            {
-                if (peersForDispatch.Count > 0)
-                    Console.WriteLine("Peers queue not empty! -> " + peersStored.Count);
+            HashSet<string> running = new HashSet<string>();
 
-                peersForDispatch.Clear();
+            foreach (var peer in peersConnect)
+                    running.Add(peer.host);
 
-                HashSet<string> peersRunning = new HashSet<string>();
+            foreach (var peer in peersConnected)
+                running.Add(peer.host);
 
-                if (bstp.Threads != null)
-                foreach (var thread in bstp.Threads)
-                    if (thread.thread != null && thread.peer != null) peersRunning.Add(thread.peer.host);
-
+            if (wasPaused)
+                foreach (var peerKV in peersBeforePause)
+                    running.Add(peerKV.Key);
+            
+            lock (peersStored)
                 foreach (var peerKV in peersStored)
-                {
-                    if (!peersRunning.Contains(peerKV.Key) && !peersBanned.Contains(peerKV.Key))
-                    {
-                        Peer peer = new Peer(peerKV.Key, peerKV.Value);
-                        peersForDispatch.Push(peer);
-                    }
-                }
+                    if (!running.Contains(peerKV.Key) && !peersBanned.Contains(peerKV.Key))
+                        peersForDispatch.Push(new Peer(peerKV.Key, peerKV.Value));
 
-                if (peersForDispatch.Count > 0 && bstp.ShortRun < bstp.MinThreads)
-                {
-                    for (int i=0; i< Math.Min(peersForDispatch.Count, bstp.MinThreads); i++)
-                        bstp.Dispatch(null);
-                }
-
-            }
+            if (wasPaused)
+                foreach (var peerKV in peersBeforePause)
+                    peersForDispatch.Push(new Peer(peerKV.Key, peerKV.Value));
         }
         #endregion
 
@@ -849,14 +868,10 @@ namespace SuRGeoNix.BitSwarmLib
             {
                 if (Utils.IsWindows) Utils.TimeBeginPeriod(5);
 
-                // BoostThreads & MaxThreads should be OptionsStatic however we dont use them anywhere else (using just Options to allow change after pause/start)
-                bstp.Initialize(Math.Max(Options.MinThreads, Math.Min(Options.BoostThreads, Options.MaxThreads)), Options.MaxThreads, peersForDispatch);
-                if (Options.BoostThreads > Options.MinThreads) { Stats.BoostMode = true; if (Options.Verbosity > 0) Log($"[MODE] Boost Activated"); }
-
                 if (wasPaused)
                 {
                     CloneProgress();
-                    ReFillPeers();
+                    ReFillPeers(true);
                 }
 
                 if (Options.EnableTrackers) StartTrackers();
@@ -877,9 +892,30 @@ namespace SuRGeoNix.BitSwarmLib
 
                 while (status == Status.RUNNING)
                 {
-                    // Every 100ms Ensure BSTP ShortRun Will Be Filled (from peersForDispatch)
-                    if (peersForDispatch.Count > 0 && bstp.ShortRun < bstp.MinThreads)
-                        for (int i=0; i<Math.Min(peersForDispatch.Count, bstp.MinThreads); i++) bstp.Dispatch(null);
+                    if (Stats.PeersConnecting < Options.MaxNewConnections && Stats.PeersConnecting + peersConnected.Count < Options.MaxTotalConnections)
+                    {
+                        peersForDispatch.TryPop(out Peer peer);
+                        if (peer != null) peersConnect.Add(peer);
+                    }
+
+                    for (int i=peersConnect.Count-1; i>=0; i--)
+                    {
+                        peersConnect[i].RunNext();
+                        if (peersConnect[i].status == Peer.Status.FAILED)
+                            peersConnect.RemoveAt(i);
+                        else if (peersConnect[i].status > Peer.Status.CONNECTED)
+                        {
+                            peersConnected.Add(peersConnect[i]);
+                            peersConnect.RemoveAt(i);
+                        }
+                    }
+
+                    for (int i=peersConnected.Count-1; i>=0; i--)
+                    {
+                        peersConnected[i].RunNext();
+                        if (peersConnected[i].status == Peer.Status.FAILED)
+                            peersConnected.RemoveAt(i);
+                    }
 
                     // Every Second
                     if (curSecond != prevSecond && curSecond > 1)
@@ -892,7 +928,7 @@ namespace SuRGeoNix.BitSwarmLib
                             queueEmptySec = -1;
 
                         // Every 10 Seconds of Empty Queue -> ReFill
-                        else if (!Stats.SleepMode && queueEmptySec != -1 && curSecond - queueEmptySec > 10)
+                        else if (queueEmptySec != -1 && curSecond - queueEmptySec > 3)
                         {
                             ReFillPeers();
                             queueEmptySec = -1;
@@ -905,76 +941,11 @@ namespace SuRGeoNix.BitSwarmLib
                         }
                         else
                         {
-                            // Every 1 Second [Check Boost Mode]
-
-                            // [Boost Mode]
-                            if (Stats.BoostMode)
-                            {
-                                bool prevBoostMode  = Stats.BoostMode;
-                                Stats.BoostMode     = curSecond <= Options.BoostTime;
-                                if (Stats.BoostMode!= prevBoostMode)
-                                {
-                                    if (Options.Verbosity > 0) Log("[MODE] Boost" + (Stats.BoostMode ? "On" : "Off"));
-                                    if (!Stats.BoostMode) bstp.SetMinThreads(Options.MinThreads);
-                                }
-                            }
-
                             // Every 2 Second [Stats, Clean-up, Sleep Mode]
                             if (curSecond % 2 == 0)
                             {
-                                // [Stats, Clean-up] + [Keep Alive->Interested in FillStats]
+                                // [Stats] + [Drop NoPieces/Chocked in FillStats]
                                 FillStats();
-
-                                // [Sleep Mode Auto = MaxRate x 3/4]
-                                if (Options.SleepModeLimit == -1 && curSecond > Options.BoostTime * 2 && Stats.MaxRate > 0)
-                                {
-                                    int curLimit = ((Stats.MaxRate * 3)/4) / 1024;
-                                    if (Options.SleepModeLimit != curLimit)
-                                    {
-                                        Options.SleepModeLimit = curLimit;
-                                        if (Options.Verbosity > 0) Log($"[MODE] Sleep - New Limit at {Options.SleepModeLimit}");
-                                    }
-                                }
-                                
-                                // [Sleep Mode On/Off] | MinThreads/DHT/Trackers | Offset -+ 200 to avoid On/Off very often
-                                if (Options.SleepModeLimit > 0 && !Stats.BoostMode && !Stats.EndGameMode)
-                                {
-                                    bool prevSleepMode  = Stats.SleepMode;
-                                    Stats.SleepMode     = Stats.DownRate > 0 && Stats.DownRate / 1024 > Options.SleepModeLimit;
-
-                                    if (Stats.SleepMode != prevSleepMode)
-                                    {
-                                        if (!prevSleepMode)
-                                            Stats.SleepMode = Stats.DownRate > 0 && Stats.DownRate / 1024 > Options.SleepModeLimit + 200;
-                                        else
-                                            Stats.SleepMode = Stats.DownRate > 0 && Stats.DownRate / 1024 > Options.SleepModeLimit - 200;
-                                    }
-
-                                    if (Stats.SleepMode != prevSleepMode)
-                                    {
-                                        if (Options.Verbosity > 0) Log("[MODE] Sleep" + (Stats.SleepMode ? "On" : "Off"));
-
-                                        if (Stats.SleepMode)
-                                        {
-                                            if (Options.EnableDHT)
-                                            {
-                                                if (Options.Verbosity > 0) Log("[DHT] Stopping (SleepMode)");
-                                                dht.Stop();
-                                            }
-                                            bstp.SetMinThreads(Options.MinThreads / 2); // If we enable dispatching in every loop
-                                        }
-                                        else
-                                        {
-                                            bstp.SetMinThreads(Options.MinThreads); // If we enable dispatching in every loop
-
-                                            if (Options.EnableDHT)
-                                            {
-                                                if (Options.Verbosity > 0) Log("[DHT] Restarting (SleepMode Off)");
-                                                dht.Start();
-                                            }
-                                        }
-                                    }
-                                }
 
                             } // Every 2 Seconds
 
@@ -1007,8 +978,8 @@ namespace SuRGeoNix.BitSwarmLib
                             }
                         }
 
-                        // Every 31 Seconds [Re-request Trackers]
-                        if (trackers.Count != 0 && curSecond % (31+trackers.Count) == 0)
+                        // Every 41 Seconds [Re-request Trackers]
+                        if (trackers.Count != 0 && curSecond % 41 == 0)
                         {
                             if (Options.EnableTrackers && ((!Stats.SleepMode && Stats.PeersInQueue < 100) || Stats.BoostMode))
                             {
@@ -1019,7 +990,7 @@ namespace SuRGeoNix.BitSwarmLib
 
                     } // Scheduler [Every Second]
 
-                    Thread.Sleep(100);
+                    Thread.Sleep(10);
 
                     Stats.CurrentTime = DateTime.UtcNow.Ticks;
 
@@ -1028,15 +999,26 @@ namespace SuRGeoNix.BitSwarmLib
                 } // While
 
                 if (Options.EnableDHT) dht.Stop();
-
+                
                 Stats.EndTime = Stats.CurrentTime;
 
-                bstp.Stop = true;
-                if (bstp.Threads != null)
-                    foreach (var thread in bstp.Threads)
-                        if (thread.thread != null && thread.peer != null) thread.peer.Disconnect();
+                peersForDispatch.Clear();
+                peersBeforePause.Clear();
 
-                bstp.Dispose();
+                if (isPaused)
+                {
+                    foreach (var peer in peersConnected)
+                        peersBeforePause.Add(peer.host, peer.port);
+                }
+
+                foreach (var peer in peersConnect)
+                    peer.Dispose();
+
+                foreach (var peer in peersConnected)
+                    peer.Dispose();
+
+                peersConnected.Clear();
+                peersConnect.Clear();
 
                 Log("[BEGGAR  ] " + status);
 
@@ -1053,8 +1035,6 @@ namespace SuRGeoNix.BitSwarmLib
         // PieceBlock [Request Metadata/Torrent] | EndGame/FocusPoint/Normal
         internal void RequestPiece(Peer peer, bool imBeggar = false)
         {
-            if (!isRunning) return;
-
             int piece, block, blockSize;
 
             // Metadata Requests (Until Done)
@@ -1129,7 +1109,7 @@ namespace SuRGeoNix.BitSwarmLib
                 else
                     lock (lockerTorrent) piecesLeft = torrent.data.progress.GetAll0(peer.stageYou.bitfield);
 
-                if (piecesLeft.Count == 0) { peer.Disconnect(); return; }
+                if (piecesLeft.Count == 0) { peer.Dispose(); return; }
 
                 List<Tuple<int, int>> piecesBlocksLeft = new List<Tuple<int, int>>();
 
@@ -1225,10 +1205,10 @@ namespace SuRGeoNix.BitSwarmLib
                             }
                         }
 
-                        if (piece < 0) { Log($"[DROP] No Pieces Peer {peer.host}"); peer.Disconnect(); return; }
+                        if (piece < 0) { Log($"[DROP] No Pieces Peer {peer.host}"); peer.Dispose(); return; }
                     }
                     
-                    if (piece < 0) { Log($"CRITICAL {peer.host}"); peer.Disconnect(); return; }
+                    if (piece < 0) { Log($"CRITICAL {peer.host}"); peer.Dispose(); return; }
 
                     CreatePieceProgress(piece);
 
@@ -1620,18 +1600,21 @@ namespace SuRGeoNix.BitSwarmLib
         {
             Log($"[BAN] {host}");
 
-            peersBanned.Add(host);
+            lock (peersStored)
+            {
+                peersBanned.Add(host);
 
-            lock (peersForDispatch)
-                foreach (var thread in bstp.Threads)
+                for (int i=peersConnected.Count-1; i>=0; i--)
                 {
-                    if (thread != null && thread.peer != null && thread.peer.host == host)
+                    if (peersConnected[i].host == host)
                     {
-                        Log($"[BAN] {host} Found in BSTP");
-                        thread.peer.Disconnect();  thread.peer = null;
-                        peersStored.TryRemove(host, out int tmp01); 
+                        Log($"[BAN] {host} found in connected peers");
+                        peersConnected[i].Dispose();
                     }
                 }
+
+                peersStored.TryRemove(host, out int tmp01); 
+            }
         }
         private class SHA1FailedPiece
         {
@@ -1750,15 +1733,7 @@ namespace SuRGeoNix.BitSwarmLib
                 return torrent.data.blockSize;
         }
         internal bool NoPiecesPeer(Peer peer) { return torrent.metadata.isDone && !peer.stageYou.haveAll && (peer.stageYou.haveNone || peer.stageYou.bitfield == null || torrent.data.requests.GetFirst01(peer.stageYou.bitfield) == -1); }
-        public void CancelRequestedPieces()
-        {
-            lock (peersForDispatch)
-                foreach (var thread in bstp.Threads)
-                {
-                    if (thread != null && thread.peer != null && thread.peer.status == Peer.Status.DOWNLOADING)
-                        thread.peer.CancelPieces();
-                }
-        }
+        //public void CancelRequestedPieces() { }
         internal void StopWithError(string Message, string StackTrace = "")
         {
             status = Status.STOPPED;

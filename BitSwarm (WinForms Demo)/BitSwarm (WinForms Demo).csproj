@@ -115,6 +115,9 @@
       <DependentUpon>Resources.resx</DependentUpon>
       <DesignTime>True</DesignTime>
     </Compile>
+    <None Include="..\.editorconfig">
+      <Link>.editorconfig</Link>
+    </None>
     <None Include="App.config" />
     <None Include="packages.config" />
     <None Include="Properties\Settings.settings">
@@ -147,7 +150,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\BitSwarm\BitSwarm.csproj">
-      <Project>{373ac16d-9fb0-4215-b09b-e576516932d0}</Project>
+      <Project>{243fd7da-3a88-483e-8468-01fb4fa9ab8e}</Project>
       <Name>BitSwarm</Name>
     </ProjectReference>
   </ItemGroup>

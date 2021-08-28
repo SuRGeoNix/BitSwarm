@@ -35,33 +35,14 @@ namespace SuRGeoNix.BitSwarmLib
         public string   TrackersPath        { get; set; } = "";
 
         /// <summary>
-        /// [CP] Max number of threads for total connections (Shortrun + Longrun)
+        /// Max number of total TCP connections
         /// </summary>
-        public int      MaxThreads          { get; set; } =  150;   // Max Total  Connection Threads  | Short-Run + Long-Run
+        public int      MaxTotalConnections { get; set; } = 100;
 
         /// <summary>
-        /// Max number of threads for new connections / dispatching (Shortrun)
+        /// Max number of new TCP connections
         /// </summary>
-        public int      MinThreads          { get; set; } =   15;   // Max New    Connection Threads  | Short-Run
-
-        /// <summary>
-        /// [CP] Max number of threads for new connections during initial boosting (Shortrun)
-        /// </summary>
-        public int      BoostThreads        { get; set; } =   60;   // Max New    Connection Threads  | Boot Boost
-
-        /// <summary>
-        /// Boost seconds duration
-        /// </summary>
-        public int      BoostTime           { get; set; } =   30;   // Boot Boost Time (Seconds)
-
-        /// <summary>
-        /// Sleep mode activation on specific download rate (-1: Automatic based on max rate, 0: Disabled, >0: KB/s rate)
-        /// </summary>
-        public int      SleepModeLimit      { get; set; } =    0;   // Activates Sleep Mode (Low Resources) at the specify DownRate | DHT Stop, Re-Fills Stop (DHT/Trackers) & MinThreads Drop to MinThreads / 2
-                                                                    // -1: Auto | 0: Disabled | Auto will figure out SleepModeLimit from MaxRate
-
-        //public int      DownloadLimit       { get; set; } = -1;
-        //public int      UploadLimit         { get; set; }
+        public int      MaxNewConnections   { get; set; } = 15;
 
         /// <summary>
         /// Peer's TCP Connection Timeout (ms)
@@ -160,8 +141,6 @@ namespace SuRGeoNix.BitSwarmLib
         /// Enable/Disable logging for statistics
         /// </summary>
         public bool     LogStats            { get; set; } = false;  // Verbosity 1
-
-        
 
         /// <summary>
         /// Default XML configuration file name

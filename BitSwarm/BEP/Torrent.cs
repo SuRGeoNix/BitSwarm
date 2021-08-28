@@ -286,8 +286,6 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             [NonSerialized]
             public Bitfield         progress;
         }
-
-        #pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
         public Torrent (BitSwarm bitSwarm) 
         {
             this.bitSwarm       = bitSwarm;
@@ -656,13 +654,18 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                         if (data.folderTemp != null && Directory.Exists(data.folderTemp) && Directory.GetFiles(data.folderTemp, "*", SearchOption.AllDirectories).Length == 0)
                             Directory.Delete(data.folderTemp, true);
 
+                        data = new TorrentData();
+                        file = new TorrentFile();
+                        metadata = new MetaData();
+                        bitSwarm = null;
+                        GC.Collect();
                     } catch (Exception)  { }
                 }
 
                 disposedValue = true;
             }
         }
-        public void Dispose() { Dispose(true); }
+        public void Dispose() { lock (this) Dispose(true); }
         #endregion
     }
 
@@ -739,5 +742,4 @@ namespace SuRGeoNix.BitSwarmLib.BEP
         }
 
     }
-#pragma warning restore CS1591 // Missing XML comment for publicly visible type or member
 }

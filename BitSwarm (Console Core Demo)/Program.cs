@@ -44,7 +44,7 @@ namespace SuRGeoNix.BitSwarmConsole
             helpText.AddPostOptionsText("\r\n" + "USAGE:  \r\n\r\n\t" + $"bitswarm [OPTIONS] Torrent|Magnet|Hash|Session");            
             Console.WriteLine(helpText);
         }
-        private static void PrintMenu() { Console.WriteLine("[1: Stats] [2: Torrent] [3: Peers] [4: Peers (w/Refresh)] [Ctrl-C: Exit]".PadLeft(100, ' ')); }
+        private static void PrintMenu() { Console.WriteLine($"[1: Stats] [2: Torrent] [3: Peers] [4: Peers (w/Refresh)] [5: {(bitSwarm.isRunning ? "Pause" : "Continue")}] [Ctrl-C: Exit]".PadLeft(100, ' ')); }
 
         private static void Run(Options userOptions)
         {
@@ -122,6 +122,19 @@ namespace SuRGeoNix.BitSwarmConsole
 
                                 break;
 
+                            case ConsoleKey.D5:
+                                if (bitSwarm.isRunning)
+                                    bitSwarm.Pause();
+                                else
+                                    bitSwarm.Start();
+
+                                view = View.Stats;
+                                Console.Clear();
+                                Console.WriteLine(bitSwarm.DumpStats());
+                                PrintMenu();
+
+                                break;
+
                             default:
                                 break;
                         }
@@ -136,6 +149,12 @@ namespace SuRGeoNix.BitSwarmConsole
 
         private static void BitSwarm_StatusChanged(object source, BitSwarm.StatusChangedArgs e)
         {
+            if (bitSwarm != null && bitSwarm.isPaused && e.Status == 1)
+            {
+                Console.WriteLine("Paused");
+                return;
+            }
+
             if (e.Status == 0 && torrent != null && torrent.file.name != null)
             {
                 Console.WriteLine($"\r\nDownload of {torrent.file.name} success!\r\n\r\n");

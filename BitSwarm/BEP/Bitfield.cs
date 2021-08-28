@@ -2,8 +2,7 @@
 using System.Collections.Generic;
 
 namespace SuRGeoNix.BitSwarmLib.BEP
-{   
-    #pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
+{
     public class Bitfield
     {
         public byte[]   bitfield    { get; private set; }
@@ -368,5 +367,4 @@ namespace SuRGeoNix.BitSwarmLib.BEP
         public void SetBitfield(byte[] bitfield) { this.bitfield = bitfield; }
         public byte[] GetBitfield() { return bitfield; }
     }
-    #pragma warning restore CS1591 // Missing XML comment for publicly visible type or member
 }

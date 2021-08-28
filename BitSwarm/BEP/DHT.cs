@@ -16,6 +16,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
 
 using BencodeNET.Objects;
 using BencodeNET.Parsing;
@@ -137,7 +138,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             options.MaxBucketNodes          = 300;
             options.MinBucketDistance       = 145;
             options.MinBucketDistance2      = 100;
-            options.NodesPerLevel           = 8;
+            options.NodesPerLevel           = 4;
             
             return options;
         }
@@ -449,11 +450,12 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                 {
                     Node node = bucketNodesPointer[curNodeKey];
 
-                    System.Threading.ThreadPool.QueueUserWorkItem(new WaitCallback(x =>
+                    Task.Run(() =>
                     {
                         GetPeers(node);
                         Interlocked.Decrement(ref curThreads);
-                    }), null);
+                    });
+
                 }
 
                 while (curThreads > 0) Thread.Sleep(20);
@@ -504,7 +506,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                     // TODO: Re-request existing Peer Nodes for new Peers
                 }
 
-                Thread.Sleep(20);
+                Thread.Sleep(40);
             }
 
             if (options.Verbosity > 0) Log($"[BEGGAR] STOPPED {infoHash}");
