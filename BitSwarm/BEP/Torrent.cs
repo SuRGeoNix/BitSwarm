@@ -358,7 +358,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                 metadata.file.Dispose();
                 BDictionary bInfo   = (BDictionary) bParser.Parse(curFilePath);
 
-                if (file.infoHash != Utils.ArrayToStringHex(sha1.ComputeHash(bInfo.EncodeAsBytes())))
+                if (file.infoHash.ToLowerInvariant() != Utils.ArrayToStringHex(sha1.ComputeHash(bInfo.EncodeAsBytes())).ToLowerInvariant())
                     bitSwarm.StopWithError("[CRITICAL] Metadata SHA1 validation failed");
 
                 file.name = ((BString) bInfo["name"]).ToString();
