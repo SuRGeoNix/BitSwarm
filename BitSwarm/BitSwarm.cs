@@ -866,7 +866,7 @@ namespace SuRGeoNix.BitSwarmLib
         {
             try
             {
-                if (Utils.IsWindows) Utils.TimeBeginPeriod(5);
+                if (Utils.IsWindows && !Options.PreventTimePeriods) Utils.TimeBeginPeriod(5);
 
                 if (wasPaused)
                 {
@@ -1025,7 +1025,7 @@ namespace SuRGeoNix.BitSwarmLib
             } catch (ThreadAbortException) {
             } catch (Exception e) { Log($"[CRITICAL ERROR] Msg: {e.Message}\r\n{e.StackTrace}"); StatusChanged?.Invoke(this, new StatusChangedArgs(2, e.Message + "\r\n"+ e.StackTrace)); }
 
-            if (Utils.IsWindows) Utils.TimeEndPeriod(5);
+            if (Utils.IsWindows && !Options.PreventTimePeriods) Utils.TimeEndPeriod(5);
         }
         #endregion
 

@@ -5,7 +5,7 @@
     <Authors>SuRGeoNix</Authors>
     <Company>SuRGeoNix</Company>
     <Description>Bittorrent library for clients &amp; streaming purposes</Description>
-    <Version>2.4.0</Version>
+    <Version>2.4.1</Version>
     <Copyright>© SuRGeoNix 2021</Copyright>
     <PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/SuRGeoNix/BitSwarm</PackageProjectUrl>
@@ -17,14 +17,8 @@
     <RootNamespace>SuRGeoNix.BitSwarmLib</RootNamespace>
     <AssemblyName>BitSwarmLib</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <PackageReleaseNotes>New implementation without threading for each peer (should give better performance with same or even better speed)
-
-Generaly keeps threads and .NET threadpool's to minimal so parent projects will not require to increase them
-
-- Converting the solution to .NET 5 (still supports .NET standard 2.0)
-- Converting BitSwarm's Threadpool (BSTP) with Min/Max Threads to a single thread with MaxNewConnections/MaxTotalConnections
-- Dropping support for SleepModeLimit, BoostThreads, BoostTime
-- Faster resume from pause</PackageReleaseNotes>
+    <PackageReleaseNotes>Fixes an issue with an invalid torrent hash comparison (lower/upper case)
+Adds PreventTimePeriods Options for Windows (Temp fix with an issue while loading assembly dynamically)</PackageReleaseNotes>
     <PackageId>BitSwarm</PackageId>
     <Product>BitSwarm</Product>
   </PropertyGroup>

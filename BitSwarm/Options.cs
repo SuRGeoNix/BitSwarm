@@ -143,6 +143,11 @@ namespace SuRGeoNix.BitSwarmLib
         public bool     LogStats            { get; set; } = false;  // Verbosity 1
 
         /// <summary>
+        /// Enable/Disable TimeBeginPeriod(5) on Windows
+        /// </summary>
+        public bool     PreventTimePeriods  { get; set; } = false;
+
+        /// <summary>
         /// Default XML configuration file name
         /// </summary>
         public static string ConfigFile     { get; private set; } = "bitswarm.config.xml";
