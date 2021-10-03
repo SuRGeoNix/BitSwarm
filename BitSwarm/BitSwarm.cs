@@ -881,6 +881,7 @@ namespace SuRGeoNix.BitSwarmLib
                 prevSecond              = 0;
                 totalBytesDownloadedPrev= 0;
                 Stats.MaxRate           = 0;
+                Stats.PeersConnecting   = 0;
                 Stats.StartTime         = DateTime.UtcNow.Ticks;
                 Stats.CurrentTime       = Stats.StartTime;
                 prevStatsTicks          = Stats.StartTime;
