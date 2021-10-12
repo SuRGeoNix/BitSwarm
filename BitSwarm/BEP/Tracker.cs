@@ -1,22 +1,15 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Net.Http;
 using System.Net.Sockets;
-using System.Net.Security;
 using System.Text.RegularExpressions;
-using System.Security.Cryptography.X509Certificates;
 
 using BencodeNET.Parsing;
 using BencodeNET.Objects;
 
 namespace SuRGeoNix.BitSwarmLib.BEP
 {
-    /* TODO
-     * 
-     * 1. UDP: Review connID expiration (use interval from announce response)
-     * 2. TCP: Not tested yet
-     */
-
     internal class Tracker
     {
         public Uri      uri                         { get; private set; }
@@ -54,10 +47,6 @@ namespace SuRGeoNix.BitSwarmLib.BEP
 
         private UdpClient  udpClient;
         public  IPEndPoint rEP;
-
-        private TcpClient       tcpClient;
-        private NetworkStream   netStream;
-        private SslStream       sslStream;
         
         private byte[]          recvBuff;
 
@@ -78,6 +67,14 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             public const byte SCRAPE    = 0x02;
             public const byte ERROR     = 0x03;
         }
+
+        static Tracker()
+        {
+            // Allowing Untrusted SSL Certificates with HttpClient
+            ServicePointManager.ServerCertificateValidationCallback += (sender, cert, chain, sslPolicyErrors) => true;
+            httpClient.Timeout = new TimeSpan(0, 0, 30); // TODO: Options?
+        }
+        static readonly HttpClient httpClient = new HttpClient();
 
         public Tracker(Uri url, Options options)
         {
@@ -128,104 +125,36 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             udpClient   = new UdpClient(0, AddressFamily.InterNetwork); // Currently only IPv4
             udpClient.Client.ReceiveTimeout = options.ReceiveTimeout;
         }
-
-        // Main Implementation [Connect | Receive | Announce | Scrape]
-        private bool ConnectTCP()
-        {
-            bool connected;
-            tcpClient = new TcpClient();
-
-            try
-            {
-                connected = tcpClient.ConnectAsync(host, port).Wait(options.ConnectTimeout);
-
-                if (!connected) return false;
-
-                if (type == Type.HTTP)
-                    netStream               = tcpClient.GetStream();
-                else
-                {
-                    sslStream               = new SslStream(tcpClient.GetStream(), false, new RemoteCertificateValidationCallback(ValidateServerCertificate));
-                    sslStream.AuthenticateAsClient(host);
-                }
-
-                //tcpClient.SendBufferSize    = 1024;
-                //tcpClient.ReceiveBufferSize = 1500;
-            }
-            catch (Exception e)
-            {
-                Log("Failed " + e.Message);
-                return false;
-            }
-
-            tcpClient.ReceiveTimeout = options.ReceiveTimeout;
-
-            return true;
-        }
-        private bool ReceiveTCP()
-        {
-            try
-            {
-                string  headers = "";
-                int     newLines= 0;
-                recvBuff       = new byte[1];
-
-                do
-                {
-                    if (type == Type.HTTP)
-                        netStream.Read(recvBuff, 0, 1);
-                    else
-                        sslStream.Read(recvBuff, 0, 1);
-
-                    if (recvBuff[0] == '\r' || recvBuff[0] == '\n')
-                    {
-                        if (recvBuff[0] == '\n')
-                            newLines++;
-                    }
-                    else
-                    {
-                        newLines = 0;
-                    }
-
-                    headers += Convert.ToChar(recvBuff[0]);
-
-                } while (newLines != 2 && recvBuff[0] != '\0');
-
-                if (newLines != 2) return false;
-
-                int len = int.Parse(Regex.Match(headers, @"Content-Length: ([0-9]+)").Groups[1].Value);
-
-                recvBuff = new byte[len];
-                if (type == Type.HTTP)
-                    netStream.Read(recvBuff, 0, len);
-                else
-                    sslStream.Read(recvBuff, 0, len);
-
-            } catch (Exception) { return false; }
-
-            return true;
-        }
-        public bool Announce(   Int32 num_want = -1, Int64 downloaded = 0, Int64 left = 0, Int64 uploaded = 0)
+        
+        public void Announce(   Int32 num_want = -1, Int64 downloaded = 0, Int64 left = 0, Int64 uploaded = 0)
         {
             if (type == Type.UDP)
-                { AnnounceUDP(num_want, downloaded, left, uploaded); return true; }
+                AnnounceUDP(num_want, downloaded, left, uploaded);
             else
-                return AnnounceTCP(num_want, downloaded, left, uploaded);
+                AnnounceTCP(num_want, downloaded, left, uploaded);
         }
-        public bool AnnounceTCP(Int32 num_want = -1, Int64 downloaded = 0, Int64 left = 0, Int64 uploaded = 0)
+        public async void AnnounceTCP(Int32 num_want = -1, Int64 downloaded = 0, Int64 left = 0, Int64 uploaded = 0)
         {
-            if (!ConnectTCP()) return false;
-            
             try
             {
-                byte[] sendBuff = System.Text.Encoding.UTF8.GetBytes($"GET {uri.AbsolutePath}?info_hash={Utils.StringHexToUrlEncode(options.InfoHash)}&peer_id={Utils.StringHexToUrlEncode(BitConverter.ToString(options.PeerId).Replace("-",""))}&port=11111&left={left}&downloaded={downloaded}&uploaded={uploaded}&event=started&compact=1&numwant={num_want} HTTP/1.1\r\nHost: {host}:{port}\r\nConection: close\r\n\r\n");
+                string query = "";
+                if (!string.IsNullOrEmpty(uri.Query))
+                {
+                    if (Regex.IsMatch(uri.Query, "token=", RegexOptions.IgnoreCase) || Regex.IsMatch(uri.Query, "passkey=", RegexOptions.IgnoreCase))
+                        query += "&key=1";
 
-                if (type == Type.HTTP)
-                    netStream.Write(sendBuff, 0, sendBuff.Length);
+                    query += "&";
+                }
                 else
-                    sslStream.Write(sendBuff, 0, sendBuff.Length);
+                    query += "?";
 
-                if (!ReceiveTCP()) return false;
+                query += $"info_hash={Utils.StringHexToUrlEncode(options.InfoHash)}&peer_id={Utils.StringHexToUrlEncode(BitConverter.ToString(options.PeerId).Replace("-",""))}&port=11111&left={left}&downloaded={downloaded}&uploaded={uploaded}&event=started&compact=1&numwant={num_want}";
+
+                HttpResponseMessage response = await httpClient.GetAsync(uri.AbsoluteUri + query);
+                response.EnsureSuccessStatusCode();
+                recvBuff = await response.Content.ReadAsByteArrayAsync();
+
+                //System.Diagnostics.Debug.WriteLine(System.Text.Encoding.UTF8.GetString(recvBuff));
 
                 BencodeParser parser= new BencodeParser();
                 BDictionary extDic  = parser.Parse<BDictionary>(recvBuff);
@@ -247,10 +176,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             catch (Exception e)
             {
                 Log($"Failed {e.Message}\r\n{e.StackTrace}");
-                return false;
             }
-
-            return true;
         }
         public void AnnounceUDP(Int32 num_want = -1, Int64 downloaded = 0, Int64 left = 0, Int64 uploaded = 0)
         {
@@ -380,8 +306,6 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             return true;
         }
 
-        // Misc
-        private static bool ValidateServerCertificate(object sender, X509Certificate certificate, X509Chain chain, SslPolicyErrors sslPolicyErrors) { return true; }
         internal void Log(string msg) { if (options.Verbosity > 0) options.LogFile.Write($"[Tracker ] [{typeHostPort}] {msg}"); }
     }
 }
