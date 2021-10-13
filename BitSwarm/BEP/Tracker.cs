@@ -53,7 +53,6 @@ namespace SuRGeoNix.BitSwarmLib.BEP
         private byte[]          action;
         private byte[]          connID;
         private byte[]          tranID;
-        private byte[]          key;
         private byte[]          data;
 
         private string          typeHostPort;
@@ -73,8 +72,12 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             // Allowing Untrusted SSL Certificates with HttpClient
             ServicePointManager.ServerCertificateValidationCallback += (sender, cert, chain, sslPolicyErrors) => true;
             httpClient.Timeout = new TimeSpan(0, 0, 30); // TODO: Options?
+            httpClient.DefaultRequestHeaders.UserAgent.Add(new System.Net.Http.Headers.ProductInfoHeaderValue("BitSwarm", BitSwarm.Version));
+            key = rnd.Next(1, Int32.MaxValue);
         }
         static readonly HttpClient httpClient = new HttpClient();
+        static Random rnd = new Random();
+        static Int32 key;
 
         public Tracker(Uri url, Options options)
         {
@@ -82,7 +85,6 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             uri             = url;
             host            = url.DnsSafeHost;
             port            = url.Port;
-            key             = Utils.ToBigEndian((Int32) new Random().Next(1, Int32.MaxValue));
 
             switch (url.Scheme.ToLower())
             {
@@ -137,24 +139,15 @@ namespace SuRGeoNix.BitSwarmLib.BEP
         {
             try
             {
-                string query = "";
-                if (!string.IsNullOrEmpty(uri.Query))
-                {
-                    if (Regex.IsMatch(uri.Query, "token=", RegexOptions.IgnoreCase) || Regex.IsMatch(uri.Query, "passkey=", RegexOptions.IgnoreCase))
-                        query += "&key=1";
-
-                    query += "&";
-                }
-                else
-                    query += "?";
-
-                query += $"info_hash={Utils.StringHexToUrlEncode(options.InfoHash)}&peer_id={Utils.StringHexToUrlEncode(BitConverter.ToString(options.PeerId).Replace("-",""))}&port=11111&left={left}&downloaded={downloaded}&uploaded={uploaded}&event=started&compact=1&numwant={num_want}";
+                string query = !string.IsNullOrEmpty(uri.Query) ? "&" : "?";
+                query += $"info_hash={Utils.StringHexToUrlEncode(options.InfoHash)}&peer_id={Utils.StringHexToUrlEncode(BitConverter.ToString(options.PeerId).Replace("-",""))}&port=11111&left={left}&downloaded={downloaded}&uploaded={uploaded}&event=started&compact=1&numwant={num_want}&key={key}";
 
                 HttpResponseMessage response = await httpClient.GetAsync(uri.AbsoluteUri + query);
                 response.EnsureSuccessStatusCode();
                 recvBuff = await response.Content.ReadAsByteArrayAsync();
 
-                //System.Diagnostics.Debug.WriteLine(System.Text.Encoding.UTF8.GetString(recvBuff));
+                System.Diagnostics.Debug.WriteLine(recvBuff == null ? "Null" : recvBuff.Length.ToString());
+                System.Diagnostics.Debug.WriteLine(System.Text.Encoding.UTF8.GetString(recvBuff));
 
                 BencodeParser parser= new BencodeParser();
                 BDictionary extDic  = parser.Parse<BDictionary>(recvBuff);
@@ -213,7 +206,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                     Int16 externalPort = 17253;
 
                     action  = Utils.ToBigEndian((Int32) Action.ANNOUNCE);
-                    data    = Utils.ArrayMerge(connID, action, tranID, Utils.StringHexToArray(options.InfoHash), options.PeerId, Utils.ToBigEndian(downloaded), Utils.ToBigEndian(left), Utils.ToBigEndian(uploaded), Utils.ToBigEndian(event_), Utils.ToBigEndian(externalIp), key, Utils.ToBigEndian(num_want), Utils.ToBigEndian(externalPort));
+                    data    = Utils.ArrayMerge(connID, action, tranID, Utils.StringHexToArray(options.InfoHash), options.PeerId, Utils.ToBigEndian(downloaded), Utils.ToBigEndian(left), Utils.ToBigEndian(uploaded), Utils.ToBigEndian(event_), Utils.ToBigEndian(externalIp), Utils.ToBigEndian(key), Utils.ToBigEndian(num_want), Utils.ToBigEndian(externalPort));
                     udpClient.Send(data, data.Length, rEP);
                     Log($"Announcing (Recursion: {curRecursions})");
                 }
