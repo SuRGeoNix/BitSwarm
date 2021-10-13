@@ -140,14 +140,13 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             try
             {
                 string query = !string.IsNullOrEmpty(uri.Query) ? "&" : "?";
-                query += $"info_hash={Utils.StringHexToUrlEncode(options.InfoHash)}&peer_id={Utils.StringHexToUrlEncode(BitConverter.ToString(options.PeerId).Replace("-",""))}&port=11111&left={left}&downloaded={downloaded}&uploaded={uploaded}&event=started&compact=1&numwant={num_want}&key={key}";
+                query += $"info_hash={Utils.StringHexToUrlEncode(options.InfoHash)}&peer_id={Utils.StringHexToUrlEncode(BitConverter.ToString(options.PeerId).Replace("-",""))}&port=11111&left={left}&downloaded={downloaded}&uploaded={uploaded}&event=started&compact=1&numwant={num_want}&key={key.ToString("x")}";
 
                 HttpResponseMessage response = await httpClient.GetAsync(uri.AbsoluteUri + query);
                 response.EnsureSuccessStatusCode();
                 recvBuff = await response.Content.ReadAsByteArrayAsync();
 
-                System.Diagnostics.Debug.WriteLine(recvBuff == null ? "Null" : recvBuff.Length.ToString());
-                System.Diagnostics.Debug.WriteLine(System.Text.Encoding.UTF8.GetString(recvBuff));
+                //System.Diagnostics.Debug.WriteLine(System.Text.Encoding.UTF8.GetString(recvBuff));
 
                 BencodeParser parser= new BencodeParser();
                 BDictionary extDic  = parser.Parse<BDictionary>(recvBuff);
