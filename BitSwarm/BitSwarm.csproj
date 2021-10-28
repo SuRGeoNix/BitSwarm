@@ -5,7 +5,7 @@
     <Authors>SuRGeoNix</Authors>
     <Company>SuRGeoNix</Company>
     <Description>Bittorrent library for clients &amp; streaming purposes</Description>
-    <Version>2.4.2</Version>
+    <Version>2.4.3</Version>
     <Copyright>© SuRGeoNix 2021</Copyright>
     <PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/SuRGeoNix/BitSwarm</PackageProjectUrl>
@@ -17,7 +17,7 @@
     <RootNamespace>SuRGeoNix.BitSwarmLib</RootNamespace>
     <AssemblyName>BitSwarmLib</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <PackageReleaseNotes>Fixes a critical issue that would prevent start after pause sometimes</PackageReleaseNotes>
+    <PackageReleaseNotes>Fixes http trackers and adds support for private trackers</PackageReleaseNotes>
     <PackageId>BitSwarm</PackageId>
     <Product>BitSwarm</Product>
   </PropertyGroup>

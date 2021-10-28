@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
-using System.Text.RegularExpressions;
 
 using BencodeNET.Parsing;
 using BencodeNET.Objects;
@@ -71,11 +70,20 @@ namespace SuRGeoNix.BitSwarmLib.BEP
         {
             // Allowing Untrusted SSL Certificates with HttpClient
             ServicePointManager.ServerCertificateValidationCallback += (sender, cert, chain, sslPolicyErrors) => true;
+
+            var handler = new HttpClientHandler()
+            {
+                SslProtocols = System.Security.Authentication.SslProtocols.Tls12,
+                AllowAutoRedirect = true,
+                AutomaticDecompression = DecompressionMethods.GZip,
+                CookieContainer = new CookieContainer()
+            };
+            httpClient = new HttpClient(handler);
             httpClient.Timeout = new TimeSpan(0, 0, 30); // TODO: Options?
             httpClient.DefaultRequestHeaders.UserAgent.Add(new System.Net.Http.Headers.ProductInfoHeaderValue("BitSwarm", BitSwarm.Version));
             key = rnd.Next(1, Int32.MaxValue);
         }
-        static readonly HttpClient httpClient = new HttpClient();
+        static readonly HttpClient httpClient;
         static Random rnd = new Random();
         static Int32 key;
 

@@ -4,9 +4,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using System.Threading;
-using System.Security.Cryptography;
 
 using BencodeNET.Objects;
 
@@ -158,6 +158,7 @@ namespace SuRGeoNix.BitSwarmLib
 
         public Torrent                  torrent;
 
+        private int                     curTracker = -1;
         private List<Tracker>           trackers;
         private List<Uri>               trackersUnsorted;
         private Tracker.Options         trackerOpt;
@@ -791,7 +792,6 @@ namespace SuRGeoNix.BitSwarmLib
             }
         }
 
-        int curTracker = -1;
         private  void StartTrackers()
         {
             for (int i=0; i<Math.Min(5, trackers.Count); i++)
@@ -1734,7 +1734,6 @@ namespace SuRGeoNix.BitSwarmLib
                 return torrent.data.blockSize;
         }
         internal bool NoPiecesPeer(Peer peer) { return torrent.metadata.isDone && !peer.stageYou.haveAll && (peer.stageYou.haveNone || peer.stageYou.bitfield == null || torrent.data.requests.GetFirst01(peer.stageYou.bitfield) == -1); }
-        //public void CancelRequestedPieces() { }
         internal void StopWithError(string Message, string StackTrace = "")
         {
             status = Status.STOPPED;
