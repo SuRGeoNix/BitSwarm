@@ -5,7 +5,7 @@
     <Authors>SuRGeoNix</Authors>
     <Company>SuRGeoNix</Company>
     <Description>Bittorrent library for clients &amp; streaming purposes</Description>
-    <Version>2.4.3</Version>
+    <Version>2.4.4</Version>
     <Copyright>© SuRGeoNix 2021</Copyright>
     <PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/SuRGeoNix/BitSwarm</PackageProjectUrl>
@@ -17,7 +17,10 @@
     <RootNamespace>SuRGeoNix.BitSwarmLib</RootNamespace>
     <AssemblyName>BitSwarmLib</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <PackageReleaseNotes>Fixes http trackers and adds support for private trackers</PackageReleaseNotes>
+    <PackageReleaseNotes>
+		Adds Read with Span byte support to TorrentStream
+		Updates APF to 1.3.1
+	</PackageReleaseNotes>
     <PackageId>BitSwarm</PackageId>
     <Product>BitSwarm</Product>
   </PropertyGroup>
@@ -31,7 +34,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="APF" Version="1.3.0" />
+    <PackageReference Include="APF" Version="1.3.1" />
     <PackageReference Include="BencodeNET" Version="4.0.0" />
   </ItemGroup>
 

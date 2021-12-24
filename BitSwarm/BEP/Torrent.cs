@@ -688,6 +688,51 @@ namespace SuRGeoNix.BitSwarmLib.BEP
 
         public void Cancel() { cancel = true; }
 
+#if NET5_0_OR_GREATER
+        /// <summary>
+        /// Reads the specified span bytes from the part file until they are available or cancel
+        /// </summary>
+        /// <param name="buffer"></param>
+        /// <returns></returns>
+        public override int Read(Span<byte> buffer)
+        {
+            int startPiece  = FilePosToPiece(Position);
+            int endPiece    = FilePosToPiece(Position + buffer.Length);
+
+            if (!torrent.bitSwarm.FocusAreInUse)
+                torrent.bitSwarm.FocusArea = new Tuple<int, int>(startPiece, LastPiece); // Set every time to follow the decoder?
+
+            if (torrent.data.progress.GetFirst0(startPiece, endPiece) != -1)
+            {
+                lock(torrent) // Only one FA can be active
+                {
+                    cancel = false;
+                    torrent.bitSwarm.FocusAreInUse = true;
+                    torrent.bitSwarm.Log($"[FOCUS {startPiece} - {endPiece}] Buffering Started");
+
+                    while (torrent.data.progress.GetFirst0(startPiece, endPiece) != -1 && !cancel)
+                    {
+                        if (torrent.bitSwarm.focusArea != null && torrent.bitSwarm.focusArea.Item1 != startPiece && torrent.data.requests.GetFirst0(startPiece, endPiece) != -1)
+                            torrent.bitSwarm.FocusArea = new Tuple<int, int>(startPiece, LastPiece);
+                        Thread.Sleep(25);
+                    }
+
+                    torrent.bitSwarm.FocusAreInUse = false;
+
+                    if (cancel)
+                    {
+                        torrent.bitSwarm.Log($"[FOCUS {startPiece} - {endPiece}] Buffering Cancel");
+                        return -1;
+                    }
+                    else
+                        torrent.bitSwarm.Log($"[FOCUS {startPiece} - {endPiece}] Buffering Done");
+                }
+            }
+
+            return base.Read(buffer);
+        }
+#endif
+
         /// <summary>
         /// Reads the specified actual bytes from the part file until they are available or cancel
         /// </summary>
