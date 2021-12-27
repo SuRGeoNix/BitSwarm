@@ -146,9 +146,14 @@ namespace SuRGeoNix.BitSwarmLib
         readonly object  lockerMetadata      = new object();
 
         // Generators (Hash / Random)
-        private SHA1                    sha1                = new SHA1Managed();
+        public byte[]                   EXT_BDIC;
+        public byte[]                   HANDSHAKE_BYTES;
         private static Random           rnd                 = new Random();
+        private SHA1                    sha1                = new SHA1Managed();
         internal byte[]                 peerID;
+        internal byte[]                 sendBuffPieces;
+        internal byte[]                 sendBuffHandExt;
+        internal byte[]                 recvBuff;
 
         // Main [Torrent / Trackers / Peers / Options]
         internal ConcurrentDictionary<string, int>  peersStored         {get; private set; }
@@ -250,9 +255,24 @@ namespace SuRGeoNix.BitSwarmLib
             extensions.Add("ut_metadata", Peer.Messages.EXT_UT_METADATA);
             if (Options.EnablePEX) extensions.Add("ut_pex", Peer.Messages.EXT_UT_PEX);
 
-            Peer.HANDSHAKE_BYTES            = Utils.ArrayMerge(Peer.BIT_PROTO, Peer.EXT_PROTO, Utils.StringHexToArray(torrent.file.infoHash), peerID);
-            Peer.EXT_BDIC                   = (new BDictionary() { {"e", 0 }, { "m", extensions }, {"reqq", 250 }, {"v", $"BitSwarm {Version}" } }).EncodeAsBytes();
-            Peer.Beggar                     = this;
+            // [HANDSHAKE EXTENDED]     | http://bittorrent.org/beps/bep_0010.html      | m-> {"key", "value"}, p, v, yourip, ipv6, ipv4, reqq
+            HANDSHAKE_BYTES                 = Utils.ArrayMerge(Peer.BIT_PROTO, Peer.EXT_PROTO, Utils.StringHexToArray(torrent.file.infoHash), peerID);
+            EXT_BDIC                        = (new BDictionary() { {"e", 0 }, { "m", extensions }, {"reqq", 250 }, {"v", $"BitSwarm {Version}" } }).EncodeAsBytes();
+
+            // Prepare Receive Buffer for all except pieces (that will be pass directly to pieceprogress data)
+            recvBuff                        = new byte[Peer.MAX_DATA_SIZE * 2];
+
+            // Prepare Send Buffer for Extended Handshake 
+            sendBuffHandExt                 = Utils.ArrayMerge(Peer.PrepareMessage(0, true, EXT_BDIC), Peer.PrepareMessage(0xf, false, null), Peer.PrepareMessage(0x2, false, null)); // EXTDIC, HAVE NONE, INTRESTED
+
+            // Prepare Send Buffer for Piece Requests
+            sendBuffPieces                  = new byte[Options.BlockRequests * (4 + 1 + 4 + 4 + 4)]; // len + msgid + piece + offset + length
+            Utils.IntToBytes(sendBuffPieces, 0, 1 + 4 + 4 + 4);
+            for (int i=0; i<sendBuffPieces.Length; i += 4 + 1 + 4 + 4 + 4)
+            {
+                Utils.IntToBytes(sendBuffPieces, i, 1 + 4 + 4 + 4);
+                sendBuffPieces[i+4] = Peer.Messages.REQUEST;
+            }
 
             // Fill from TorrentFile | MagnetLink + TrackersPath to Trackers
             FillTrackersFromTorrent();
@@ -365,7 +385,7 @@ namespace SuRGeoNix.BitSwarmLib
 
                 Thread tmp = new Thread(() =>
                 {
-                    if (torrent.data.isDone)
+                    if (torrent != null && torrent.data.isDone)
                         StatusChanged?.Invoke(this, new StatusChangedArgs(0));
                     else
                         StatusChanged?.Invoke(this, new StatusChangedArgs(1));
@@ -818,7 +838,7 @@ namespace SuRGeoNix.BitSwarmLib
                     if (!peersStored.ContainsKey(peerKV.Key) && !peersBanned.Contains(peerKV.Key))
                     {
                         peersStored.TryAdd(peerKV.Key, peerKV.Value);
-                        Peer peer = new Peer(peerKV.Key, peerKV.Value);
+                        Peer peer = new Peer(peerKV.Key, peerKV.Value, this);
                         peersForDispatch.Push(peer);
                         countNew++;
                     }
@@ -852,11 +872,11 @@ namespace SuRGeoNix.BitSwarmLib
             lock (peersStored)
                 foreach (var peerKV in peersStored)
                     if (!running.Contains(peerKV.Key) && !peersBanned.Contains(peerKV.Key))
-                        peersForDispatch.Push(new Peer(peerKV.Key, peerKV.Value));
+                        peersForDispatch.Push(new Peer(peerKV.Key, peerKV.Value, this));
 
             if (wasPaused)
                 foreach (var peerKV in peersBeforePause)
-                    peersForDispatch.Push(new Peer(peerKV.Key, peerKV.Value));
+                    peersForDispatch.Push(new Peer(peerKV.Key, peerKV.Value, this));
         }
         #endregion
 
@@ -895,8 +915,12 @@ namespace SuRGeoNix.BitSwarmLib
                 {
                     if (Stats.PeersConnecting < Options.MaxNewConnections && Stats.PeersConnecting + peersConnected.Count < Options.MaxTotalConnections)
                     {
-                        peersForDispatch.TryPop(out Peer peer);
-                        if (peer != null) peersConnect.Add(peer);
+                        // Max New Connections per loop (Thread.Sleep(10))
+                        for (int i=0; i<Math.Min(Options.MaxNewConnections - Stats.PeersConnecting, Math.Min(peersForDispatch.Count, 15)); i++)
+                        {
+                            if (peersForDispatch.TryPop(out Peer peer))
+                                peersConnect.Add(peer);
+                        }
                     }
 
                     for (int i=peersConnect.Count-1; i>=0; i--)
@@ -1023,7 +1047,6 @@ namespace SuRGeoNix.BitSwarmLib
 
                 Log("[BEGGAR  ] " + status);
 
-            } catch (ThreadAbortException) {
             } catch (Exception e) { Log($"[CRITICAL ERROR] Msg: {e.Message}\r\n{e.StackTrace}"); StatusChanged?.Invoke(this, new StatusChangedArgs(2, e.Message + "\r\n"+ e.StackTrace)); }
 
             if (Utils.IsWindows && !Options.PreventTimePeriods) Utils.TimeEndPeriod(5);
@@ -1280,9 +1303,9 @@ namespace SuRGeoNix.BitSwarmLib
         }
 
         // PieceBlock [Metadata Receive | Reject]
-        internal void MetadataPieceReceived(byte[] data, int piece, int offset, int totalSize, Peer peer)
+        internal void MetadataPieceReceived(byte[] data, int piece, int offset, int totalSize, int len, Peer peer)
         {
-            Log($"[{peer.host.PadRight(15, ' ')}] [RECV][M]\tPiece: {piece} Offset: {offset} Size: {totalSize}");
+            Log($"[{peer.host.PadRight(15, ' ')}] [RECV][M]\tPiece: {piece} Offset: {offset} Len: {len} TotalSize: {totalSize}");
 
             lock (lockerMetadata)
             {
@@ -1310,7 +1333,7 @@ namespace SuRGeoNix.BitSwarmLib
 
                 if (piece == torrent.metadata.pieces - 1)
                 {
-                    torrent.metadata.file.WriteLast(piece, data, offset, data.Length - offset);
+                    torrent.metadata.file.WriteLast(piece, data, offset, len);
                 } else
                 {
                     torrent.metadata.file.Write(piece, data, offset);
@@ -1344,7 +1367,7 @@ namespace SuRGeoNix.BitSwarmLib
         }
 
         // PieceBlock [Torrent  Receive]
-        internal void PieceReceived(byte[] data, int piece, int offset, Peer peer)
+        internal void PieceReceived(int piece, int offset, int length, Peer peer)
         {
             if (!isRunning) return;
 
@@ -1364,9 +1387,9 @@ namespace SuRGeoNix.BitSwarmLib
                 if (   (!containsKey && pieceProgress )     // Piece Done
                     || ( containsKey && blockProgress ) )   // Block Done
                 { 
-                    Stats.BytesDropped   += data.Length; 
+                    Stats.BytesDropped   += length; 
                     Stats.AlreadyReceived++;
-                    if (Options.Verbosity > 0) Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P]\tPiece: {piece} Block: {block} Offset: {offset} Size: {data.Length} Already received"); 
+                    if (Options.Verbosity > 0) Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P]\tPiece: {piece} Block: {block} Offset: {offset} Size: {length} Already received"); 
 
                     return; 
                 }
@@ -1379,14 +1402,14 @@ namespace SuRGeoNix.BitSwarmLib
                 //            if (downpiece.Item1 == piece && downpiece.Item2 == offset) { downpeer.CancelPieces(downpiece.Item1, downpiece.Item2, downpiece.Item3); break; }
                 //    }
 
-                if (Options.Verbosity > 1) Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P]\tPiece: {piece} Block: {block} Offset: {offset} Size: {data.Length} Requests: {peer.PiecesRequested}");
-                Stats.BytesDownloaded += data.Length;
+                if (Options.Verbosity > 1) Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P]\tPiece: {piece} Block: {block} Offset: {offset} Size: {length} Requests: {peer.PiecesRequested}");
+                Stats.BytesDownloaded += length;
 
                 // Keep track of received data in case of SHA1 failure to ban the responsible peer
                 recvBlocksTracking[$"{piece}|{block}"] = peer.host;
                 
                 // Parse Block Data to Piece Data
-                Buffer.BlockCopy(data, 0, torrent.data.pieceProgress[piece].data, offset, data.Length);
+                peer.tcpStream.Read(torrent.data.pieceProgress[piece].data, offset, length);
 
                 // SetBit Block | Leave if more blocks required for Piece
                 torrent.data.pieceProgress[piece].progress.     SetBit(block);
@@ -1405,7 +1428,7 @@ namespace SuRGeoNix.BitSwarmLib
                     // Failure twice in a row | Ban peers with Diff blocks (possible to ban good ones | also in case of not diff / failed block came from same peer with same invalid data -> we ban the most famous one)
                     if (sha1FailedPieces.ContainsKey(piece))
                     {
-                        if (Options.Verbosity > 0) Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P]\tPiece: {piece} Block: {block} Offset: {offset} Size: {data.Length} Size2: {torrent.data.pieceProgress[piece].data.Length} SHA-1 failed | Doing Diff (both)");
+                        if (Options.Verbosity > 0) Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P]\tPiece: {piece} Block: {block} Offset: {offset} Size: {length} Size2: {torrent.data.pieceProgress[piece].data.Length} SHA-1 failed | Doing Diff (both)");
                         SHA1FailedPiece sfp = new SHA1FailedPiece(piece, torrent.data.pieceProgress[piece].data, recvBlocksTracking, torrent.data.blocks);
                         List<string> responsiblePeers = SHA1FailedPiece.FindDiffs(sha1FailedPieces[piece], sfp, torrent, true);
 
@@ -1418,7 +1441,7 @@ namespace SuRGeoNix.BitSwarmLib
                     // Failure first time | Keep piece data for later review
                     else
                     {
-                        if (Options.Verbosity > 0) Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P]\tPiece: {piece} Block: {block} Offset: {offset} Size: {data.Length} Size2: {torrent.data.pieceProgress[piece].data.Length} SHA-1 failed | Adding for review");
+                        if (Options.Verbosity > 0) Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P]\tPiece: {piece} Block: {block} Offset: {offset} Size: {length} Size2: {torrent.data.pieceProgress[piece].data.Length} SHA-1 failed | Adding for review");
                         SHA1FailedPiece sfp = new SHA1FailedPiece(piece, torrent.data.pieceProgress[piece].data, recvBlocksTracking, torrent.data.blocks);
                         sha1FailedPieces.TryAdd(piece, sfp);
                     }
@@ -1436,7 +1459,7 @@ namespace SuRGeoNix.BitSwarmLib
                 // Finally SHA-1 previously failed now success (found responsible peer for previous failure)
                 else if (sha1FailedPieces.ContainsKey(piece))
                 {
-                    if (Options.Verbosity > 0) Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P]\tPiece: {piece} Block: {block} Offset: {offset} Size: {data.Length} Size2: {torrent.data.pieceProgress[piece].data.Length} SHA-1 Success | Doing Diff");
+                    if (Options.Verbosity > 0) Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P]\tPiece: {piece} Block: {block} Offset: {offset} Size: {length} Size2: {torrent.data.pieceProgress[piece].data.Length} SHA-1 Success | Doing Diff");
                     SHA1FailedPiece sfp = new SHA1FailedPiece(piece, torrent.data.pieceProgress[piece].data, recvBlocksTracking, torrent.data.blocks);
                     List<string> responsiblePeers = SHA1FailedPiece.FindDiffs(sha1FailedPieces[piece], sfp, torrent);
 
@@ -1721,7 +1744,7 @@ namespace SuRGeoNix.BitSwarmLib
                 {
                     PieceProgress pp = new PieceProgress(ref torrent.data, piece);
                     torrent.data.pieceProgress.Add(piece, pp);
-                } 
+                }
             }
         }
         private int GetBlockSize(int piece, int block)

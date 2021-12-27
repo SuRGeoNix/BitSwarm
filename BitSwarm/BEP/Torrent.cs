@@ -27,7 +27,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
         private static  BencodeParser   bParser = new BencodeParser();
         [NonSerialized]
         private static  SHA1            sha1    = new SHA1Managed();
-
+        
         /// <summary>
         /// Fields of .torrent file (extracted from bencoded data)
         /// </summary>

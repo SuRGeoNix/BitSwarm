@@ -2,9 +2,7 @@
 using System.Collections.Generic;
 using System.Net.Sockets;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading;
-using System.Threading.Tasks;
 
 using BencodeNET.Parsing;
 using BencodeNET.Objects;
@@ -24,16 +22,9 @@ namespace SuRGeoNix.BitSwarmLib.BEP
          * 2d 55 54 33 35 35 57 2d 3c b2 29 aa 15 7d 0b 62 6b b6 ce 56  | Unique Per Session Peer ID    | 20 bytes  | Options.PeerID    Set by Client */
         public static readonly byte[]   BIT_PROTO       = Utils.ArrayMerge(new byte[]   {0x13}, Encoding.UTF8.GetBytes("BitTorrent protocol"));
         public static readonly byte[]   EXT_PROTO       = Utils.ArrayMerge(new byte[]   {0, 0, 0, 0}, new byte[] {0 , 0x10, 0, (0x1 | 0x4)});
-
+        public static readonly int      HAND_LENGTH     = BIT_PROTO.Length + EXT_PROTO.Length + 20 + 20;
         public static readonly int      MAX_DATA_SIZE   = 0x4000;
-
-        // [HANDSHAKE EXTENDED]     | http://bittorrent.org/beps/bep_0010.html      | m-> {"key", "value"}, p, v, yourip, ipv6, ipv4, reqq  | Static EXT_BDIC
-        public static byte[]            EXT_BDIC;        // Will be set by bitswarm's setup
-
-        public static byte[]            HANDSHAKE_BYTES; // Will be set by bitswarm's setup
-        public static BitSwarm          Beggar;          // Will be change later on for multiple-instances
         
-
         // [PEER MESSAGES]
         // Known Assigned Numbers   | http://bittorrent.org/beps/bep_0004.html      | Reserved Message IDs
         public static class Messages
@@ -146,7 +137,6 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             public Extensions   extensions;
 
             public bool         unchoked;
-            public bool         intrested;
             public bool         haveAll;
             public bool         haveNone;
 
@@ -164,24 +154,27 @@ namespace SuRGeoNix.BitSwarmLib.BEP
         public Status           status;
         public Stage            stageYou;
 
-        private static readonly BencodeParser   bParser         = new BencodeParser();
-        private readonly object                 lockerRequests  = new object();
+        private static readonly BencodeParser
+                                bParser     = new BencodeParser();
 
         private TcpClient       tcpClient;
-        private NetworkStream   tcpStream;
+        internal NetworkStream  tcpStream;
+
+        // Should change for multiple-instances
+        internal BitSwarm       Beggar;
 
         private byte[]          sendBuff;
-        private byte[]          recvBuff;
-        private byte[]          recvBuffMax;
 
-        public  int             PiecesRequested { get { return piecesRequested; } set { lock (lockerRequests) piecesRequested   = value; } }
+        public  int             PiecesRequested => piecesRequested;
         private int             piecesRequested;
 
         public  int             PieceTimeouts   { get; private set; }
         public  int             PieceRejects    { get; private set; }
 
-        public List<Tuple<int, int, int>>   lastPieces;
-        public List<int>                    allowFastPieces;
+        public List<Tuple<int, int, int>>   
+                                lastPieces;
+        public List<int>                    
+                                allowFastPieces;
 
         public long lastDownloadAt;
         private long blockRequestedAt;
@@ -194,23 +187,17 @@ namespace SuRGeoNix.BitSwarmLib.BEP
         long curTimeout = 0;
         long lastRequest;
 
-        public Peer(string host, int port) 
+        public Peer(string host, int port, BitSwarm beggar) 
         {  
+            Beggar      = beggar;
             this.host   = host;
             this.port   = port;
             status      = Status.NEW;
         }
         #endregion
 
-        #region Connection | Handshake | LTEP Handshake | Disconnect
-
-        
-        
-        #endregion
-
-
         #region Main Execution Flow (Connect -> Handshakes -> [ProcessMessages <-> Receive])
-        public void RunNext()
+        public void RunNext(int available = -1)
         {
             try
             {
@@ -218,7 +205,10 @@ namespace SuRGeoNix.BitSwarmLib.BEP
 
                 if (waitingFor != 0)
                 {
-                    if (tcpClient.Client.Available < waitingFor)
+                    if (available == -1)
+                        available = tcpClient.Client.Available;
+
+                    if (available < waitingFor)
                     {
                         if (curTimeout != 0 && Beggar.Stats.CurrentTime - lastRequest > curTimeout)
                             Dispose();
@@ -261,7 +251,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                 switch (curStep)
                 {
                     case 1:
-                        if (Beggar.Options.Verbosity > 0) Log(3, "[CONN] ... ");
+                        //if (Beggar.Options.Verbosity > 0) Log(3, "[CONN] ... ");
 
                         tcpClient   = new TcpClient();
                         tcpClient.NoDelay = true;
@@ -272,7 +262,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
 
                         lastRequest = DateTime.UtcNow.Ticks;
                         curTimeout  = Beggar.Options.ConnectionTimeout * (long)10000;
-                        curStep++;
+                        curStep = 2;
 
                         break;
 
@@ -286,14 +276,14 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                                 status = Status.CONNECTED;
                                 tcpStream= tcpClient.GetStream();
 
-                                if (Beggar.Options.Verbosity > 0) Log(3, "[HAND] Sending");
-                                tcpStream.Write(HANDSHAKE_BYTES, 0, HANDSHAKE_BYTES.Length);
-                                waitingFor = BIT_PROTO.Length + EXT_PROTO.Length + 20 + 20;
+                                //if (Beggar.Options.Verbosity > 0) Log(3, "[HAND] Sending");
+                                tcpStream.Write(Beggar.HANDSHAKE_BYTES, 0, Beggar.HANDSHAKE_BYTES.Length);
+                                waitingFor = HAND_LENGTH;
 
                                 lastRequest = DateTime.UtcNow.Ticks;
                                 lastDownloadAt = lastRequest; // to avoid dropping it early
                                 curTimeout  = Beggar.Options.HandshakeTimeout * (long)10000;
-                                curStep++;
+                                curStep = 3;
                             }
                             else
                                 Dispose();
@@ -306,8 +296,10 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                         break;
 
                     case 3:
-                        Receive(BIT_PROTO.Length + EXT_PROTO.Length + 20 + 20);
-                        if (Beggar.Options.Verbosity > 0) Log(3, "[HAND] Received");
+                        available -= waitingFor;
+                        tcpStream.Read(Beggar.recvBuff, 0, waitingFor);
+
+                        //if (Beggar.Options.Verbosity > 0) Log(3, "[HAND] Received");
 
                         lastPieces          = new List<Tuple<int, int, int>>();
                         allowFastPieces     = new List<int>();
@@ -321,12 +313,14 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                         waitingFor = 4;
                         curTimeout = 0;
                         curStep++;
-                        RunNext();
+                        RunNext(available);
 
                         break;
 
                     case 4:
-                        if (status == Status.READY && tcpClient.Client.Available == 0)
+                        available -= waitingFor;
+
+                        if (status == Status.READY && available == 0)
                         {
                             if (!Beggar.torrent.metadata.isDone)
                             {
@@ -341,23 +335,60 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                             }
                         }
 
-                        Receive(4); // MSG Length
-                        waitingFor  = Utils.ToBigEndian(recvBuff);
+                        tcpStream.Read(Beggar.recvBuff, 0, waitingFor); // MSG Length
+
+                        waitingFor  = Utils.ToBigEndian(Beggar.recvBuff);
                         waitingFor  = waitingFor < 0 ? -1 : (waitingFor > MAX_DATA_SIZE * 2 ? -1 : waitingFor); // MAX_DATA_SIZE + X + 1 + 4?
+
                         if (waitingFor == -1)
                         {
-                            if (Beggar.Options.Verbosity > 0) Log(1, $"Invalid wait for {Utils.ToBigEndian(recvBuff)} bytes");
+                            if (Beggar.Options.Verbosity > 0) Log(1, $"Invalid wait for {Utils.ToBigEndian(Beggar.recvBuff)} bytes");
                             Dispose();
+
+                            return;
                         }
-                        curStep = 5;
-                        RunNext();
+
+                        if (waitingFor == 0)
+                        {
+                            //if (Beggar.Options.Verbosity > 0) Log(4, "[MSG ] Keep Alive");
+                            waitingFor  = 4;
+                            curStep     = 4;
+                        }
+                        else
+                            curStep     = 5;
+
+                        RunNext(available);
 
                         break;
 
                     case 5:
-                        ProcessMessage(waitingFor);
+                        available -= waitingFor;
 
-                        if (status == Status.READY)
+                        int msgId = tcpStream.ReadByte();
+
+                        if (msgId == Messages.EXTENDED)
+                        {
+                            msgId = tcpStream.ReadByte();
+                            if (waitingFor > 2)
+                                tcpStream.Read(Beggar.recvBuff, 0, waitingFor - 2);
+                            ProcessMessageExt(msgId, waitingFor - 2);
+                        }
+                        else
+                        {
+                            if (msgId != Messages.PIECE)
+                            {
+                                if (waitingFor > 1)
+                                    tcpStream.Read(Beggar.recvBuff, 0, waitingFor - 1);
+                                ProcessMessage(msgId, waitingFor - 1);
+                            }
+                            else
+                            {
+                                tcpStream.Read(Beggar.recvBuff, 0, 8);
+                                ProcessMessage(msgId, waitingFor - 9);
+                            }
+                        }
+
+                        if (status == Status.READY && available == 0) // TBR: 0 Data to avoid Requesting while choke pending
                         {
                             if (!Beggar.torrent.metadata.isDone)
                             {
@@ -374,7 +405,8 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                         
                         waitingFor  = 4;
                         curStep     = 4;
-                        RunNext();
+
+                        RunNext(available);
 
                         break;
                 }
@@ -384,103 +416,36 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                 Dispose();
             }
         }
-        private void ProcessMessage(int msgLen)
+        private void ProcessMessage(int msgId, int msgLen)
         {
-            if (msgLen == 0) { if (Beggar.Options.Verbosity > 0) Log(4, "[MSG ] Keep Alive"); return; }
+            // Core Messages    | http://bittorrent.org/beps/bep_0052.html
+            // DHT Extension    | http://bittorrent.org/beps/bep_0005.html | reserved[7] |= 0x01 | UDP Port for DHT     
+            // Fast Extensions  | http://bittorrent.org/beps/bep_0006.html | reserved[7] |= 0x04
 
-            Receive(1); // MSG Id
-
-            switch (recvBuff[0])
+            switch (msgId)
             {
-                                        // Core Messages | http://bittorrent.org/beps/bep_0052.html
-                case Messages.REQUEST:
-                    if (Beggar.Options.Verbosity > 0) Log(4, "[MSG ] Request");
-                    // TODO
-
-                    break;
-
-                case Messages.CHOKE:
-                    if (Beggar.Options.Verbosity > 0) Log(2, "[MSG ] Choke");
-
-                    stageYou.unchoked = false;
-
-                    if (lastPieces.Count > 0)
-                    {
-                        if (Beggar.focusArea != null || Beggar.lastFocusArea != null)
-                        {
-                            Beggar.ResetRequests(this, lastPieces);
-                            //piecesRequested = 0; // We should wait for rejects otherwise we loose sync between send/recv pieces (really bad for streaming and FAs)
-                            lastPieces = new List<Tuple<int, int, int>>();
-                        }
-                    }
-
-                    status = Status.READY;
-
-                    return;
-                case Messages.UNCHOKE:
-                    if (Beggar.Options.Verbosity > 0) Log(2, "[MSG ] Unchoke");
-
-                    stageYou.unchoked = true;
-
-                    return;
-                case Messages.INTRESTED:
-                    if (Beggar.Options.Verbosity > 0) Log(3, "[MSG ] Intrested");
-
-                    stageYou.intrested = true;
-
-                    break;
-                case Messages.HAVE:
-                    if (Beggar.Options.Verbosity > 0) Log(3, "[MSG ] Have");
-                    Receive(msgLen - 1);
-
-                    stageYou.haveNone = false;
-
-                    if (stageYou.bitfield == null)
-                    {
-                        if (Beggar.torrent.data.pieces != 0)
-                            stageYou.bitfield = new Bitfield(Beggar.torrent.data.pieces);
-                        else
-                            stageYou.bitfield = new Bitfield(15000); // MAX PIECES GUESS?
-                    }
-
-                    int havePiece = Utils.ToBigEndian(recvBuff);
-                    stageYou.bitfield.SetBit(havePiece);
-
-                    return;
-                case Messages.BITFIELD:
-                    if (Beggar.Options.Verbosity > 0) Log(3, "[MSG ] Bitfield");
-
-                    Receive(msgLen - 1);
-
-                    stageYou.haveNone   = false;
-                    byte[] bitfield     = new byte[recvBuff.Length];
-                    Buffer.BlockCopy(recvBuff, 0, bitfield, 0, recvBuff.Length);
-                    stageYou.bitfield   = new Bitfield(bitfield, Beggar.torrent.data.pieces != 0 ? Beggar.torrent.data.pieces : recvBuff.Length * 8);
-
-                    return;
                 case Messages.PIECE:
-                    if (Beggar.Options.Verbosity > 0) Log(3, "[MSG ] Piece");
+                    //if (Beggar.Options.Verbosity > 0) Log(3, "[MSG ] Piece");
 
                     status = Status.DOWNLOADING; // Bug was noticed Downloading peer was in READY and couldn't get out with timeout
 
-                    Receive(4);         // [Piece Id]
-                    int piece   = Utils.ToBigEndian(recvBuff);
-                    Receive(4);         // [Offset]
-                    int offset  = Utils.ToBigEndian(recvBuff);
-                    Receive(msgLen - 9);// [Data]
+                    int piece   = Utils.ToBigEndian(Beggar.recvBuff);
+                    int offset  = Utils.ToBigEndian(Beggar.recvBuff, 4);
 
                     int lastPiece = FindPiece(piece, offset);
-                    if (lastPiece != -1) lastPieces.RemoveAt(lastPiece);
+                    if (lastPiece != -1)
+                        lastPieces.RemoveAt(lastPiece);
 
                     PieceRejects = 0;
 
-                    if (piecesRequested > 0) piecesRequested--;
+                    if (piecesRequested > 0)
+                        piecesRequested--;
 
-                    Beggar.PieceReceived(msgLen - 9 == MAX_DATA_SIZE ? recvBuffMax : recvBuff, piece, offset, this);
+                    Beggar.PieceReceived(piece, offset, msgLen, this);
 
                     lastDownloadAt       = DateTime.UtcNow.Ticks;
                     totalWaitDuration   += lastDownloadAt - blockRequestedAt;
-                    totalBytesReceived  += msgLen - 9;
+                    totalBytesReceived  += msgLen;
 
                     if (piecesRequested == 0)
                         status = Status.READY;
@@ -488,32 +453,22 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                         blockRequestedAt = lastDownloadAt;
 
                     return;
-                                        // DHT Extension        | http://bittorrent.org/beps/bep_0005.html | reserved[7] |= 0x01 | UDP Port for DHT 
-                case Messages.PORT:
-                    if (Beggar.Options.Verbosity > 0) Log(3, "[MSG ] Port");
 
-                    // TODO: Add them in DHT as a 3rd Strategy?
+                case Messages.REJECT_REQUEST: // Piece | Offset | Length
+                    //if (Beggar.Options.Verbosity > 0) Log(2, "[MSG ] Reject Request");
 
-                    break;
-                                        // Fast Extensions      | http://bittorrent.org/beps/bep_0006.html | reserved[7] |= 0x04
-                case Messages.REJECT_REQUEST:// Reject Request
-                    if (Beggar.Options.Verbosity > 0) Log(2, "[MSG ] Reject Request");
+                    piece   = Utils.ToBigEndian(Beggar.recvBuff, 0);
+                    offset  = Utils.ToBigEndian(Beggar.recvBuff, 4);
 
-                    Receive(4);         // [Piece Id]
-                    piece   = Utils.ToBigEndian(recvBuff);
-                    Receive(4);         // [Offset]
-                    offset  = Utils.ToBigEndian(recvBuff);
-                    Receive(4);         // [Length]
-                    int len = Utils.ToBigEndian(recvBuff);
+                    if (piecesRequested > 0)
+                        piecesRequested--;
 
-                    if (piecesRequested > 0) piecesRequested--;
-
-                    Interlocked.Increment(ref Beggar.Stats.Rejects);
+                    Beggar.Stats.Rejects++;
 
                     lastPiece = FindPiece(piece, offset);
                     if (lastPiece != -1)
                     {
-                        Beggar.ResetRequest(this, piece, offset, len);
+                        Beggar.ResetRequest(this, piece, offset, Utils.ToBigEndian(Beggar.recvBuff, 8));
                         lastPieces.RemoveAt(lastPiece);
                     }
 
@@ -531,206 +486,253 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                         status = Status.READY;
 
                     return;
+
+                case Messages.CHOKE:
+                    //if (Beggar.Options.Verbosity > 0) Log(2, "[MSG ] Choke");
+
+                    stageYou.unchoked = false;
+
+                    if (lastPieces.Count > 0)
+                    {
+                        if (Beggar.focusArea != null || Beggar.lastFocusArea != null)
+                        {
+                            Beggar.ResetRequests(this, lastPieces);
+                            //piecesRequested = 0; // We should wait for rejects otherwise we loose sync between send/recv pieces (really bad for streaming and FAs)
+                            lastPieces = new List<Tuple<int, int, int>>();
+                        }
+                    }
+
+                    status = Status.READY;
+
+                    return;
+
+                case Messages.UNCHOKE:
+                    //if (Beggar.Options.Verbosity > 0) Log(2, "[MSG ] Unchoke");
+
+                    stageYou.unchoked = true;
+
+                    return;
+
+                case Messages.BITFIELD: // Bitfield
+                    //if (Beggar.Options.Verbosity > 0) Log(3, "[MSG ] Bitfield");
+
+                    stageYou.haveNone   = false;
+                    byte[] bitfield     = new byte[msgLen];
+                    Buffer.BlockCopy(Beggar.recvBuff, 0, bitfield, 0, msgLen);
+                    stageYou.bitfield   = new Bitfield(bitfield, Beggar.torrent.data.pieces != 0 ? Beggar.torrent.data.pieces : msgLen * 8);
+
+                    return;
+                
+                case Messages.HAVE: // Piece
+                    //if (Beggar.Options.Verbosity > 0) Log(3, "[MSG ] Have");
+
+                    stageYou.haveNone = false;
+
+                    if (stageYou.bitfield == null)
+                    {
+                        if (Beggar.torrent.data.pieces != 0)
+                            stageYou.bitfield = new Bitfield(Beggar.torrent.data.pieces);
+                        else
+                            stageYou.bitfield = new Bitfield(15000); // MAX PIECES GUESS?
+                    }
+
+                    int havePiece = Utils.ToBigEndian(Beggar.recvBuff);
+                    stageYou.bitfield.SetBit(havePiece);
+
+                    return;
+
                 case Messages.HAVE_NONE:
-                    if (Beggar.Options.Verbosity > 0) Log(3, "[MSG ] Have None");
+                    //if (Beggar.Options.Verbosity > 0) Log(3, "[MSG ] Have None");
                     stageYou.haveNone = true;
 
                     return;
                 case Messages.HAVE_ALL:
-                    if (Beggar.Options.Verbosity > 0) Log(3, "[MSG ] Have All");
+                    //if (Beggar.Options.Verbosity > 0) Log(3, "[MSG ] Have All");
                     stageYou.haveAll = true;
 
                     return;
-                case Messages.SUGGEST_PIECE:
-                    if (Beggar.Options.Verbosity > 0) Log(3, "[MSG ] Suggest Piece");
-                    // TODO
-
-                    break;
-                case Messages.ALLOW_FAST:
-                    Receive(4);         // [Piece Id]
-                    int allowFastPiece = Utils.ToBigEndian(recvBuff);
-                    if (allowFastPiece < 0) return;
+                
+                case Messages.ALLOW_FAST: // Piece
+                    int allowFastPiece = Utils.ToBigEndian(Beggar.recvBuff);
+                    if (allowFastPiece < 0)
+                        return;
 
                     allowFastPieces.Add(allowFastPiece);
 
-                    if (Beggar.Options.Verbosity > 0) Log(3, $"[MSG ] Allowed Fast [Piece: {allowFastPiece}]");
+                    //if (Beggar.Options.Verbosity > 0) Log(3, $"[MSG ] Allowed Fast [Piece: {allowFastPiece}]");
 
                     return;
 
-                                        // Extension Protocol   | http://bittorrent.org/beps/bep_0010.html | reserved_byte[5] & 0x10 | LTEP (Libtorrent Extension Protocol)
-                case Messages.EXTENDED:
-                    Receive(1); // MSG Extension Id
+                //case Messages.SUGGEST_PIECE:
+                //    if (Beggar.Options.Verbosity > 0) Log(3, "[MSG ] Suggest Piece");
+                //    // TODO
 
-                    if (Beggar.Options.Verbosity > 0) Log(3, "[MSG ] Extended ...");
+                //    break;
 
-                    if (recvBuff[0] == Messages.EXTENDED_HANDSHAKE)
-                    {
-                        if (Beggar.Options.Verbosity > 0) Log(3, "[HAND] Extended Received");
+                //case Messages.REQUEST:
+                //    if (Beggar.Options.Verbosity > 0) Log(4, "[MSG ] Request");
+                //    // TODO
 
-                        Receive(msgLen - 2);
+                //    break;
 
-                        // BEncode Dictionary [Currently fills stageYou.extensions.ut_metadata]
-                        BDictionary extDic  = bParser.Parse<BDictionary>(recvBuff);
-                        object cur          = Utils.GetFromBDic(extDic, new string[] {"m", "LT_metadata"});
-                        if (cur != null)    stageYou.extensions.ut_metadata = (byte) ((int) cur);
-                        cur                 = Utils.GetFromBDic(extDic, new string[] {"m", "ut_metadata"});
-                        if (cur != null)    stageYou.extensions.ut_metadata = (byte) ((int) cur);
-                        //cur                 = Utils.GetFromBDic(extDic, new string[] {"m", "ut_pex"});
-                        //if (cur != null)    stageYou.extensions.ut_pex      = (byte) ((int) cur);
+                //case Messages.PORT:
+                //    if (Beggar.Options.Verbosity > 0) Log(3, "[MSG ] Port");
 
+                //    // TODO: Add them in DHT as a 3rd Strategy?
 
-                        cur                 = Utils.GetFromBDic(extDic, new string[] {"v"});
-                        if (cur != null)    stageYou.version = cur.ToString();
+                //    break;
 
-                        // MSG Extended Handshake | Reply
-                        SendExtendedHandshake();
+                //case Messages.INTRESTED:
+                //    if (Beggar.Options.Verbosity > 0) Log(3, "[MSG ] Intrested");
 
-                        return;
-                    }
+                //    stageYou.intrested = true;
 
-                                        // Peer Exchange (PEX)  | http://bittorrent.org/beps/bep_0011.html
-                    else if (recvBuff[0] == Messages.EXT_UT_PEX)
-                    {
-                        /* TODO:
-                         * 
-                         * By adding IPv6 we loose uniquness by host on peers, we should change the uniquness based on remotePeerId (currently possible we connect to the same IPv4 / IPv6 peer ?) - We can also get ipv6 from Extended message (->ipv6)
-                         * Possible process also dropped to remove peers from main storage (or even "ban" them to avoid re-push them in the queue)
-                         */
+                //    break;
 
-                        if (Beggar.Options.Verbosity > 0) Log(3, "[PEX] ...");
+                //default:
+                //    if (Beggar.Options.Verbosity > 0) Log(4, "[MSG ] Message Unknown " + Beggar.recvBuff[0]);
 
-                        Receive(msgLen - 2);
-
-                        byte[] buff = msgLen - 2 == MAX_DATA_SIZE ? recvBuffMax : recvBuff;
-
-                        BDictionary extDic              = bParser.Parse<BDictionary>(recvBuff);
-                        byte[] buffAdded                = new byte[0];
-                        Dictionary<string, int> peers   = new Dictionary<string, int>();
-
-                        if (extDic.ContainsKey("added")) buffAdded = ((BString)extDic["added"]).Value.ToArray();
-
-                        for (int i = 0; i < buffAdded.Length / 6; i++)
-                        {
-                            System.Net.IPAddress curIP = new System.Net.IPAddress(Utils.ArraySub(ref buffAdded, (uint)i * 6, 4, false));
-                            UInt16 curPort = (UInt16)BitConverter.ToInt16(Utils.ArraySub(ref buffAdded, (uint)4 + (i * 6), 2, true), 0);
-
-                            if (curPort < 500) continue; // Drop fake / Avoid DDOS
-
-                            peers[curIP.ToString()] = curPort;
-                        }
-
-                        buffAdded = new byte[0];
-                        if (extDic.ContainsKey("added6")) buffAdded = ((BString) extDic["added6"]).Value.ToArray();
-
-                        for (int i=0; i<buffAdded.Length / 18; i++)
-                        {
-                            System.Net.IPAddress curIP = new System.Net.IPAddress(Utils.ArraySub(ref buffAdded,(uint) i*18, 16, false));
-                            UInt16 curPort  = (UInt16) BitConverter.ToInt16(Utils.ArraySub(ref buffAdded,(uint) 16 + (i*18), 2, true), 0);
-
-                            if (curPort < 500) continue; // Drop fake / Avoid DDOS
-
-                            peers[curIP.ToString()] = curPort;
-                        }
-
-                        if (peers.Count > 0) Beggar.FillPeers(peers, BitSwarm.PeersStorage.PEX);
-
-                        //if (Beggar.Options.Verbosity > 0) Log(3, $"[PEX] {peers.Count}");
-
-                        return;
-                    }
-
-
-                    // Extension for Peers to Send Metadata Files | info-dictionary part of the .torrent file | http://bittorrent.org/beps/bep_0009.html
-                    else if (recvBuff[0] == Messages.EXT_UT_METADATA)
-                    {
-                        // MSG Extended Metadata
-                        if (Beggar.Options.Verbosity > 0) Log(3, "[META] ...");
-
-                        bool wasDownloading = status == Status.DOWNLOADING;
-                        int buffSize        = msgLen - 2;
-                        status              = Status.DOWNLOADING;
-
-                        Receive(buffSize);
-
-                        // BEncoded msg_type
-                        // MAX size of d8:msg_typei1e5:piecei99ee | d8:msg_typei1e5:piecei99e10:total_sizei1622016ee
-                        uint tmp1               = buffSize > 49 ? 50 : (uint) buffSize;
-                        byte[] mdheadersBytes   = buffSize == MAX_DATA_SIZE ? Utils.ArraySub(ref recvBuffMax, 0, tmp1) : Utils.ArraySub(ref recvBuff, 0, tmp1);
-                        BDictionary mdHeadersDic= bParser.Parse<BDictionary>(mdheadersBytes);
-
-                        switch (mdHeadersDic.Get<BNumber>("msg_type").Value)
-                        {
-                            case Messages.METADATA_RESPONSE: // (Expecting 0x4000 | 16384 bytes - except if last piece)
-                                if (Beggar.Options.Verbosity > 0) Log(2, "[META] Received");
-                                Beggar.MetadataPieceReceived(buffSize == MAX_DATA_SIZE ? recvBuffMax : recvBuff, (int) mdHeadersDic.Get<BNumber>("piece").Value, mdHeadersDic.EncodeAsString().Length, (int) mdHeadersDic.Get<BNumber>("total_size").Value, this);
-
-                                stageYou.metadataPiecesRequested--;
-
-
-                                break;
-
-                            case Messages.METADATA_REJECT:
-                                if (Beggar.Options.Verbosity > 0) Log(2, "[META] Rejected");
-                                Beggar.MetadataPieceRejected((int) mdHeadersDic.Get<BNumber>("piece").Value, host);
-
-                                stageYou.metadataPiecesRequested--;
-
-                                break;
-
-                            case Messages.METADATA_REQUEST:
-                                if (Beggar.Options.Verbosity > 0) Log(3, "[META] Request");
-                                break;
-
-                            default:
-                                if (Beggar.Options.Verbosity > 0) Log(4, "[META] Unknown " + mdHeadersDic.Get<BNumber>("msg_type").Value);
-                                break;
-
-                        } // Switch Metadata (msg_type)
-
-                        if (!wasDownloading || piecesRequested < 1) // In case of late response of Metadata when Metadata already done and we already requested pieces
-                            status = Status.READY;
-                        return; 
-                    }
-                    else
-                    {
-                        if (Beggar.Options.Verbosity > 0) Log(4, "[MSG ] Extended Unknown " + recvBuff[0]);
-                    }
-
-                    Receive(msgLen - 2);
-
-                    return; // Case Messages.EXTENDED    
-
-                default:
-                    if (Beggar.Options.Verbosity > 0) Log(4, "[MSG ] Message Unknown " + recvBuff[0]);
-
-                    break;
-            } // Switch (MSG Id)
-
-            Receive(msgLen - 1); // Ensure Len > 0
+                //    break;
+            }
         }
-        private void Receive(int len)
+        private void ProcessMessageExt(int msgId, int msgLen)
         {
-            int read;
-            if (len == MAX_DATA_SIZE)
-                read = tcpStream.Read(recvBuffMax, 0, len);
-            else
-                { recvBuff = new byte[len]; read = tcpStream.Read(recvBuff, 0, len); }
+            // Extension Protocol   | http://bittorrent.org/beps/bep_0010.html | reserved_byte[5] & 0x10 | LTEP (Libtorrent Extension Protocol)
 
-            if (read != len)
-                Log(1, $"[ERROR] Read {read} < {len}");
+            //if (Beggar.Options.Verbosity > 0) Log(3, "[MSG ] Extended ...");
+
+            if (msgId == Messages.EXTENDED_HANDSHAKE)
+            {
+                //if (Beggar.Options.Verbosity > 0) Log(3, "[HAND] Extended Received");
+
+                byte[] tmpX = new byte[msgLen];
+                Buffer.BlockCopy(Beggar.recvBuff, 0, tmpX, 0, msgLen);
+
+                // BEncode Dictionary [Currently fills stageYou.extensions.ut_metadata]
+                BDictionary extDic  = bParser.Parse<BDictionary>(tmpX);
+                object cur          = Utils.GetFromBDic(extDic, new string[] {"m", "LT_metadata"});
+                if (cur != null)    stageYou.extensions.ut_metadata = (byte) ((int) cur);
+                cur                 = Utils.GetFromBDic(extDic, new string[] {"m", "ut_metadata"});
+                if (cur != null)    stageYou.extensions.ut_metadata = (byte) ((int) cur);
+                //cur                 = Utils.GetFromBDic(extDic, new string[] {"m", "ut_pex"});
+                //if (cur != null)    stageYou.extensions.ut_pex      = (byte) ((int) cur);
+
+                cur                 = Utils.GetFromBDic(extDic, new string[] {"v"});
+                if (cur != null)    stageYou.version = cur.ToString();
+
+                // MSG Extended Handshake | Reply
+                SendExtendedHandshake();
+            }
+                                // Peer Exchange (PEX)  | http://bittorrent.org/beps/bep_0011.html
+            else if (msgId == Messages.EXT_UT_PEX)
+            {
+                /* TODO:
+                    * 
+                    * By adding IPv6 we loose uniquness by host on peers, we should change the uniquness based on remotePeerId (currently possible we connect to the same IPv4 / IPv6 peer ?) - We can also get ipv6 from Extended message (->ipv6)
+                    * Possible process also dropped to remove peers from main storage (or even "ban" them to avoid re-push them in the queue)
+                    */
+
+                //if (Beggar.Options.Verbosity > 0) Log(3, "[PEX] ...");
+
+                byte[] tmpX = new byte[msgLen];
+                Buffer.BlockCopy(Beggar.recvBuff, 0, tmpX, 0, msgLen);
+
+                BDictionary extDic              = bParser.Parse<BDictionary>(tmpX);
+                byte[] buffAdded                = new byte[0];
+                Dictionary<string, int> peers   = new Dictionary<string, int>();
+
+                if (extDic.ContainsKey("added")) buffAdded = ((BString)extDic["added"]).Value.ToArray();
+
+                for (int i = 0; i < buffAdded.Length / 6; i++)
+                {
+                    System.Net.IPAddress curIP = new System.Net.IPAddress(Utils.ArraySub(ref buffAdded, (uint)i * 6, 4, false));
+                    UInt16 curPort = (UInt16)BitConverter.ToInt16(Utils.ArraySub(ref buffAdded, (uint)4 + (i * 6), 2, true), 0);
+
+                    if (curPort < 500) continue; // Drop fake / Avoid DDOS
+
+                    peers[curIP.ToString()] = curPort;
+                }
+
+                buffAdded = new byte[0];
+                if (extDic.ContainsKey("added6")) buffAdded = ((BString) extDic["added6"]).Value.ToArray();
+
+                for (int i=0; i<buffAdded.Length / 18; i++)
+                {
+                    System.Net.IPAddress curIP = new System.Net.IPAddress(Utils.ArraySub(ref buffAdded,(uint) i*18, 16, false));
+                    UInt16 curPort  = (UInt16) BitConverter.ToInt16(Utils.ArraySub(ref buffAdded,(uint) 16 + (i*18), 2, true), 0);
+
+                    if (curPort < 500) continue; // Drop fake / Avoid DDOS
+
+                    peers[curIP.ToString()] = curPort;
+                }
+
+                if (peers.Count > 0) Beggar.FillPeers(peers, BitSwarm.PeersStorage.PEX);
+
+                //if (Beggar.Options.Verbosity > 0) Log(3, $"[PEX] {peers.Count}");
+            }
+
+            // Extension for Peers to Send Metadata Files | info-dictionary part of the .torrent file | http://bittorrent.org/beps/bep_0009.html
+            else if (msgId == Messages.EXT_UT_METADATA)
+            {
+                // MSG Extended Metadata
+                //if (Beggar.Options.Verbosity > 0) Log(3, "[META] ...");
+
+                bool wasDownloading = status == Status.DOWNLOADING;
+                status              = Status.DOWNLOADING;
+
+                byte[] tmpX = new byte[Math.Min(msgLen, 50)];
+                Buffer.BlockCopy(Beggar.recvBuff, 0, tmpX, 0, tmpX.Length);
+
+                // BEncoded msg_type
+                // MAX size of d8:msg_typei1e5:piecei99ee | d8:msg_typei1e5:piecei99e10:total_sizei1622016ee
+                BDictionary mdHeadersDic= bParser.Parse<BDictionary>(tmpX);
+
+                switch (mdHeadersDic.Get<BNumber>("msg_type").Value)
+                {
+                    case Messages.METADATA_RESPONSE: // (Expecting 0x4000 | 16384 bytes - except if last piece)
+                        //if (Beggar.Options.Verbosity > 0) Log(2, "[META] Received");
+                        Beggar.MetadataPieceReceived(Beggar.recvBuff, (int) mdHeadersDic.Get<BNumber>("piece").Value, mdHeadersDic.EncodeAsString().Length, (int) mdHeadersDic.Get<BNumber>("total_size").Value, msgLen - mdHeadersDic.EncodeAsString().Length, this);
+
+                        stageYou.metadataPiecesRequested--;
+
+                        break;
+
+                    case Messages.METADATA_REJECT:
+                        //if (Beggar.Options.Verbosity > 0) Log(2, "[META] Rejected");
+                        Beggar.MetadataPieceRejected((int) mdHeadersDic.Get<BNumber>("piece").Value, host);
+
+                        stageYou.metadataPiecesRequested--;
+
+                        break;
+
+                    //case Messages.METADATA_REQUEST:
+                    //    if (Beggar.Options.Verbosity > 0) Log(3, "[META] Request");
+                    //    break;
+
+                    //default:
+                    //    if (Beggar.Options.Verbosity > 0) Log(4, "[META] Unknown " + mdHeadersDic.Get<BNumber>("msg_type").Value);
+                    //    break;
+
+                } // Switch Metadata (msg_type)
+
+                if (!wasDownloading || piecesRequested < 1) // In case of late response of Metadata when Metadata already done and we already requested pieces
+                    status = Status.READY;
+            }
+            //else
+            //{
+            //    if (Beggar.Options.Verbosity > 0) Log(4, "[MSG ] Extended Unknown " + Beggar.recvBuff[1]);
+            //}
         }
         private void SendExtendedHandshake()
         {
             try
             {
-                if (Beggar.Options.Verbosity > 0) Log(3, "[HAND] Extended Sending");
+                //if (Beggar.Options.Verbosity > 0) Log(3, "[HAND] Extended Sending");
 
-                sendBuff = Utils.ArrayMerge(PrepareMessage(0, true, EXT_BDIC), PrepareMessage(0xf, false, null), PrepareMessage(0x2, false, null)); // EXTDIC, HAVE NONE, INTRESTED
-                tcpStream.Write(sendBuff, 0, sendBuff.Length);
+                tcpStream.Write(Beggar.sendBuffHandExt, 0, Beggar.sendBuffHandExt.Length);
 
                 //tcpClient.SendBufferSize    = 1500;
                 tcpClient.ReceiveBufferSize = MAX_DATA_SIZE * 4;
-                recvBuffMax                 = new byte[MAX_DATA_SIZE];
                 status                      = Status.READY;
             }
             catch (Exception e)
@@ -746,7 +748,6 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                 if (lastPieces != null && lastPieces.Count > 0 /*&& Beggar.isRunning*/) Beggar.ResetRequests(this, lastPieces);
 
                 status      = Status.FAILED;
-                recvBuff    = null;
                 sendBuff    = null;
                 //stageYou    = null; // Currently Not Synch with Requests will drop null references
                 
@@ -779,104 +780,22 @@ namespace SuRGeoNix.BitSwarmLib.BEP
         }
         public void RequestPiece(List<Tuple<int, int, int>> pieces) // piece, offset, len
         {
-            try
-            {
-                lock (lockerRequests)
-                {
-                    if (tcpClient == null || !tcpClient.Connected) { Dispose(); return; }
-
                     status          = Status.DOWNLOADING;
-                    sendBuff        = new byte[0];
                     lastPieces      = pieces;
                     piecesRequested+= pieces.Count;
                     blockRequestedAt= DateTime.UtcNow.Ticks;
 
-                    foreach (Tuple<int, int, int> piece in pieces)
-                        sendBuff = Utils.ArrayMerge(sendBuff, PrepareMessage(Messages.REQUEST, false, Utils.ArrayMerge(Utils.ToBigEndian((Int32) piece.Item1), Utils.ToBigEndian((Int32) piece.Item2), Utils.ToBigEndian((Int32) piece.Item3))));
-
-                    tcpStream.Write(sendBuff, 0, sendBuff.Length);
-                }
-            }
-            catch (Exception e)
-            {
-                if (Beggar.Options.Verbosity > 0) Log(1, $"[REQ ] Send Failed - {e.Message}\r\n{e.StackTrace}");
-                Dispose();
-            }
-        }
-        #endregion
-
-
-        #region Currently Disabled
-        public void SendKeepAlive()
-        {
-            try
-            {
-                if (Beggar.Options.Verbosity > 0) Log(4, "[MSG ] Sending Keep Alive");
-
-                tcpStream.Write(new byte[] { 0, 0, 0, 0}, 0, 4);
-            } catch (Exception e)
-            {
-                Log(1, "[KEEPALIVE] Keep Alive Sending Error " + e.Message);
-            }
-            
-        }
-        public void RequestPieceRemovedJustOneBlock(int piece, int offset, int len)
-        {
-            try
-            {
-                status      = Status.DOWNLOADING;
-                sendBuff    = PrepareMessage(Messages.REQUEST, false, Utils.ArrayMerge(Utils.ToBigEndian((Int32) piece), Utils.ToBigEndian((Int32) offset), Utils.ToBigEndian((Int32) len))); //Utils.ArrayMerge();
-
-                tcpStream.Write(sendBuff, 0, sendBuff.Length);
-            } catch (Exception e)
-            {
-                Log(1, $"[REQ ][PIECE][BLOCK] {piece}\t{offset}\t{len} {e.Message}\r\n{e.StackTrace}");
-                Dispose();
-            }
-        }
-        public void CancelPieces()
-        {
-            try
-            {
-                lock (lockerRequests)
-                {
-                    sendBuff = new byte[0];
-
-                    foreach (Tuple<int, int, int> piece in lastPieces)
+                    int curPos = 0;
+                    for (int i=0; i<pieces.Count; i++)
                     {
-                        if (Beggar.Options.Verbosity > 0) Log(4, $"[REQC] [P]\tPiece: {piece.Item1} Block: {piece.Item2 / Beggar.torrent.data.blockSize} Offset: {piece.Item2} Size: {piece.Item3} Requests: {piecesRequested}");
-                        sendBuff = Utils.ArrayMerge(sendBuff, PrepareMessage(Messages.CANCEL, false, Utils.ArrayMerge(Utils.ToBigEndian((Int32)piece.Item1), Utils.ToBigEndian((Int32)piece.Item2), Utils.ToBigEndian((Int32)piece.Item3))));
+                        Utils.IntToBytes(Beggar.sendBuffPieces, curPos + 5 , pieces[i].Item1);
+                        Utils.IntToBytes(Beggar.sendBuffPieces, curPos + 9,  pieces[i].Item2);
+                        Utils.IntToBytes(Beggar.sendBuffPieces, curPos + 13, pieces[i].Item3);
+                        curPos += 4 + 1 + 4 + 4 + 4;
                     }
 
-                    tcpStream.Write(sendBuff, 0, sendBuff.Length);
-                }
-            }
-            catch (Exception e)
-            {
-                if (Beggar.Options.Verbosity > 0) Log(1, $"[REQ ] Send Cancel Failed - {e.Message}\r\n{e.StackTrace}");
-                Dispose();
-            }
-        }
-        public void CancelPieces(int piece, int offset, int len)
-        {
-            try
-            {
-                lock (lockerRequests)
-                {
-                    if (Beggar.Options.Verbosity > 0) Log(2, $"[CANCELING PIECE] Piece: {piece} Offset: {offset}");
-
-                    sendBuff = new byte[0];
-                    Utils.ArrayMerge(sendBuff, PrepareMessage(Messages.CANCEL, false, Utils.ArrayMerge(Utils.ToBigEndian((Int32) piece), Utils.ToBigEndian((Int32) offset), Utils.ToBigEndian((Int32) len))));
-
-                    tcpStream.Write(sendBuff, 0, sendBuff.Length);
-
-                }
-            }
-            catch (Exception e)
-            {
-                if (Beggar.Options.Verbosity > 0) Log(1, $"[REQ ] Send Cancel Failed - {e.Message}\r\n{e.StackTrace}");
-                Dispose();
-            }
+                    //if (tcpClient == null || !tcpClient.Connected) { Dispose(); return; }
+                    tcpStream.Write(Beggar.sendBuffPieces, 0, pieces.Count * (4 + 1 + 4 + 4 + 4));
         }
         #endregion
 
@@ -887,29 +806,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
 
             return (long) (((double)totalBytesReceived / (double)totalWaitDuration) * 10000000);
         }
-        public void SendMessage(byte msgid, bool isExtended, byte[] payload)
-        {
-            try
-            {
-                if (payload == null) payload = new byte[0];
-
-                if (isExtended)
-                {
-                    sendBuff = Utils.ArrayMerge(Utils.ToBigEndian((Int32) (payload.Length + 2)), new byte[] { 20, msgid}, payload);
-                }
-                else
-                {
-                    sendBuff = Utils.ArrayMerge(Utils.ToBigEndian((Int32) (payload.Length + 1)), new byte[] {msgid}, payload);
-                }
-
-                tcpStream.Write(sendBuff, 0, sendBuff.Length);
-
-            } catch (Exception e)
-            {
-                if (Beggar.Options.Verbosity > 0) Log(1, "[SENDMESSAGE] Sending Error " + e.Message);
-            }
-        }
-        public byte[] PrepareMessage(byte msgid, bool isExtended, byte[] payload)
+        public static byte[] PrepareMessage(byte msgid, bool isExtended, byte[] payload)
         {
             int len = payload == null ? 0 : payload.Length;
 
@@ -932,7 +829,6 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                 return tmp;
             }
         }
-
         private int FindPiece(int piece, int offset)
         {
             for (int i=0; i<lastPieces.Count; i++)
@@ -940,7 +836,6 @@ namespace SuRGeoNix.BitSwarmLib.BEP
 
             return -1;
         }
-
         internal void Log(int level, string msg) { if (Beggar.Options.Verbosity > 0 && Beggar.Options.LogPeer && level <= Beggar.Options.Verbosity) Beggar.log.Write($"[Peer    ] [{host.PadRight(15, ' ')}] {msg}"); }
         #endregion
     }

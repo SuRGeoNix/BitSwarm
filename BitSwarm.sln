@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 16
-VisualStudioVersion = 16.0.31515.178
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.32014.148
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BitSwarm", "BitSwarm\BitSwarm.csproj", "{243FD7DA-3A88-483E-8468-01FB4FA9AB8E}"
 EndProject
@@ -9,12 +9,12 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BitSwarm (Console Core Demo
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LibVLCStreaming", "LibVLCStreaming\LibVLCStreaming.csproj", "{119FA64C-B61D-4794-8A64-3340753B9BFC}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BitSwarm (WinForms Demo)", "BitSwarm (WinForms Demo)\BitSwarm (WinForms Demo).csproj", "{54478B08-BB57-4B2A-A2E4-0A9598EB8635}"
-EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{15831830-F966-4945-B57B-7291F0318327}"
 	ProjectSection(SolutionItems) = preProject
 		.editorconfig = .editorconfig
 	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BitSwarm (WinForms Demo)", "BitSwarm (WinForms Demo)\BitSwarm (WinForms Demo).csproj", "{D08FFBAF-CC5F-430D-899E-6C0A2B975778}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -34,10 +34,10 @@ Global
 		{119FA64C-B61D-4794-8A64-3340753B9BFC}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{119FA64C-B61D-4794-8A64-3340753B9BFC}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{119FA64C-B61D-4794-8A64-3340753B9BFC}.Release|Any CPU.Build.0 = Release|Any CPU
-		{54478B08-BB57-4B2A-A2E4-0A9598EB8635}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{54478B08-BB57-4B2A-A2E4-0A9598EB8635}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{54478B08-BB57-4B2A-A2E4-0A9598EB8635}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{54478B08-BB57-4B2A-A2E4-0A9598EB8635}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D08FFBAF-CC5F-430D-899E-6C0A2B975778}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D08FFBAF-CC5F-430D-899E-6C0A2B975778}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D08FFBAF-CC5F-430D-899E-6C0A2B975778}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D08FFBAF-CC5F-430D-899E-6C0A2B975778}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

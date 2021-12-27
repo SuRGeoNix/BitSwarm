@@ -1,26 +1,26 @@
 ﻿using System;
-using System.Globalization;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Windows.Forms;
 
+using SuRGeoNix;
 using SuRGeoNix.BitSwarmLib;
 using SuRGeoNix.BitSwarmLib.BEP;
 
-namespace SuRGeoNix.BitSwarmClient
+namespace WinFormsApp1
 {
-    public partial class frmMain : Form
+    public partial class FrmMain : Form
     {
         static Torrent  torrent;
         static BitSwarm bitSwarm;
         static Options  opt;
 
         long requestedBytes = 0;
-
-        public frmMain()
+        public FrmMain()
         {
             InitializeComponent();
         }
-        
+
         private void frmMain_Load(object sender, EventArgs e)
         {
             Options opt = new Options();

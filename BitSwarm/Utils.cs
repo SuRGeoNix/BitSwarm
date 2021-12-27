@@ -14,7 +14,7 @@ using BencodeNET.Objects;
 
 namespace SuRGeoNix
 {
-    public partial class Utils
+    public static partial class Utils
     {
         public static bool IsWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
 
@@ -123,10 +123,10 @@ namespace SuRGeoNix
         }
 
         // To Big Endian
-        public static int ToBigEndian(byte[] input)
+        public static int ToBigEndian(byte[] input, int offset = 0)
         {
-            if (BitConverter.IsLittleEndian) Array.Reverse(input);
-            return BitConverter.ToInt32(input, 0);
+            if (BitConverter.IsLittleEndian) Array.Reverse(input, offset, 4);
+            return BitConverter.ToInt32(input, offset);
         }
         public static byte[] ToBigEndian(byte input)
         {
@@ -155,6 +155,35 @@ namespace SuRGeoNix
 
             Array.Reverse(output);
             return output;
+        }
+
+
+        unsafe public static Action<byte[], int, int> IntToBytes;
+
+        static Utils()
+        {
+            if (BitConverter.IsLittleEndian)
+                IntToBytes = IntToBytesLE;
+            else
+                IntToBytes = IntToBytesBE;
+        }
+
+        unsafe public static void IntToBytesLE(byte[] buffer, int offset, int value)
+        {
+            byte* p = (byte*)&value;
+            buffer[offset]      = *(p + 3);
+            buffer[offset + 1]  = *(p + 2);
+            buffer[offset + 2]  = *(p + 1);
+            buffer[offset + 3]  = *p;
+        }
+
+        unsafe public static void IntToBytesBE(byte[] buffer, int offset, int value)
+        {
+            byte* p = (byte*)&value;
+            buffer[offset]      = *p;
+            buffer[offset + 1]  = *(p + 1);
+            buffer[offset + 2]  = *(p + 2);
+            buffer[offset + 3]  = *(p + 3);
         }
 
         // Arrays

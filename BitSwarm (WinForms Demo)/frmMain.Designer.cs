@@ -1,14 +1,14 @@
-﻿namespace SuRGeoNix.BitSwarmClient
+﻿namespace WinFormsApp1
 {
-    partial class frmMain
+    partial class FrmMain
     {
         /// <summary>
-        /// Required designer variable.
+        ///  Required designer variable.
         /// </summary>
         private System.ComponentModel.IContainer components = null;
 
         /// <summary>
-        /// Clean up any resources being used.
+        ///  Clean up any resources being used.
         /// </summary>
         /// <param name="disposing">true if managed resources should be disposed; otherwise, false.</param>
         protected override void Dispose(bool disposing)
@@ -23,12 +23,12 @@
         #region Windows Form Designer generated code
 
         /// <summary>
-        /// Required method for Designer support - do not modify
-        /// the contents of this method with the code editor.
+        ///  Required method for Designer support - do not modify
+        ///  the contents of this method with the code editor.
         /// </summary>
         private void InitializeComponent()
         {
-            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(frmMain));
+            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(FrmMain));
             this.input = new System.Windows.Forms.TextBox();
             this.label1 = new System.Windows.Forms.Label();
             this.label2 = new System.Windows.Forms.Label();
@@ -98,171 +98,192 @@
             // 
             // input
             // 
-            this.input.Location = new System.Drawing.Point(143, 13);
+            this.input.Location = new System.Drawing.Point(167, 15);
+            this.input.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
             this.input.Name = "input";
-            this.input.Size = new System.Drawing.Size(674, 20);
+            this.input.Size = new System.Drawing.Size(954, 23);
             this.input.TabIndex = 2;
             // 
             // label1
             // 
             this.label1.AutoSize = true;
-            this.label1.Location = new System.Drawing.Point(57, 42);
+            this.label1.Location = new System.Drawing.Point(66, 48);
+            this.label1.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label1.Name = "label1";
-            this.label1.Size = new System.Drawing.Size(80, 13);
+            this.label1.Size = new System.Drawing.Size(88, 15);
             this.label1.TabIndex = 3;
             this.label1.Text = "Download Path";
             // 
             // label2
             // 
             this.label2.AutoSize = true;
-            this.label2.Location = new System.Drawing.Point(7, 16);
+            this.label2.Location = new System.Drawing.Point(8, 18);
+            this.label2.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label2.Name = "label2";
-            this.label2.Size = new System.Drawing.Size(130, 13);
+            this.label2.Size = new System.Drawing.Size(142, 15);
             this.label2.TabIndex = 4;
             this.label2.Text = "Torrent File / Manget Link";
             // 
             // downPath
             // 
-            this.downPath.Location = new System.Drawing.Point(143, 39);
+            this.downPath.Location = new System.Drawing.Point(167, 45);
+            this.downPath.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
             this.downPath.Name = "downPath";
-            this.downPath.Size = new System.Drawing.Size(674, 20);
+            this.downPath.Size = new System.Drawing.Size(954, 23);
             this.downPath.TabIndex = 5;
             // 
             // maxCon
             // 
-            this.maxCon.Location = new System.Drawing.Point(143, 65);
+            this.maxCon.Location = new System.Drawing.Point(167, 75);
+            this.maxCon.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
             this.maxCon.Name = "maxCon";
-            this.maxCon.Size = new System.Drawing.Size(78, 20);
+            this.maxCon.Size = new System.Drawing.Size(90, 23);
             this.maxCon.TabIndex = 6;
             // 
             // label3
             // 
             this.label3.AutoSize = true;
-            this.label3.Location = new System.Drawing.Point(264, 68);
+            this.label3.Location = new System.Drawing.Point(308, 78);
+            this.label3.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label3.Name = "label3";
-            this.label3.Size = new System.Drawing.Size(66, 13);
+            this.label3.Size = new System.Drawing.Size(72, 15);
             this.label3.TabIndex = 7;
             this.label3.Text = "Min Threads";
             // 
             // label4
             // 
             this.label4.AutoSize = true;
-            this.label4.Location = new System.Drawing.Point(68, 68);
+            this.label4.Location = new System.Drawing.Point(79, 78);
+            this.label4.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label4.Name = "label4";
-            this.label4.Size = new System.Drawing.Size(69, 13);
+            this.label4.Size = new System.Drawing.Size(74, 15);
             this.label4.TabIndex = 8;
             this.label4.Text = "Max Threads";
             // 
             // label5
             // 
             this.label5.AutoSize = true;
-            this.label5.Location = new System.Drawing.Point(633, 68);
+            this.label5.Location = new System.Drawing.Point(738, 78);
+            this.label5.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label5.Name = "label5";
-            this.label5.Size = new System.Drawing.Size(100, 13);
+            this.label5.Size = new System.Drawing.Size(106, 15);
             this.label5.TabIndex = 9;
             this.label5.Text = "Peers From Tracker";
             // 
             // label6
             // 
             this.label6.AutoSize = true;
-            this.label6.Location = new System.Drawing.Point(35, 94);
+            this.label6.Location = new System.Drawing.Point(41, 108);
+            this.label6.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label6.Name = "label6";
-            this.label6.Size = new System.Drawing.Size(102, 13);
+            this.label6.Size = new System.Drawing.Size(116, 15);
             this.label6.TabIndex = 10;
             this.label6.Text = "Connection Timeout";
             // 
             // label7
             // 
             this.label7.AutoSize = true;
-            this.label7.Location = new System.Drawing.Point(227, 94);
+            this.label7.Location = new System.Drawing.Point(265, 108);
+            this.label7.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label7.Name = "label7";
-            this.label7.Size = new System.Drawing.Size(103, 13);
+            this.label7.Size = new System.Drawing.Size(113, 15);
             this.label7.TabIndex = 11;
             this.label7.Text = "Handshake Timeout";
             // 
             // label8
             // 
             this.label8.AutoSize = true;
-            this.label8.Location = new System.Drawing.Point(420, 94);
+            this.label8.Location = new System.Drawing.Point(490, 108);
+            this.label8.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label8.Name = "label8";
-            this.label8.Size = new System.Drawing.Size(75, 13);
+            this.label8.Size = new System.Drawing.Size(82, 15);
             this.label8.TabIndex = 12;
             this.label8.Text = "Piece Timeout";
             // 
             // label9
             // 
             this.label9.AutoSize = true;
-            this.label9.Location = new System.Drawing.Point(610, 94);
+            this.label9.Location = new System.Drawing.Point(712, 108);
+            this.label9.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label9.Name = "label9";
-            this.label9.Size = new System.Drawing.Size(123, 13);
+            this.label9.Size = new System.Drawing.Size(135, 15);
             this.label9.TabIndex = 13;
             this.label9.Text = "Metadata Piece Timeout";
             // 
             // maxThreads
             // 
-            this.maxThreads.Location = new System.Drawing.Point(336, 65);
+            this.maxThreads.Location = new System.Drawing.Point(392, 75);
+            this.maxThreads.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
             this.maxThreads.Name = "maxThreads";
-            this.maxThreads.Size = new System.Drawing.Size(78, 20);
+            this.maxThreads.Size = new System.Drawing.Size(90, 23);
             this.maxThreads.TabIndex = 14;
             // 
             // peersFromTrackers
             // 
-            this.peersFromTrackers.Location = new System.Drawing.Point(739, 65);
+            this.peersFromTrackers.Location = new System.Drawing.Point(862, 75);
+            this.peersFromTrackers.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
             this.peersFromTrackers.Name = "peersFromTrackers";
-            this.peersFromTrackers.Size = new System.Drawing.Size(78, 20);
+            this.peersFromTrackers.Size = new System.Drawing.Size(90, 23);
             this.peersFromTrackers.TabIndex = 15;
             // 
             // conTimeout
             // 
-            this.conTimeout.Location = new System.Drawing.Point(143, 91);
+            this.conTimeout.Location = new System.Drawing.Point(167, 105);
+            this.conTimeout.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
             this.conTimeout.Name = "conTimeout";
-            this.conTimeout.Size = new System.Drawing.Size(78, 20);
+            this.conTimeout.Size = new System.Drawing.Size(90, 23);
             this.conTimeout.TabIndex = 16;
             // 
             // handTimeout
             // 
-            this.handTimeout.Location = new System.Drawing.Point(336, 91);
+            this.handTimeout.Location = new System.Drawing.Point(392, 105);
+            this.handTimeout.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
             this.handTimeout.Name = "handTimeout";
-            this.handTimeout.Size = new System.Drawing.Size(78, 20);
+            this.handTimeout.Size = new System.Drawing.Size(90, 23);
             this.handTimeout.TabIndex = 17;
             // 
             // pieceTimeout
             // 
-            this.pieceTimeout.Location = new System.Drawing.Point(526, 91);
+            this.pieceTimeout.Location = new System.Drawing.Point(614, 105);
+            this.pieceTimeout.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
             this.pieceTimeout.Name = "pieceTimeout";
-            this.pieceTimeout.Size = new System.Drawing.Size(78, 20);
+            this.pieceTimeout.Size = new System.Drawing.Size(90, 23);
             this.pieceTimeout.TabIndex = 18;
             // 
             // metaTimeout
             // 
-            this.metaTimeout.Location = new System.Drawing.Point(739, 91);
+            this.metaTimeout.Location = new System.Drawing.Point(862, 105);
+            this.metaTimeout.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
             this.metaTimeout.Name = "metaTimeout";
-            this.metaTimeout.Size = new System.Drawing.Size(78, 20);
+            this.metaTimeout.Size = new System.Drawing.Size(90, 23);
             this.metaTimeout.TabIndex = 19;
             // 
             // label10
             // 
             this.label10.AutoSize = true;
-            this.label10.Location = new System.Drawing.Point(531, 142);
+            this.label10.Location = new System.Drawing.Point(614, 161);
+            this.label10.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label10.Name = "label10";
-            this.label10.Size = new System.Drawing.Size(39, 13);
+            this.label10.Size = new System.Drawing.Size(45, 15);
             this.label10.TabIndex = 20;
             this.label10.Text = "Output";
             // 
             // output
             // 
-            this.output.Location = new System.Drawing.Point(534, 158);
+            this.output.Location = new System.Drawing.Point(617, 179);
+            this.output.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
             this.output.Multiline = true;
             this.output.Name = "output";
             this.output.ScrollBars = System.Windows.Forms.ScrollBars.Vertical;
-            this.output.Size = new System.Drawing.Size(583, 264);
+            this.output.Size = new System.Drawing.Size(504, 247);
             this.output.TabIndex = 21;
             // 
             // button1
             // 
-            this.button1.Location = new System.Drawing.Point(267, 445);
+            this.button1.Location = new System.Drawing.Point(392, 449);
+            this.button1.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
             this.button1.Name = "button1";
-            this.button1.Size = new System.Drawing.Size(518, 56);
+            this.button1.Size = new System.Drawing.Size(422, 65);
             this.button1.TabIndex = 22;
             this.button1.Text = "Start";
             this.button1.UseVisualStyleBackColor = true;
@@ -296,277 +317,293 @@
             this.toolStripStatusLabel23,
             this.pDownloading,
             this.progress});
-            this.statusStrip1.Location = new System.Drawing.Point(0, 534);
+            this.statusStrip1.Location = new System.Drawing.Point(0, 530);
             this.statusStrip1.Name = "statusStrip1";
-            this.statusStrip1.Size = new System.Drawing.Size(1126, 22);
+            this.statusStrip1.Padding = new System.Windows.Forms.Padding(1, 0, 16, 0);
+            this.statusStrip1.Size = new System.Drawing.Size(1133, 24);
             this.statusStrip1.TabIndex = 23;
             this.statusStrip1.Text = "statusStrip1";
             // 
             // toolStripStatusLabel1
             // 
             this.toolStripStatusLabel1.Name = "toolStripStatusLabel1";
-            this.toolStripStatusLabel1.Size = new System.Drawing.Size(74, 17);
+            this.toolStripStatusLabel1.Size = new System.Drawing.Size(74, 19);
             this.toolStripStatusLabel1.Text = "Downloaded";
             // 
             // bDownloaded
             // 
             this.bDownloaded.Name = "bDownloaded";
-            this.bDownloaded.Size = new System.Drawing.Size(13, 17);
+            this.bDownloaded.Size = new System.Drawing.Size(13, 19);
             this.bDownloaded.Text = "0";
             // 
             // toolStripStatusLabel3
             // 
             this.toolStripStatusLabel3.Name = "toolStripStatusLabel3";
-            this.toolStripStatusLabel3.Size = new System.Drawing.Size(53, 17);
+            this.toolStripStatusLabel3.Size = new System.Drawing.Size(53, 19);
             this.toolStripStatusLabel3.Text = "Dropped";
             // 
             // bDropped
             // 
             this.bDropped.Name = "bDropped";
-            this.bDropped.Size = new System.Drawing.Size(13, 17);
+            this.bDropped.Size = new System.Drawing.Size(13, 19);
             this.bDropped.Text = "0";
             // 
             // toolStripStatusLabel5
             // 
             this.toolStripStatusLabel5.Name = "toolStripStatusLabel5";
-            this.toolStripStatusLabel5.Size = new System.Drawing.Size(35, 17);
+            this.toolStripStatusLabel5.Size = new System.Drawing.Size(35, 19);
             this.toolStripStatusLabel5.Text = "Peers";
             // 
             // pPeers
             // 
             this.pPeers.Name = "pPeers";
-            this.pPeers.Size = new System.Drawing.Size(13, 17);
+            this.pPeers.Size = new System.Drawing.Size(13, 19);
             this.pPeers.Text = "0";
             // 
             // toolStripStatusLabel7
             // 
             this.toolStripStatusLabel7.Name = "toolStripStatusLabel7";
-            this.toolStripStatusLabel7.Size = new System.Drawing.Size(52, 17);
+            this.toolStripStatusLabel7.Size = new System.Drawing.Size(52, 19);
             this.toolStripStatusLabel7.Text = "InQueue";
             // 
             // pInqueue
             // 
             this.pInqueue.Name = "pInqueue";
-            this.pInqueue.Size = new System.Drawing.Size(13, 17);
+            this.pInqueue.Size = new System.Drawing.Size(13, 19);
             this.pInqueue.Text = "0";
             // 
             // toolStripStatusLabel9
             // 
             this.toolStripStatusLabel9.Name = "toolStripStatusLabel9";
-            this.toolStripStatusLabel9.Size = new System.Drawing.Size(69, 17);
+            this.toolStripStatusLabel9.Size = new System.Drawing.Size(69, 19);
             this.toolStripStatusLabel9.Text = "Connecting";
             // 
             // pConnecting
             // 
             this.pConnecting.Name = "pConnecting";
-            this.pConnecting.Size = new System.Drawing.Size(13, 17);
+            this.pConnecting.Size = new System.Drawing.Size(13, 19);
             this.pConnecting.Text = "0";
             // 
             // toolStripStatusLabel11
             // 
             this.toolStripStatusLabel11.Name = "toolStripStatusLabel11";
-            this.toolStripStatusLabel11.Size = new System.Drawing.Size(65, 17);
+            this.toolStripStatusLabel11.Size = new System.Drawing.Size(65, 19);
             this.toolStripStatusLabel11.Text = "Connected";
             // 
             // pConnected
             // 
             this.pConnected.Name = "pConnected";
-            this.pConnected.Size = new System.Drawing.Size(13, 17);
+            this.pConnected.Size = new System.Drawing.Size(13, 19);
             this.pConnected.Text = "0";
             // 
             // toolStripStatusLabel14
             // 
             this.toolStripStatusLabel14.Name = "toolStripStatusLabel14";
-            this.toolStripStatusLabel14.Size = new System.Drawing.Size(30, 17);
+            this.toolStripStatusLabel14.Size = new System.Drawing.Size(30, 19);
             this.toolStripStatusLabel14.Text = "DHT";
             // 
             // pFailed
             // 
             this.pFailed.Name = "pFailed";
-            this.pFailed.Size = new System.Drawing.Size(13, 17);
+            this.pFailed.Size = new System.Drawing.Size(13, 19);
             this.pFailed.Text = "0";
             // 
             // toolStripStatusLabel16
             // 
             this.toolStripStatusLabel16.Name = "toolStripStatusLabel16";
-            this.toolStripStatusLabel16.Size = new System.Drawing.Size(61, 17);
+            this.toolStripStatusLabel16.Size = new System.Drawing.Size(61, 19);
             this.toolStripStatusLabel16.Text = "DHT Peers";
             // 
             // pFailed1
             // 
             this.pFailed1.Name = "pFailed1";
-            this.pFailed1.Size = new System.Drawing.Size(13, 17);
+            this.pFailed1.Size = new System.Drawing.Size(13, 19);
             this.pFailed1.Text = "0";
             // 
             // toolStripStatusLabel18
             // 
             this.toolStripStatusLabel18.Name = "toolStripStatusLabel18";
-            this.toolStripStatusLabel18.Size = new System.Drawing.Size(58, 17);
+            this.toolStripStatusLabel18.Size = new System.Drawing.Size(58, 19);
             this.toolStripStatusLabel18.Text = "TRK Peers";
             // 
             // pFailed2
             // 
             this.pFailed2.Name = "pFailed2";
-            this.pFailed2.Size = new System.Drawing.Size(13, 17);
+            this.pFailed2.Size = new System.Drawing.Size(13, 19);
             this.pFailed2.Text = "0";
             // 
             // toolStripStatusLabel19
             // 
             this.toolStripStatusLabel19.Name = "toolStripStatusLabel19";
-            this.toolStripStatusLabel19.Size = new System.Drawing.Size(48, 17);
+            this.toolStripStatusLabel19.Size = new System.Drawing.Size(48, 19);
             this.toolStripStatusLabel19.Text = "Choked";
             // 
             // pChoked
             // 
             this.pChoked.Name = "pChoked";
-            this.pChoked.Size = new System.Drawing.Size(13, 17);
+            this.pChoked.Size = new System.Drawing.Size(13, 19);
             this.pChoked.Text = "0";
             // 
             // toolStripStatusLabel13
             // 
             this.toolStripStatusLabel13.Name = "toolStripStatusLabel13";
-            this.toolStripStatusLabel13.Size = new System.Drawing.Size(63, 17);
+            this.toolStripStatusLabel13.Size = new System.Drawing.Size(63, 19);
             this.toolStripStatusLabel13.Text = "UnChoked";
             // 
             // pUnchocked
             // 
             this.pUnchocked.Name = "pUnchocked";
-            this.pUnchocked.Size = new System.Drawing.Size(13, 17);
+            this.pUnchocked.Size = new System.Drawing.Size(13, 19);
             this.pUnchocked.Text = "0";
             // 
             // toolStripStatusLabel23
             // 
             this.toolStripStatusLabel23.Name = "toolStripStatusLabel23";
-            this.toolStripStatusLabel23.Size = new System.Drawing.Size(78, 17);
+            this.toolStripStatusLabel23.Size = new System.Drawing.Size(78, 19);
             this.toolStripStatusLabel23.Text = "Downloading";
             // 
             // pDownloading
             // 
             this.pDownloading.Name = "pDownloading";
-            this.pDownloading.Size = new System.Drawing.Size(13, 17);
+            this.pDownloading.Size = new System.Drawing.Size(13, 19);
             this.pDownloading.Text = "0";
             // 
             // progress
             // 
             this.progress.Name = "progress";
-            this.progress.Size = new System.Drawing.Size(100, 16);
+            this.progress.Size = new System.Drawing.Size(117, 18);
             // 
             // label11
             // 
             this.label11.AutoSize = true;
-            this.label11.Location = new System.Drawing.Point(931, 438);
+            this.label11.Location = new System.Drawing.Point(974, 440);
+            this.label11.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label11.Name = "label11";
-            this.label11.Size = new System.Drawing.Size(28, 13);
+            this.label11.Size = new System.Drawing.Size(26, 15);
             this.label11.TabIndex = 24;
             this.label11.Text = "ETA";
             // 
             // label12
             // 
             this.label12.AutoSize = true;
-            this.label12.Location = new System.Drawing.Point(931, 467);
+            this.label12.Location = new System.Drawing.Point(974, 474);
+            this.label12.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label12.Name = "label12";
-            this.label12.Size = new System.Drawing.Size(50, 13);
+            this.label12.Size = new System.Drawing.Size(50, 15);
             this.label12.TabIndex = 25;
             this.label12.Text = "ETA Avg";
             // 
             // label13
             // 
             this.label13.AutoSize = true;
-            this.label13.Location = new System.Drawing.Point(7, 438);
+            this.label13.Location = new System.Drawing.Point(12, 440);
+            this.label13.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label13.Name = "label13";
-            this.label13.Size = new System.Drawing.Size(81, 13);
+            this.label13.Size = new System.Drawing.Size(87, 15);
             this.label13.TabIndex = 26;
             this.label13.Text = "Download Rate";
             // 
             // label14
             // 
             this.label14.AutoSize = true;
-            this.label14.Location = new System.Drawing.Point(7, 467);
+            this.label14.Location = new System.Drawing.Point(12, 474);
+            this.label14.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label14.Name = "label14";
-            this.label14.Size = new System.Drawing.Size(103, 13);
+            this.label14.Size = new System.Drawing.Size(111, 15);
             this.label14.TabIndex = 27;
             this.label14.Text = "Download Rate Avg";
             // 
             // downRate
             // 
             this.downRate.AutoSize = true;
-            this.downRate.Location = new System.Drawing.Point(131, 438);
+            this.downRate.Location = new System.Drawing.Point(157, 440);
+            this.downRate.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.downRate.Name = "downRate";
-            this.downRate.Size = new System.Drawing.Size(0, 13);
+            this.downRate.Size = new System.Drawing.Size(0, 15);
             this.downRate.TabIndex = 28;
             // 
             // downRateAvg
             // 
             this.downRateAvg.AutoSize = true;
-            this.downRateAvg.Location = new System.Drawing.Point(131, 467);
+            this.downRateAvg.Location = new System.Drawing.Point(157, 474);
+            this.downRateAvg.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.downRateAvg.Name = "downRateAvg";
-            this.downRateAvg.Size = new System.Drawing.Size(0, 13);
+            this.downRateAvg.Size = new System.Drawing.Size(0, 15);
             this.downRateAvg.TabIndex = 29;
             // 
             // etaCur
             // 
             this.etaCur.AutoSize = true;
-            this.etaCur.Location = new System.Drawing.Point(1005, 494);
+            this.etaCur.Location = new System.Drawing.Point(1060, 505);
+            this.etaCur.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.etaCur.Name = "etaCur";
-            this.etaCur.Size = new System.Drawing.Size(0, 13);
+            this.etaCur.Size = new System.Drawing.Size(0, 15);
             this.etaCur.TabIndex = 30;
             // 
             // etaAvg
             // 
             this.etaAvg.AutoSize = true;
-            this.etaAvg.Location = new System.Drawing.Point(1005, 467);
+            this.etaAvg.Location = new System.Drawing.Point(1060, 474);
+            this.etaAvg.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.etaAvg.Name = "etaAvg";
-            this.etaAvg.Size = new System.Drawing.Size(0, 13);
+            this.etaAvg.Size = new System.Drawing.Size(0, 15);
             this.etaAvg.TabIndex = 31;
             // 
             // label15
             // 
             this.label15.AutoSize = true;
-            this.label15.Location = new System.Drawing.Point(7, 494);
+            this.label15.Location = new System.Drawing.Point(12, 505);
+            this.label15.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label15.Name = "label15";
-            this.label15.Size = new System.Drawing.Size(53, 13);
+            this.label15.Size = new System.Drawing.Size(56, 15);
             this.label15.TabIndex = 32;
             this.label15.Text = "Max Rate";
             // 
             // maxRate
             // 
             this.maxRate.AutoSize = true;
-            this.maxRate.Location = new System.Drawing.Point(131, 494);
+            this.maxRate.Location = new System.Drawing.Point(157, 505);
+            this.maxRate.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.maxRate.Name = "maxRate";
-            this.maxRate.Size = new System.Drawing.Size(0, 13);
+            this.maxRate.Size = new System.Drawing.Size(0, 15);
             this.maxRate.TabIndex = 33;
             // 
             // label16
             // 
             this.label16.AutoSize = true;
-            this.label16.Location = new System.Drawing.Point(931, 494);
+            this.label16.Location = new System.Drawing.Point(974, 505);
+            this.label16.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label16.Name = "label16";
-            this.label16.Size = new System.Drawing.Size(47, 13);
+            this.label16.Size = new System.Drawing.Size(48, 15);
             this.label16.TabIndex = 34;
             this.label16.Text = "ETA Cur";
             // 
             // eta
             // 
             this.eta.AutoSize = true;
-            this.eta.Location = new System.Drawing.Point(1005, 438);
+            this.eta.Location = new System.Drawing.Point(1060, 440);
+            this.eta.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.eta.Name = "eta";
-            this.eta.Size = new System.Drawing.Size(0, 13);
+            this.eta.Size = new System.Drawing.Size(0, 15);
             this.eta.TabIndex = 35;
             // 
             // listBox1
             // 
             this.listBox1.FormattingEnabled = true;
-            this.listBox1.Location = new System.Drawing.Point(10, 158);
+            this.listBox1.ItemHeight = 15;
+            this.listBox1.Location = new System.Drawing.Point(12, 182);
+            this.listBox1.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
             this.listBox1.Name = "listBox1";
             this.listBox1.SelectionMode = System.Windows.Forms.SelectionMode.MultiExtended;
-            this.listBox1.Size = new System.Drawing.Size(518, 264);
+            this.listBox1.Size = new System.Drawing.Size(578, 244);
             this.listBox1.TabIndex = 36;
             // 
             // button2
             // 
-            this.button2.Location = new System.Drawing.Point(205, 126);
+            this.button2.Location = new System.Drawing.Point(66, 146);
+            this.button2.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
             this.button2.Name = "button2";
-            this.button2.Size = new System.Drawing.Size(135, 26);
+            this.button2.Size = new System.Drawing.Size(158, 30);
             this.button2.TabIndex = 37;
             this.button2.Text = "Download Only Selected";
             this.button2.UseVisualStyleBackColor = true;
@@ -575,34 +612,37 @@
             // label17
             // 
             this.label17.AutoSize = true;
-            this.label17.Location = new System.Drawing.Point(7, 142);
+            this.label17.Location = new System.Drawing.Point(8, 164);
+            this.label17.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label17.Name = "label17";
-            this.label17.Size = new System.Drawing.Size(28, 13);
+            this.label17.Size = new System.Drawing.Size(30, 15);
             this.label17.TabIndex = 38;
             this.label17.Text = "Files";
             // 
             // label18
             // 
             this.label18.AutoSize = true;
-            this.label18.Location = new System.Drawing.Point(420, 68);
+            this.label18.Location = new System.Drawing.Point(490, 78);
+            this.label18.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label18.Name = "label18";
-            this.label18.Size = new System.Drawing.Size(91, 13);
+            this.label18.Size = new System.Drawing.Size(100, 15);
             this.label18.TabIndex = 39;
             this.label18.Text = "Sleep Limit (KB/s)";
             // 
             // sleepLimit
             // 
-            this.sleepLimit.Location = new System.Drawing.Point(526, 65);
+            this.sleepLimit.Location = new System.Drawing.Point(614, 75);
+            this.sleepLimit.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
             this.sleepLimit.Name = "sleepLimit";
-            this.sleepLimit.Size = new System.Drawing.Size(78, 20);
+            this.sleepLimit.Size = new System.Drawing.Size(90, 23);
             this.sleepLimit.TabIndex = 40;
             // 
-            // frmMain
+            // FrmMain
             // 
             this.AllowDrop = true;
-            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
+            this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(1126, 556);
+            this.ClientSize = new System.Drawing.Size(1133, 554);
             this.Controls.Add(this.sleepLimit);
             this.Controls.Add(this.label18);
             this.Controls.Add(this.label17);
@@ -643,7 +683,8 @@
             this.Controls.Add(this.input);
             this.Controls.Add(this.listBox1);
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
-            this.Name = "frmMain";
+            this.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
+            this.Name = "FrmMain";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
             this.Text = "BitSwarm 2.0";
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.frmMain_FormClosing);
@@ -658,6 +699,7 @@
         }
 
         #endregion
+
         private System.Windows.Forms.TextBox input;
         private System.Windows.Forms.Label label1;
         private System.Windows.Forms.Label label2;
