@@ -5,7 +5,7 @@
     <Authors>SuRGeoNix</Authors>
     <Company>SuRGeoNix</Company>
     <Description>Bittorrent library for clients &amp; streaming purposes</Description>
-    <Version>2.4.5</Version>
+    <Version>2.4.6</Version>
     <Copyright>© SuRGeoNix 2021</Copyright>
     <PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/SuRGeoNix/BitSwarm</PackageProjectUrl>
@@ -17,12 +17,7 @@
     <RootNamespace>SuRGeoNix.BitSwarmLib</RootNamespace>
     <AssemblyName>BitSwarmLib</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <PackageReleaseNotes>
-		Uses single send / receive buffers with all peers (less memory and better performance)
-		Updates APF to 1.3.2 with more perfomance updates (will not flush on every chunk)
-		Fixes issues that would prevent the library to run properly with multiple instances
-		Adds support for .NET 6
-	</PackageReleaseNotes>
+    <PackageReleaseNotes>Updates APF to 1.3.3 which fixes an issue with the created files that didn't allow read access (FileShare.Read)</PackageReleaseNotes>
     <PackageId>BitSwarm</PackageId>
     <Product>BitSwarm</Product>
   </PropertyGroup>
@@ -36,7 +31,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="APF" Version="1.3.2" />
+    <PackageReference Include="APF" Version="1.3.3" />
     <PackageReference Include="BencodeNET" Version="4.0.0" />
   </ItemGroup>
 
