@@ -134,6 +134,27 @@ namespace SuRGeoNix.BitSwarmLib.BEP
 
                 return -1;
             }
+
+            public List<int> GetFilesFromPiece(int piece)
+            {
+                List<int> files = new List<int>();
+
+                long piecePos = (long)piece * pieceLength;
+
+                long filePos = 0;
+                for (int i=0; i<lengths.Count; i++)
+                {
+                    if ((filePos >= piecePos && filePos < piecePos + pieceLength) ||
+                        (filePos + lengths[i] >= piecePos && filePos + lengths[i] < piecePos + pieceLength))
+                        files.Add(i);
+                    else if (files.Count > 0)
+                        break;
+
+                    filePos += lengths[i];
+                }
+
+                return files;
+            }
         }
 
         /// <summary>
@@ -402,7 +423,6 @@ namespace SuRGeoNix.BitSwarmLib.BEP
 
             Partfiles.Options opt = new Partfiles.Options();
             opt.AutoCreate      = true;
-            long startPos       = 0;
 
             if (isMultiFile)
             {
@@ -414,7 +434,8 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                 data.folder     = Path.Combine(bitSwarm.OptionsClone.FolderComplete  , Utils.GetValidPathName(file.name));
                 data.folderTemp = Path.Combine(bitSwarm.OptionsClone.FolderIncomplete, Utils.GetValidPathName(file.name));
 
-                if (Directory.Exists(data.folder))      bitSwarm.StopWithError($"Torrent folder already exists! {data.folder}");
+                // Allow to continue with the rest incompleted files (if any)
+                //if (Directory.Exists(data.folder))      bitSwarm.StopWithError($"Torrent folder already exists! {data.folder}");
                 if (Directory.Exists(data.folderTemp))  Directory.Delete(data.folderTemp, true);
 
                 opt.Folder      = data.folder;
@@ -422,10 +443,15 @@ namespace SuRGeoNix.BitSwarmLib.BEP
 
                 for (int i=0; i<file.paths.Count; i++)
                 {
-                    data.files[i] = new Partfile(file.paths[i], file.pieceLength, file.lengths[i], opt);
-                    data.filesIncludes.Add(file.paths[i]);
-                    startPos += file.lengths[i];
+                    if (!File.Exists(Path.Combine(data.folder, file.paths[i]))) // TODO check if part exists already?
+                    {
+                        data.files[i] = new Partfile(file.paths[i], file.pieceLength, file.lengths[i], opt);
+                        data.filesIncludes.Add(file.paths[i]);
+                    }
                 }
+
+                if (data.filesIncludes.Count == 0)
+                    throw new Exception($"The destination folder is already completed or is invalid");
             }
             else
             {
@@ -461,6 +487,27 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             data.requests       = new Bitfield(data.pieces);
             data.progressPrev   = new Bitfield(data.pieces);
             data.pieceProgress  = new Dictionary<int, TorrentData.PieceProgress>();
+            
+            // Update Progress from Existing Folder (null data files means file exist in complete folder)
+            if (data.filesIncludes.Count != data.files.Length)
+            {
+                List<int> pieceFiles;
+
+                for (int piece=0; piece<data.pieces; piece++)
+                {
+                    pieceFiles = file.GetFilesFromPiece(piece);
+
+                    bool allNull = true;
+                    foreach(var file in pieceFiles)
+                        if (data.files[file] != null)
+                            allNull = false;
+
+                    if (allNull)
+                        data.progress.SetBit(piece);   
+                }
+
+                data.requests = data.progress.Clone();
+            }
 
             SaveSession();
         }
@@ -473,8 +520,6 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             Partfiles.Options opt = new Partfiles.Options();
             opt.AutoCreate      = true;
 
-            long startPos = 0;
-
             if (data.folder != null)
             {
                 data.folder     = Path.Combine(bitSwarm.OptionsClone.FolderComplete  , Utils.GetValidPathName(file.name));
@@ -484,11 +529,11 @@ namespace SuRGeoNix.BitSwarmLib.BEP
 
                 for (int i=0; i<file.paths.Count; i++)
                 {
-                    if (!File.Exists(Path.Combine(data.folder, file.paths[i])) && File.Exists(Path.Combine(data.folderTemp, file.paths[i] + opt.PartExtension)))
+                    if (!File.Exists(Path.Combine(data.folder, file.paths[i])) && File.Exists(Path.Combine(data.folderTemp, file.paths[i] + opt.PartExtension))) // TBR null data files used in UpdateProgressFromSession
+                    {
                         data.files[i] = new Partfile(Path.Combine(data.folderTemp, file.paths[i] + opt.PartExtension), true, opt);
-
-                    data.filesIncludes.Add(file.paths[i]);
-                    startPos += file.lengths[i];
+                        data.filesIncludes.Add(file.paths[i]);
+                    }
                 }
             }
             else
@@ -513,44 +558,53 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             data.progressPrev   = new Bitfield(data.pieces);
             data.pieceProgress  = new Dictionary<int, TorrentData.PieceProgress>();
 
-            long curSize        = 0;
-            int  curFile        = 0;
-            int  prevFile       =-1;
-            long firstByte;
+            UpdateProgressFromSession();
+        }
 
-            for (int piece =0; piece<data.pieces; piece++)
+        private void UpdateProgressFromSession()
+        {
+            int piece = 0;
+            int modulo = 0;
+            int chunkId;
+            bool pieceMissing = false;
+
+            for (int fileId=0; fileId<file.lengths.Count; fileId++) // total files
             {
-                firstByte  = (long)piece * file.pieceLength;
-
-                for (int i=curFile; i<file.lengths.Count; i++)
+                for (chunkId=0; chunkId<(file.lengths[fileId]-1)/data.pieceSize; chunkId++) // total file's chunks (-1)
                 {
-                    curFile = i;
-
-                    if (prevFile != curFile) curSize += file.lengths[i];
-
-                    if (firstByte < curSize)
+                    if (!pieceMissing && (data.files[fileId] == null || data.files[fileId].MapChunkIdToChunkPos.ContainsKey(chunkId)))
                     {
-                        int chunkId = (int) (((firstByte + file.pieceLength - 1) - (curSize - file.lengths[i]))/file.pieceLength);
-
-                        if (data.files[i] == null || data.files[i].MapChunkIdToChunkPos.ContainsKey(chunkId))
-                        {
-                            if (piece == data.pieces -1)
-                                bitSwarm.Stats.BytesDownloadedPrevSession += data.pieceLastSize;
-                            else
-                                bitSwarm.Stats.BytesDownloadedPrevSession += data.pieceSize;
-
-                            data.progress.SetBit(piece);
-                        }
-
-                        prevFile = curFile;
-                        break;
+                        bitSwarm.Stats.BytesDownloadedPrevSession += piece == data.pieces - 1 ? data.pieceLastSize : data.pieceSize;
+                        data.progress.SetBit(piece);
                     }
-                    prevFile = curFile;
+
+                    pieceMissing = false;
+                    piece++;
+                }
+
+                if (data.files[fileId] != null && !data.files[fileId].MapChunkIdToChunkPos.ContainsKey(chunkId))
+                    pieceMissing = true;
+
+                modulo += (int) (file.lengths[fileId] % data.pieceSize);
+
+                if (modulo > data.pieceSize || modulo == 0)
+                {
+                    if (!pieceMissing)
+                    {
+                        bitSwarm.Stats.BytesDownloadedPrevSession += piece == data.pieces - 1 ? data.pieceLastSize : data.pieceSize;
+                        data.progress.SetBit(piece);
+                    }
+                    else
+                        pieceMissing = false;
+
+                    piece++;
+                    modulo %= data.pieceSize;
                 }
             }
 
             data.requests = data.progress.Clone();
         }
+
         public void SaveSession()
         {
             FileStream fs = null;
@@ -710,7 +764,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                     torrent.bitSwarm.FocusAreInUse = true;
                     torrent.bitSwarm.Log($"[FOCUS {startPiece} - {endPiece}] Buffering Started");
 
-                    while (torrent.data.progress.GetFirst0(startPiece, endPiece) != -1 && !cancel)
+                    while (torrent.data.progress.GetFirst0(startPiece, endPiece) != -1 && !cancel && torrent.bitSwarm.isRunning)
                     {
                         if (torrent.bitSwarm.focusArea != null && torrent.bitSwarm.focusArea.Item1 != startPiece && torrent.data.requests.GetFirst0(startPiece, endPiece) != -1)
                             torrent.bitSwarm.FocusArea = new Tuple<int, int>(startPiece, LastPiece);
@@ -719,7 +773,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
 
                     torrent.bitSwarm.FocusAreInUse = false;
 
-                    if (cancel)
+                    if (cancel || !torrent.bitSwarm.isRunning)
                     {
                         torrent.bitSwarm.Log($"[FOCUS {startPiece} - {endPiece}] Buffering Cancel");
                         return -1;
@@ -756,7 +810,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                     torrent.bitSwarm.FocusAreInUse = true;
                     torrent.bitSwarm.Log($"[FOCUS {startPiece} - {endPiece}] Buffering Started");
 
-                    while (torrent.data.progress.GetFirst0(startPiece, endPiece) != -1 && !cancel)
+                    while (torrent.data.progress.GetFirst0(startPiece, endPiece) != -1 && !cancel && torrent.bitSwarm.isRunning)
                     {
                         if (torrent.bitSwarm.focusArea != null && torrent.bitSwarm.focusArea.Item1 != startPiece && torrent.data.requests.GetFirst0(startPiece, endPiece) != -1)
                             torrent.bitSwarm.FocusArea = new Tuple<int, int>(startPiece, LastPiece);
@@ -765,7 +819,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
 
                     torrent.bitSwarm.FocusAreInUse = false;
 
-                    if (cancel)
+                    if (cancel || !torrent.bitSwarm.isRunning)
                     {
                         torrent.bitSwarm.Log($"[FOCUS {startPiece} - {endPiece}] Buffering Cancel");
                         return -1;

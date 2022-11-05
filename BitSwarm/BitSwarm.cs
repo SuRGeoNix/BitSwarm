@@ -420,6 +420,8 @@ namespace SuRGeoNix.BitSwarmLib
             try
             {
                 status = Status.STOPPED;
+                if (dht != null)
+                    dht.Stop();
 
                 if (!force)
                 {
@@ -455,7 +457,8 @@ namespace SuRGeoNix.BitSwarmLib
         /// <param name="includeFiles">Downloads only the specified files (from torrent.file.paths)</param>
         public void IncludeFiles(List<string> includeFiles)
         {
-            if (!torrent.metadata.isDone) return;
+            if (!torrent.metadata.isDone)
+                return;
 
             Bitfield newProgress = new Bitfield(torrent.data.pieces);
             newProgress.SetAll();
@@ -816,6 +819,9 @@ namespace SuRGeoNix.BitSwarmLib
         {
             for (int i=0; i<Math.Min(5, trackers.Count); i++)
             {
+                if (!isRunning)
+                    return;
+
                 curTracker++;
                 if (curTracker > trackers.Count - 1) curTracker = 0;
                 int cacheI = curTracker;
@@ -1419,7 +1425,7 @@ namespace SuRGeoNix.BitSwarmLib
                 if (torrent.data.pieceProgress[piece].requests. GetFirst0() == -1) SetRequestsBit(piece);
 
                 if (torrent.data.pieceProgress[piece].progress. GetFirst0() != -1) return;
-
+                
                 // SHA-1 Validation for Piece Data | Failed? -> Re-request whole Piece! | Lock, No thread-safe!
                 byte[] pieceHash;
                 pieceHash = sha1.ComputeHash(torrent.data.pieceProgress[piece].data);
@@ -1470,11 +1476,11 @@ namespace SuRGeoNix.BitSwarmLib
                     // Clean-up
                     sha1FailedPieces.TryRemove(piece, out SHA1FailedPiece tmp01);
                 }
-
+                
                 // Save Piece in PartFiles [Thread-safe?]
                 SavePiece(torrent.data.pieceProgress[piece].data, piece, torrent.data.pieceProgress[piece].data.Length);
                 if (Options.Verbosity > 0) Log($"[{peer.host.PadRight(15, ' ')}] [RECV][P]\tPiece: {piece} Full"); 
-
+                
                 // [SetBit for Progress | Remove Block Progress] | Done => CreateFiles
                 SetProgressBit(piece);
                 SetRequestsBit(piece);
@@ -1561,25 +1567,31 @@ namespace SuRGeoNix.BitSwarmLib
             {
                 curSize += torrent.file.lengths[i];
 
-                if (firstByte < curSize) {
-                    if (torrent.data.files[i] == null) { Log("[SAVE] Null file:\t\t" + (i + 1)); return; }
+                if (firstByte < curSize)
+                {
+		            int writeSize = (int) Math.Min(sizeLeft, curSize - firstByte);
 
-		            int writeSize 	= (int) Math.Min(sizeLeft, curSize - firstByte);
-                    int chunkId     = (int) (((firstByte + torrent.file.pieceLength - 1) - (curSize - torrent.file.lengths[i]))/torrent.file.pieceLength);
-
-		            if (firstByte == curSize - torrent.file.lengths[i])
+                    if (torrent.data.files[i] != null)
                     {
-                        if (Options.Verbosity > 2) Log("[SAVE] F file:\t\t" + (i + 1) + ", chunkId:\t\t" +     0 +     ", pos:\t\t" + writePos + ", len:\t\t" + writeSize);
-                        torrent.data.files[i].WriteFirst(data, writePos, writeSize);
-                    } else if (ends < curSize) {
-                        if (Options.Verbosity > 2) Log("[SAVE] M file:\t\t" + (i + 1) + ", chunkId:\t\t" + chunkId +   ", pos:\t\t" + writePos + ", len:\t\t" + torrent.file.pieceLength + " | " + writeSize);
-                        torrent.data.files[i].Write(chunkId,data);
-                    } else if (ends >= curSize) {
-                        if (Options.Verbosity > 2) Log("[SAVE] L file:\t\t" + (i + 1) + ", chunkId:\t\t" + chunkId +   ", pos:\t\t" + writePos + ", len:\t\t" + writeSize);
-                        torrent.data.files[i].WriteLast(chunkId, data, writePos, writeSize);
-                    }
+                        int chunkId = (int) (((firstByte + torrent.file.pieceLength - 1) - (curSize - torrent.file.lengths[i]))/torrent.file.pieceLength);
 
-                    if (ends - 1 < curSize) break;
+		                if (firstByte == curSize - torrent.file.lengths[i])
+                        {
+                            if (Options.Verbosity > 2) Log("[SAVE] F file:\t\t" + (i + 1) + ", chunkId:\t\t" +     0 +     ", pos:\t\t" + writePos + ", len:\t\t" + writeSize);
+                            torrent.data.files[i].WriteFirst(data, writePos, writeSize);
+                        } else if (ends < curSize) {
+                            if (Options.Verbosity > 2) Log("[SAVE] M file:\t\t" + (i + 1) + ", chunkId:\t\t" + chunkId +   ", pos:\t\t" + writePos + ", len:\t\t" + torrent.file.pieceLength + " | " + writeSize);
+                            torrent.data.files[i].Write(chunkId, data);
+                        } else if (ends >= curSize) {
+                            if (Options.Verbosity > 2) Log("[SAVE] L file:\t\t" + (i + 1) + ", chunkId:\t\t" + chunkId +   ", pos:\t\t" + writePos + ", len:\t\t" + writeSize);
+                            torrent.data.files[i].WriteLast(chunkId, data, writePos, writeSize);
+                        }
+                    }
+                    else
+                        Log("[SAVE] Null file:\t\t" + (i + 1));
+
+                    if (ends - 1 < curSize)
+                        break;
 
 		            firstByte = curSize;
                     sizeLeft -= writeSize;
