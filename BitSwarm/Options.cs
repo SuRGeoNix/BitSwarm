@@ -25,11 +25,6 @@ namespace SuRGeoNix.BitSwarmLib
         public string   FolderTorrents      { get; set; } = Path.Combine(Path.GetTempPath(), "BitSwarm", ".torrents");
 
         /// <summary>
-        /// [CP] Folder where the .bsf BitSwarm's Session Files will be saved
-        /// </summary>
-        public string   FolderSessions      { get; set; } = Path.Combine(Path.GetTempPath(), "BitSwarm", ".sessions");
-
-        /// <summary>
         /// [CP] Trackers file to include (Format: udp://host:port , one tracker per line)
         /// </summary>
         public string   TrackersPath        { get; set; } = "";

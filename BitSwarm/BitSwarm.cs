@@ -98,7 +98,7 @@ namespace SuRGeoNix.BitSwarmLib
         public delegate void StatusChangedHandler(object source, StatusChangedArgs e);
         public class StatusChangedArgs : EventArgs
         {
-            public int      Status      { get; set; } // 0: Stopped, 1: Finished, 2: Error + Msg
+            public int      Status      { get; set; } // 0: Finished, 1: Stopped, 2: Error + Msg
             public string   ErrorMsg    { get; set; }
             public StatusChangedArgs(int status, string errorMsg = "")
             {
@@ -193,18 +193,16 @@ namespace SuRGeoNix.BitSwarmLib
 
             // https://github.com/dotnet/runtime/issues/25792 ?
 
-            OptionsClone.FolderComplete      = Environment.ExpandEnvironmentVariables(OptionsClone.FolderComplete);
-            OptionsClone.FolderIncomplete    = Environment.ExpandEnvironmentVariables(OptionsClone.FolderIncomplete);
-            OptionsClone.FolderTorrents      = Environment.ExpandEnvironmentVariables(OptionsClone.FolderTorrents);
-            OptionsClone.FolderSessions      = Environment.ExpandEnvironmentVariables(OptionsClone.FolderSessions);
+            OptionsClone.FolderComplete     = Environment.ExpandEnvironmentVariables(OptionsClone.FolderComplete);
+            OptionsClone.FolderIncomplete   = Environment.ExpandEnvironmentVariables(OptionsClone.FolderIncomplete);
+            OptionsClone.FolderTorrents     = Environment.ExpandEnvironmentVariables(OptionsClone.FolderTorrents);
 
             if (OptionsClone.TrackersPath != null)
-            OptionsClone.TrackersPath        = Environment.ExpandEnvironmentVariables(OptionsClone.TrackersPath);
+                OptionsClone.TrackersPath   = Environment.ExpandEnvironmentVariables(OptionsClone.TrackersPath);
 
-            if (!Directory.Exists(OptionsClone.FolderComplete))  Directory.CreateDirectory(OptionsClone.FolderComplete);
-            if (!Directory.Exists(OptionsClone.FolderIncomplete))Directory.CreateDirectory(OptionsClone.FolderIncomplete);
-            if (!Directory.Exists(OptionsClone.FolderTorrents))  Directory.CreateDirectory(OptionsClone.FolderTorrents);
-            if (!Directory.Exists(OptionsClone.FolderSessions))  Directory.CreateDirectory(OptionsClone.FolderSessions);
+            Directory.CreateDirectory(OptionsClone.FolderComplete);
+            Directory.CreateDirectory(OptionsClone.FolderIncomplete);
+            Directory.CreateDirectory(OptionsClone.FolderTorrents);
 
             Stats   = new Stats();
             status  = Status.STOPPED;
@@ -287,7 +285,14 @@ namespace SuRGeoNix.BitSwarmLib
                 Stats.PiecesIncluded    = torrent.data.pieces;
                 Stats.BytesIncluded     = torrent.data.totalSize;
                 Log("Dumping Torrent\r\n" + DumpTorrent());
+
                 MetadataReceived?.Invoke(this, new MetadataReceivedArgs(torrent));
+
+                if (torrent.data.isDone)
+                {
+                    Log("[FINISH]");
+                    StatusChanged?.Invoke(this, new StatusChangedArgs(0));
+                }
             }
         }
         #endregion
@@ -311,19 +316,13 @@ namespace SuRGeoNix.BitSwarmLib
 
             Initiliaze();
 
-            bool isSessionFile = false;
-            //bool isTorrentFile = false;
-            BDictionary bInfo  = null;
-
             // Check Torrent | Session
             if (File.Exists(input))
             {
                 FileInfo fi = new FileInfo(input);
 
-                if (fi.Extension.ToLower() == ".bsf")
-                    isSessionFile = true;
-                else if (fi.Extension.ToLower() == ".torrent")
-                    bInfo = torrent.FillFromTorrentFile(input);
+                if (fi.Extension.ToLower() == ".torrent")
+                    torrent.FillFromTorrentFile(input);
                 else
                     throw new Exception("Unknown file format has been provided");
             }
@@ -348,22 +347,6 @@ namespace SuRGeoNix.BitSwarmLib
                     throw new Exception("Unknown string input has been provided");
             }
 
-            string sessionFilePath = !isSessionFile ? Path.Combine(OptionsClone.FolderSessions, torrent.file.infoHash.ToUpper() + ".bsf") : ""; //  string.Join("_", torrent.file.name.Split(Path.GetInvalidFileNameChars()));
-
-            // Input file is Session or a saved Session found in temp (for provided hash)
-            if (isSessionFile || File.Exists(sessionFilePath))
-            {
-                LoadedSessionFile = isSessionFile ? input : sessionFilePath;
-                torrent = Torrent.LoadSession(LoadedSessionFile);
-                if (torrent == null) throw new Exception($"Unable to load session file {LoadedSessionFile}");
-                torrent.bitSwarm = this;
-                torrent.FillFromSession();
-            }
-
-            // Input file is Torrent
-            else if (bInfo != null)
-                torrent.FillFromInfo(bInfo);
-
             Setup();
         }
         /// <summary>
@@ -371,7 +354,9 @@ namespace SuRGeoNix.BitSwarmLib
         /// </summary>
         public void Start()
         {
-            if (status == Status.RUNNING || (torrent.data.progress != null && torrent.data.progress.GetFirst0() == - 1)) return;
+            if (status == Status.RUNNING || torrent == null || torrent.Disposed || (torrent.data.progress != null && torrent.data.progress.GetFirst0() == - 1))
+                 return;
+
             Utils.EnsureThreadDoneNoAbort(beggar);
 
             wasPaused           = status == Status.PAUSED;
@@ -401,7 +386,8 @@ namespace SuRGeoNix.BitSwarmLib
         /// </summary>
         public void Pause()
         {
-            if (status == Status.PAUSED) return;
+            if (status == Status.PAUSED)
+                return;
 
             status = Status.PAUSED;
             Utils.EnsureThreadDoneNoAbort(beggar, 1500);
@@ -1063,7 +1049,7 @@ namespace SuRGeoNix.BitSwarmLib
         #region Piece/Block [Timeout | Request | Receive | Reject | Save]
 
         // PieceBlock [Request Metadata/Torrent] | EndGame/FocusPoint/Normal
-        internal void RequestPiece(Peer peer, bool imBeggar = false)
+        internal void RequestPiece(Peer peer)
         {
             int piece, block, blockSize;
 
@@ -1375,7 +1361,8 @@ namespace SuRGeoNix.BitSwarmLib
         // PieceBlock [Torrent  Receive]
         internal void PieceReceived(int piece, int offset, int length, Peer peer)
         {
-            if (!isRunning) return;
+            if (!isRunning)
+                return;
 
             // [Already Received | SHA-1 Validation Failed] => leave
             int  block = offset / torrent.data.blockSize;

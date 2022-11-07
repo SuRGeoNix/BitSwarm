@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.IO;
-using System.Runtime.Serialization.Formatters.Binary;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -18,14 +17,10 @@ namespace SuRGeoNix.BitSwarmLib.BEP
     /// <summary>
     /// BitSwarm's Torrent
     /// </summary>
-    [Serializable]
     public class Torrent : IDisposable
     {
-        [NonSerialized]
         internal        BitSwarm        bitSwarm;
-        [NonSerialized]
         private static  BencodeParser   bParser = new BencodeParser();
-        [NonSerialized]
         private static  SHA1            sha1    = new SHA1Managed();
         
         /// <summary>
@@ -46,8 +41,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
         /// <summary>
         /// Fields of .torrent file (extracted from bencoded data)
         /// </summary>
-        [Serializable]
-        public struct TorrentFile
+        public class TorrentFile
         {
             /// <summary>
             /// SHA1 Hash computation of 'info' part
@@ -160,8 +154,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
         /// <summary>
         /// Torrent data
         /// </summary>
-        [Serializable]
-        public struct TorrentData
+        public class TorrentData
         {
             /// <summary>
             /// Whether the torrent data have been completed successfully
@@ -171,7 +164,6 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             /// <summary>
             /// List of APF incomplete / part files that required to create the completed files
             /// </summary>
-            [NonSerialized]
             public Partfile[]       files;
 
             /// <summary>
@@ -237,23 +229,19 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             /// <summary>
             /// Progress bitfield (received pieces)
             /// </summary>
-            [NonSerialized]
             public Bitfield         progress;
 
             /// <summary>
             /// Requests bitfield (requested pieces)
             /// </summary>
-            [NonSerialized]
             public Bitfield         requests;
 
             /// <summary>
             /// Previous progress bitfield (received pieces).
             /// Required for include / exclude files cases
             /// </summary>
-            [NonSerialized]
             public Bitfield         progressPrev;
 
-            [NonSerialized]
             internal Dictionary<int, PieceProgress>   pieceProgress;
 
             internal class PieceProgress
@@ -277,8 +265,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
         /// <summary>
         /// Metadata
         /// </summary>
-        [Serializable]
-        public struct MetaData
+        public class MetaData
         {
             /// <summary>
             /// Whether the metadata have been received successfully
@@ -288,7 +275,6 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             /// <summary>
             /// Incomplete / part file for .torrent
             /// </summary>
-            [NonSerialized]
             public Partfile         file;
 
             /// <summary>
@@ -304,7 +290,6 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             /// <summary>
             /// Progress bitfield (received pieces)
             /// </summary>
-            [NonSerialized]
             public Bitfield         progress;
         }
         public Torrent (BitSwarm bitSwarm) 
@@ -346,27 +331,37 @@ namespace SuRGeoNix.BitSwarmLib.BEP
 
             for (int i=0; i<tr.Length; i++)
                 file.trackers.Add(new Uri(tr[i]));
+
+            string torrentFile =  Path.Combine(bitSwarm.OptionsClone.FolderTorrents, Utils.GetValidPathName(file.name) + ".torrent");
+
+            if (File.Exists(torrentFile))
+                FillFromTorrentFile(torrentFile);
+
         }
-        public BDictionary FillFromTorrentFile(string fileName)
+        public void FillFromTorrentFile(string fileName)
         {
-            BDictionary bdicTorrent = bParser.Parse<BDictionary>(fileName);
-            BDictionary bInfo;
-
-            if (bdicTorrent["info"] != null)
+            try
             {
-                bInfo = (BDictionary) bdicTorrent["info"];
-                FillTrackersFromInfo(bdicTorrent);
-            } 
-            else if (bdicTorrent["name"] != null)
-                bInfo = bdicTorrent;
-            else
-                throw new Exception("Invalid torrent file");
+                BDictionary bdicTorrent = bParser.Parse<BDictionary>(fileName);
+                BDictionary bInfo;
 
-            file.infoHash = Utils.ArrayToStringHex(sha1.ComputeHash(bInfo.EncodeAsBytes()));
-            file.name     = ((BString) bInfo["name"]).ToString();
+                if (bdicTorrent["info"] != null)
+                {
+                    bInfo = (BDictionary) bdicTorrent["info"];
+                    FillTrackersFromInfo(bdicTorrent);
+                } 
+                else if (bdicTorrent["name"] != null)
+                    bInfo = bdicTorrent;
+                else
+                    throw new Exception("Invalid torrent file");
 
-            return bInfo;
+                file.infoHash = Utils.ArrayToStringHex(sha1.ComputeHash(bInfo.EncodeAsBytes()));
+                file.name     = ((BString) bInfo["name"]).ToString();
+
+                PrepareFiles(bInfo);
+            } catch (Exception e) { bitSwarm.StopWithError($"FillFromTorrentFile(): {e.Message} - {e.StackTrace}"); }
         }
+
         public void FillFromMetadata()
         {
             try
@@ -386,9 +381,10 @@ namespace SuRGeoNix.BitSwarmLib.BEP
 
                 string torrentName  = Utils.GetValidFileName(file.name) + ".torrent";
 
-                if (!File.Exists(Path.Combine(curPath, torrentName))) File.Move(curFilePath, Path.Combine(bitSwarm.OptionsClone.FolderTorrents, torrentName));
+                if (!File.Exists(Path.Combine(curPath, torrentName)))
+                    File.Move(curFilePath, Path.Combine(bitSwarm.OptionsClone.FolderTorrents, torrentName));
 
-                FillFromInfo(bInfo);
+                PrepareFiles(bInfo);
             } catch (Exception e) { bitSwarm.StopWithError($"FillFromMetadata(): {e.Message} - {e.StackTrace}"); }
             
         }
@@ -410,10 +406,10 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             if (tracker != null)
                 file.trackers.Add(new Uri(tracker));
         }
-        public void FillFromInfo(BDictionary bInfo)
-        {
-            if (bitSwarm.OptionsClone.FolderComplete == null) bitSwarm.StopWithError("[CRITICAL] Folder Complete cannot be empty");
 
+        public void PrepareFiles(BDictionary bInfo)
+        {
+            bool newDownload = true;
             bool isMultiFile    = (BList) bInfo["files"] == null ? false : true;
 
             file.pieces         = GetHashesFromInfo(bInfo);
@@ -434,43 +430,56 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                 data.folder     = Path.Combine(bitSwarm.OptionsClone.FolderComplete  , Utils.GetValidPathName(file.name));
                 data.folderTemp = Path.Combine(bitSwarm.OptionsClone.FolderIncomplete, Utils.GetValidPathName(file.name));
 
-                // Allow to continue with the rest incompleted files (if any)
-                //if (Directory.Exists(data.folder))      bitSwarm.StopWithError($"Torrent folder already exists! {data.folder}");
-                if (Directory.Exists(data.folderTemp))  Directory.Delete(data.folderTemp, true);
-
                 opt.Folder      = data.folder;
                 opt.PartFolder  = data.folderTemp;
 
                 for (int i=0; i<file.paths.Count; i++)
                 {
-                    if (!File.Exists(Path.Combine(data.folder, file.paths[i]))) // TODO check if part exists already?
+                    if (!File.Exists(Path.Combine(opt.Folder, file.paths[i])))
                     {
-                        data.files[i] = new Partfile(file.paths[i], file.pieceLength, file.lengths[i], opt);
+                        if (File.Exists(Path.Combine(opt.PartFolder, file.paths[i]) + opt.PartExtension))
+                        {
+                            data.files[i] = new Partfile(Path.Combine(opt.PartFolder, file.paths[i] + opt.PartExtension), true, opt);
+                            newDownload = false;
+                        }
+                        else
+                            data.files[i] = new Partfile(file.paths[i], file.pieceLength, file.lengths[i], opt);
+
                         data.filesIncludes.Add(file.paths[i]);
                     }
+                    else
+                        newDownload = false;
                 }
-
-                if (data.filesIncludes.Count == 0)
-                    throw new Exception($"The destination folder is already completed or is invalid");
             }
             else
             {
                 file.length     = (BNumber) bInfo["length"];  
+                file.lengths    = new List<long>()      { file.length   };
+                file.paths      = new List<string>()    { file.name     };
+
                 data.totalSize  = file.length;
                 data.files      = new Partfile[1];
 
-                string filePath = Path.Combine(bitSwarm.OptionsClone.FolderComplete  , Utils.GetValidFileName(file.name));
-                if (File.Exists(filePath)) bitSwarm.StopWithError($"Torrent file already exists! {filePath}");
+                string validFileName= Utils.GetValidFileName(file.name);
 
                 opt.Folder          = bitSwarm.OptionsClone.FolderComplete;
                 opt.PartFolder      = bitSwarm.OptionsClone.FolderIncomplete;
                 opt.PartOverwrite   = true;
 
-                data.files[0]       = new Partfile(Utils.GetValidFileName(file.name), file.pieceLength, file.length, opt);
-                file.paths          = new List<string>()    { file.name     };
-                file.lengths        = new List<long>()      { file.length   };
+                if (!File.Exists(Path.Combine(opt.Folder, validFileName)))
+                {
+                    if (File.Exists(Path.Combine(opt.PartFolder, validFileName) + opt.PartExtension))
+                    {
+                        data.files[0] = new Partfile(Path.Combine(opt.PartFolder, validFileName + opt.PartExtension), true, opt);
+                        newDownload = false;
+                    }
+                    else
+                        data.files[0] = new Partfile(validFileName, file.pieceLength, file.length, opt);
 
-                data.filesIncludes.Add(file.name);
+                    data.filesIncludes.Add(file.name);
+                }
+                else
+                    newDownload = false;
             }
 
             data.pieces         = file.pieces.Count;
@@ -487,82 +496,26 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             data.requests       = new Bitfield(data.pieces);
             data.progressPrev   = new Bitfield(data.pieces);
             data.pieceProgress  = new Dictionary<int, TorrentData.PieceProgress>();
-            
-            // Update Progress from Existing Folder (null data files means file exist in complete folder)
-            if (data.filesIncludes.Count != data.files.Length)
+
+            if (!newDownload)
             {
-                List<int> pieceFiles;
-
-                for (int piece=0; piece<data.pieces; piece++)
-                {
-                    pieceFiles = file.GetFilesFromPiece(piece);
-
-                    bool allNull = true;
-                    foreach(var file in pieceFiles)
-                        if (data.files[file] != null)
-                            allNull = false;
-
-                    if (allNull)
-                        data.progress.SetBit(piece);   
-                }
+                LoadProgress();
 
                 data.requests = data.progress.Clone();
-            }
 
-            SaveSession();
-        }
-        
-        public void FillFromSession()
-        {
-            data.files          = new Partfile[file.paths == null ? 1 : file.paths.Count];
-            data.filesIncludes  = new List<string>();
+                if (data.progress.GetFirst0() == -1)
+                    data.isDone = true;
+            }
             
-            Partfiles.Options opt = new Partfiles.Options();
-            opt.AutoCreate      = true;
-
-            if (data.folder != null)
-            {
-                data.folder     = Path.Combine(bitSwarm.OptionsClone.FolderComplete  , Utils.GetValidPathName(file.name));
-                data.folderTemp = Path.Combine(bitSwarm.OptionsClone.FolderIncomplete, Utils.GetValidPathName(file.name));
-
-                opt.Folder      = data.folder;
-
-                for (int i=0; i<file.paths.Count; i++)
-                {
-                    if (!File.Exists(Path.Combine(data.folder, file.paths[i])) && File.Exists(Path.Combine(data.folderTemp, file.paths[i] + opt.PartExtension))) // TBR null data files used in UpdateProgressFromSession
-                    {
-                        data.files[i] = new Partfile(Path.Combine(data.folderTemp, file.paths[i] + opt.PartExtension), true, opt);
-                        data.filesIncludes.Add(file.paths[i]);
-                    }
-                }
-            }
-            else
-            {
-                opt.Folder = bitSwarm.OptionsClone.FolderComplete;
-
-                string validFilename = Utils.GetValidFileName(file.name);
-
-                if (!File.Exists(Path.Combine(bitSwarm.OptionsClone.FolderComplete, validFilename)) && File.Exists(Path.Combine(bitSwarm.OptionsClone.FolderIncomplete, validFilename + opt.PartExtension)))
-                    data.files[0] = new Partfile(Path.Combine(bitSwarm.OptionsClone.FolderIncomplete, validFilename + opt.PartExtension), true, opt);
-                    
-                data.filesIncludes.Add(file.name);
-            }
-
-            bool allNull = true;
-            for(int i=0; i<data.files.Length; i++)
-                if (data.files[i] != null) { allNull = false; break; }
-
-            if (allNull) throw new Exception($"The loaded session either is already completed or is invalid (Session File: {bitSwarm.LoadedSessionFile})");
-
-            data.progress       = new Bitfield(data.pieces);
-            data.progressPrev   = new Bitfield(data.pieces);
-            data.pieceProgress  = new Dictionary<int, TorrentData.PieceProgress>();
-
-            UpdateProgressFromSession();
         }
-
-        private void UpdateProgressFromSession()
+        private void LoadProgress()
         {
+            if (data.filesIncludes.Count == 0)
+            {
+                data.progress.SetAll();
+                return;
+            }
+
             int piece = 0;
             int modulo = 0;
             int chunkId;
@@ -570,71 +523,39 @@ namespace SuRGeoNix.BitSwarmLib.BEP
 
             for (int fileId=0; fileId<file.lengths.Count; fileId++) // total files
             {
-                for (chunkId=0; chunkId<(file.lengths[fileId]-1)/data.pieceSize; chunkId++) // total file's chunks (-1)
+                for (chunkId=0; chunkId<(file.lengths[fileId]+modulo-1)/data.pieceSize; chunkId++) // total file's chunks (-1)
                 {
                     if (!pieceMissing && (data.files[fileId] == null || data.files[fileId].MapChunkIdToChunkPos.ContainsKey(chunkId)))
-                    {
-                        bitSwarm.Stats.BytesDownloadedPrevSession += piece == data.pieces - 1 ? data.pieceLastSize : data.pieceSize;
                         data.progress.SetBit(piece);
-                    }
 
                     pieceMissing = false;
                     piece++;
                 }
 
-                if (data.files[fileId] != null && !data.files[fileId].MapChunkIdToChunkPos.ContainsKey(chunkId))
-                    pieceMissing = true;
-
                 modulo += (int) (file.lengths[fileId] % data.pieceSize);
 
-                if (modulo > data.pieceSize || modulo == 0)
+                if (modulo == 0)
                 {
-                    if (!pieceMissing)
-                    {
-                        bitSwarm.Stats.BytesDownloadedPrevSession += piece == data.pieces - 1 ? data.pieceLastSize : data.pieceSize;
+                    if (!pieceMissing && (data.files[fileId] == null || data.files[fileId].MapChunkIdToChunkPos.ContainsKey(chunkId)))
                         data.progress.SetBit(piece);
-                    }
-                    else
-                        pieceMissing = false;
 
+                    pieceMissing = false;
                     piece++;
-                    modulo %= data.pieceSize;
+                }
+                else
+                {
+                    if (data.files[fileId] != null && !data.files[fileId].MapChunkIdToChunkPos.ContainsKey(chunkId))
+                        pieceMissing = true;
+
+                    if (modulo > data.pieceSize)
+                        modulo %= data.pieceSize;
                 }
             }
 
-            data.requests = data.progress.Clone();
+            if (modulo != 0 && !pieceMissing)
+                data.progress.SetBit(piece);
         }
 
-        public void SaveSession()
-        {
-            FileStream fs = null;
-            try
-            {
-                BinaryFormatter formatter = new BinaryFormatter();
-                string sessionFilePath = Path.Combine(bitSwarm.OptionsClone.FolderSessions, file.infoHash.ToUpper() + ".bsf");
-                fs = new FileStream(sessionFilePath, FileMode.Create);
-                formatter.Serialize(fs, this);
-            }
-            catch (Exception e) {  bitSwarm.StopWithError($"SaveSession(): {e.Message} - {e.StackTrace}"); }
-
-            fs?.Close();
-        }
-        public static Torrent LoadSession(string sessionFile)
-        {
-            FileStream fs = null;
-            try
-            {
-                BinaryFormatter formatter = new BinaryFormatter();
-                fs = new FileStream(sessionFile, FileMode.Open);
-
-                Torrent tr = (Torrent) formatter.Deserialize(fs);
-                fs?.Close();
-                return tr;
-            }
-            catch (Exception e) { Console.WriteLine(e.Message); }
-
-            return null;
-        }
         public static List<string> GetPathsFromInfo(BDictionary info)
         {
             BList files = (BList) info["files"];
@@ -684,10 +605,10 @@ namespace SuRGeoNix.BitSwarmLib.BEP
         }
 
         #region IDisposable Support
-        private bool disposedValue = false; // To detect redundant calls
+        public bool Disposed { get; private set; }
         protected virtual void Dispose(bool disposing)
         {
-            if (!disposedValue)
+            if (!Disposed)
             {
                 if (disposing)
                 {
@@ -716,7 +637,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                     } catch (Exception)  { }
                 }
 
-                disposedValue = true;
+                Disposed = true;
             }
         }
         public void Dispose() { lock (this) Dispose(true); }

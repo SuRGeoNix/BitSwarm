@@ -5,7 +5,7 @@
     <Authors>SuRGeoNix</Authors>
     <Company>SuRGeoNix</Company>
     <Description>Bittorrent library for clients &amp; streaming purposes</Description>
-    <Version>2.4.7</Version>
+    <Version>2.4.8</Version>
     <Copyright>© SuRGeoNix 2021</Copyright>
     <PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/SuRGeoNix/BitSwarm</PackageProjectUrl>
@@ -18,8 +18,10 @@
     <AssemblyName>BitSwarmLib</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <PackageReleaseNotes>
-		Allows downloading even when the target folder exists (only for missing files)
-		Fixes a critical issues during load from existing session when a piece had multiple files
+		Allows existing folders/files and marks them as complete
+		Allows missing folders/files and marks them as incomplete
+		Replaces and improves .bsf file sessions and uses only dynamic scan sessions (as part files keep already the required data)
+		Fixes critical issues with loading progress
 		Fixes a critical issue during disposal with DHT
 	</PackageReleaseNotes>
     <PackageId>BitSwarm</PackageId>

@@ -72,7 +72,8 @@ namespace WinFormsApp1
                     bitSwarm.StatusChanged      += BitSwarm_StatusChanged;
 
                     bitSwarm.Open(input.Text);
-                    bitSwarm.Start();
+                    if (torrent == null || !torrent.data.isDone)
+                        bitSwarm.Start();
                 }
                 catch (Exception e1)
                 {
