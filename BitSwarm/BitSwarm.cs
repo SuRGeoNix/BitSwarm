@@ -37,7 +37,6 @@ namespace SuRGeoNix.BitSwarmLib
             Magnet,
             Sha1,
             Base32,
-            Session,
             Unkown
         }
         private enum SleepModeState
@@ -78,7 +77,7 @@ namespace SuRGeoNix.BitSwarmLib
         }
 
         /// <summary>
-        /// Fires when metadata are available (e.Torrent). If input is a torrent or session file will fire direclty after Open. Can be used to specify included files
+        /// Fires when metadata are available (e.Torrent). If input is a torrent or an existing previously downloaded torrent will fire direclty after Open. Can be used to specify included files
         /// </summary>
         public event MetadataReceivedHandler MetadataReceived;
         public delegate void MetadataReceivedHandler(object source, MetadataReceivedArgs e);
@@ -305,10 +304,9 @@ namespace SuRGeoNix.BitSwarmLib
         public BitSwarm(Options opt = null) { Options = (opt == null) ? new Options() : opt; }
 
         /// <summary>
-        /// Opens a Torrent File, Magnet Link, SHA-1 Hex Hash, Base32 Hash or a previously Saved Session (.bsf).
-        /// Searches for -infoHash-.bsf file in OptionsStatic.FolderSessions and restores it automatically
+        /// Opens a Torrent File, Magnet Link, SHA-1 Hex Hash, Base32 Hash
         /// </summary>
-        /// <param name="input">Torrent File, Magnet Link, SHA-1 Hex Hash, Base32 Hash or Saved Session File</param>
+        /// <param name="input">Torrent File, Magnet Link, SHA-1 Hex Hash, Base32 Hash</param>
         public void Open(string input)
         {
             if (input == null || input.Trim() == "") throw new Exception("No input has been provided");
@@ -316,7 +314,7 @@ namespace SuRGeoNix.BitSwarmLib
 
             Initiliaze();
 
-            // Check Torrent | Session
+            // Check Torrent
             if (File.Exists(input))
             {
                 FileInfo fi = new FileInfo(input);
@@ -503,7 +501,7 @@ namespace SuRGeoNix.BitSwarmLib
         /// <summary>
         /// Checks if the provided input could be handled by BitSwarm
         /// </summary>
-        /// <param name="input">Torrent File, Magnet Link, SHA-1 Hex Hash, Base32 Hash or Saved Session File</param>
+        /// <param name="input">Torrent File, Magnet Link, SHA-1 Hex Hash, Base32 Hash</param>
         /// <returns>Identified InputType or InputType.Unknown</returns>
         public static InputType ValidateInput(string input)
         {
@@ -514,7 +512,6 @@ namespace SuRGeoNix.BitSwarmLib
             if (File.Exists(input))
             {
                 FileInfo fi = new FileInfo(input);
-                if (fi.Extension.ToLower() == ".bsf")       return InputType.Session;
                 if (fi.Extension.ToLower() == ".torrent")   return InputType.Torrent;
 
                 return InputType.Unkown;

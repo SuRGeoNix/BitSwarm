@@ -552,8 +552,14 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                 }
             }
 
+            if (data.progress.setsCounter > 0)
+                bitSwarm.Stats.BytesDownloadedPrevSession = (data.progress.setsCounter - 1) * data.pieceSize;
+
             if (modulo != 0 && !pieceMissing)
+            {
                 data.progress.SetBit(piece);
+                bitSwarm.Stats.BytesDownloadedPrevSession += data.pieceLastSize;
+            }
         }
 
         public static List<string> GetPathsFromInfo(BDictionary info)
