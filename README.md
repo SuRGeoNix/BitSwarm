@@ -4,7 +4,7 @@
 BitSwarm implements __Bittorrent Protocol v2__ from scratch to achieve best performance and to expose low-level parameters for customization. It uses a custom thread pool and part files (<a href="https://github.com/SuRGeoNix/APF">APF</a>) for fast resume from previous incomplete session.
 
 ## [Supports]
-* Inputs (torrent file, magnet link, SHA1/Base32 hash & session file)
+* Inputs (torrent file, magnet link, SHA1/Base32 hash)
 * Automatic Save & Load from a previous incomplete session
 * XML Import/Export Options for Timing/Feeding & Logging Configuration
 * Feeders (DHT, PEX, Trackers & External Trackers File)
@@ -60,8 +60,6 @@ bitSwarm.Open("magnet:?xt=urn:btih:D1101A2B9D202811A05E8C57C557A20BF974DC8A");
 bitSwarm.Open("D1101A2B9D202811A05E8C57C557A20BF974DC8A");
 	// Open Base32 (SHA1) Hash
 bitSwarm.Open("RX46NCATYQRS3MCQNSEXVZGCCDNKTASQ");
-	// Open BitSwarm's .bsf Session File (BitSwarm will search automatically when you provide other inputs for an existing session file based on SHA1 hash)
-bitSwarm.Open("/home/surgeonix/.bitswarm/.sessions/D1101A2B9D202811A05E8C57C557A20BF974DC8A.bsf");
 
 // Step 4: Start downloading
 bitSwarm.Start();
