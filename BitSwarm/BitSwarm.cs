@@ -343,6 +343,12 @@ namespace SuRGeoNix.BitSwarmLib
                 }
                 else
                     throw new Exception("Unknown string input has been provided");
+
+                string fileName = string.IsNullOrEmpty(torrent.file.name) ? torrent.file.infoHash : Utils.GetValidPathName(torrent.file.name);
+                string torrentFile =  Path.Combine(OptionsClone.FolderTorrents, fileName + ".torrent");
+
+                if (File.Exists(torrentFile))
+	                torrent.FillFromTorrentFile(torrentFile);
             }
 
             Setup();

@@ -331,12 +331,6 @@ namespace SuRGeoNix.BitSwarmLib.BEP
 
             for (int i=0; i<tr.Length; i++)
                 file.trackers.Add(new Uri(tr[i]));
-
-            string torrentFile =  Path.Combine(bitSwarm.OptionsClone.FolderTorrents, Utils.GetValidPathName(file.name) + ".torrent");
-
-            if (File.Exists(torrentFile))
-                FillFromTorrentFile(torrentFile);
-
         }
         public void FillFromTorrentFile(string fileName)
         {

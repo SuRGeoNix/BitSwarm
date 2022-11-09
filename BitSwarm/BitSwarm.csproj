@@ -5,7 +5,7 @@
     <Authors>SuRGeoNix</Authors>
     <Company>SuRGeoNix</Company>
     <Description>Bittorrent library for clients &amp; streaming purposes</Description>
-    <Version>2.4.8</Version>
+    <Version>2.4.9</Version>
     <Copyright>© SuRGeoNix 2021</Copyright>
     <PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/SuRGeoNix/BitSwarm</PackageProjectUrl>
@@ -18,11 +18,7 @@
     <AssemblyName>BitSwarmLib</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <PackageReleaseNotes>
-		Allows existing folders/files and marks them as complete
-		Allows missing folders/files and marks them as incomplete
-		Replaces and improves .bsf file sessions and uses only dynamic scan sessions (as part files keep already the required data)
-		Fixes critical issues with loading progress
-		Fixes a critical issue during disposal with DHT
+		Fixes a critical null reference issue while opening from magnet link without a torrent name
 	</PackageReleaseNotes>
     <PackageId>BitSwarm</PackageId>
     <Product>BitSwarm</Product>
