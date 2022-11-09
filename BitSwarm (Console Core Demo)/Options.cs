@@ -85,9 +85,6 @@ namespace SuRGeoNix.BitSwarmConsole
             if (userOptions.FolderTorrents      != null)
                 bitSwarmOptions.FolderTorrents      = userOptions.FolderTorrents;
 
-            if (userOptions.FolderSessions      != null)
-                bitSwarmOptions.FolderSessions      = userOptions.FolderSessions;
-
             if (userOptions.TrackersPath        != null)
                 bitSwarmOptions.TrackersPath        = userOptions.TrackersPath;
 
