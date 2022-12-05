@@ -136,14 +136,14 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             udpClient.Client.ReceiveTimeout = options.ReceiveTimeout;
         }
         
-        public void Announce(   Int32 num_want = -1, Int64 downloaded = 0, Int64 left = 0, Int64 uploaded = 0)
+        public void Announce(   Int32 num_want = -1, Int64 downloaded = 0, Int64 left = 1, Int64 uploaded = 0)
         {
             if (type == Type.UDP)
                 AnnounceUDP(num_want, downloaded, left, uploaded);
             else
                 AnnounceTCP(num_want, downloaded, left, uploaded);
         }
-        public async void AnnounceTCP(Int32 num_want = -1, Int64 downloaded = 0, Int64 left = 0, Int64 uploaded = 0)
+        public async void AnnounceTCP(Int32 num_want = -1, Int64 downloaded = 0, Int64 left = 1, Int64 uploaded = 0)
         {
             try
             {
