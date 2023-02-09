@@ -1320,7 +1320,7 @@ namespace SuRGeoNix.BitSwarmLib
                     opt.Overwrite           = true;
                     opt.PartOverwrite       = true;
 
-                    string metadataFileName = torrent.file.name == null ? torrent.file.infoHash + ".torrent" : Utils.GetValidFileName(torrent.file.name) + ".torrent";
+                    string metadataFileName = torrent.file.name == null ? torrent.file.infoHash + ".tinfo" : Utils.GetValidFileName(torrent.file.name) + ".tinfo";
                     torrent.metadata.file   = new Partfile(metadataFileName, Peer.MAX_DATA_SIZE, totalSize, opt);
                 }
 

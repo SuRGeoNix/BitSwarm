@@ -343,7 +343,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                 {
                     bInfo = (BDictionary) bdicTorrent["info"];
                     FillTrackersFromInfo(bdicTorrent);
-                } 
+                }
                 else if (bdicTorrent["name"] != null)
                     bInfo = bdicTorrent;
                 else
@@ -376,9 +376,13 @@ namespace SuRGeoNix.BitSwarmLib.BEP
                 string torrentName  = Utils.GetValidFileName(file.name) + ".torrent";
 
                 if (!File.Exists(Path.Combine(curPath, torrentName)))
-                    File.Move(curFilePath, Path.Combine(bitSwarm.OptionsClone.FolderTorrents, torrentName));
+                {
+                    BDictionary torrentF = new BDictionary(); torrentF.Add("info", bInfo);
+                    File.WriteAllBytes(Path.Combine(bitSwarm.OptionsClone.FolderTorrents, torrentName), torrentF.EncodeAsBytes());
+                }
 
                 PrepareFiles(bInfo);
+                File.Delete(curFilePath);
             } catch (Exception e) { bitSwarm.StopWithError($"FillFromMetadata(): {e.Message} - {e.StackTrace}"); }
             
         }

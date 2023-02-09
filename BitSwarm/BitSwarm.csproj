@@ -1,12 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net5.0;net6.0;netstandard2.0</TargetFrameworks>
+    <TargetFrameworks>net7.0;net6.0;netstandard2.0</TargetFrameworks>
     <Authors>SuRGeoNix</Authors>
     <Company>SuRGeoNix</Company>
     <Description>Bittorrent library for clients &amp; streaming purposes</Description>
-    <Version>2.4.10</Version>
-    <Copyright>© SuRGeoNix 2021</Copyright>
+    <Version>2.4.11</Version>
+    <Copyright>© SuRGeoNix 2023</Copyright>
     <PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/SuRGeoNix/BitSwarm</PackageProjectUrl>
     <PackageIcon>BitSwarm.png</PackageIcon>
@@ -18,7 +18,8 @@
     <AssemblyName>BitSwarmLib</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <PackageReleaseNotes>
-		Fixes a critical issue with trackers (no peers would be returned as it was announcing 0 bytes left)
+		Saves .torrent files properly so other apps can use them
+		Adds .NET 7 support and drops .NET 5
 	</PackageReleaseNotes>
     <PackageId>BitSwarm</PackageId>
     <Product>BitSwarm</Product>
