@@ -320,7 +320,7 @@ namespace SuRGeoNix.BitSwarmLib.BEP
             if (xt == null || xt.Length != 3 || xt[1].ToLower() != "btih" || xt[2].Length < 20) throw new Exception("[Magnet][xt] No hash found " + magnetLink);
 
             file.name       = nvc.Get("dn") == null ? null  : nvc.GetValues("dn")[0] ;
-            file.length     = nvc.Get("xl") == null ? 0     : (int) UInt32.Parse(nvc.GetValues("xl")[0]);
+            file.length     = nvc.Get("xl") == null ? 0     : long.Parse(nvc.GetValues("xl")[0]);
             file.infoHash   = xt[2];
 
             if (Regex.IsMatch(file.infoHash,@"^[2-7a-z]+=*$", RegexOptions.IgnoreCase)) file.infoHash = Utils.ArrayToStringHex(Utils.FromBase32String(file.infoHash));

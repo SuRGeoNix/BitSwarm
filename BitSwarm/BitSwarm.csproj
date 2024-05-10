@@ -1,11 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net7.0;net6.0;netstandard2.0</TargetFrameworks>
+    <TargetFrameworks>net8.0;net6.0;netstandard2.0</TargetFrameworks>
     <Authors>SuRGeoNix</Authors>
     <Company>SuRGeoNix</Company>
     <Description>Bittorrent library for clients &amp; streaming purposes</Description>
-    <Version>2.4.11</Version>
+    <Version>2.4.12</Version>
     <Copyright>© SuRGeoNix 2023</Copyright>
     <PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/SuRGeoNix/BitSwarm</PackageProjectUrl>
@@ -18,8 +18,8 @@
     <AssemblyName>BitSwarmLib</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <PackageReleaseNotes>
-		Saves .torrent files properly so other apps can use them
-		Adds .NET 7 support and drops .NET 5
+		Fixes an integer overflow with magnet links and file length (xl)
+		Adds .NET 8 support and drops .NET 7
 	</PackageReleaseNotes>
     <PackageId>BitSwarm</PackageId>
     <Product>BitSwarm</Product>
